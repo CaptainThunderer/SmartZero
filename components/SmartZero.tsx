@@ -85,8 +85,10 @@ export default function SmartZero() {
     rehydrateFromStorage();
   }, [rehydrateFromStorage]);
 
-  /* ── Active Workspace is the Single Source of Truth ── */
-  const activeWs = getActiveWorkspace();
+  /* ── Active Workspace is the Single Source of Truth (Reactive Selector) ── */
+  const activeWs = useWorkspaceStore(
+    (s) => s.workspaces.find((w) => w.id === s.activeWorkspaceId) || s.workspaces[0]
+  );
   const {
     mode,
     lesson,

@@ -380,6 +380,89 @@ console.log("\n── 10. Infinite Update Prevention & Single Source of Truth �
   assert(restored.step === 2, "Step 2 preserved upon return");
 }
 
+/* ══════════════════════════════════════════
+   11. New Canvas & Triple Workspace Isolation
+   ══════════════════════════════════════════ */
+console.log("\n── 11. New Canvas & Triple Workspace Isolation ──");
+{
+  const store = useWorkspaceStore.getState();
+
+  // Create Workspace 1: Second Max
+  const ws1Id = store.createWorkspace(
+    "second-max",
+    "Find the Second Maximum Element",
+    "second-max",
+    [10, 5, 20, 8, 15]
+  );
+  store.updateActiveWorkspace({ step: 4, language: "python" });
+  const ws1 = store.getActiveWorkspace();
+  assert(ws1.id === ws1Id, "WS1 is active");
+  assert(ws1.step === 4, "WS1 is at step 4");
+  assert(ws1.language === "python", "WS1 language is python");
+  assert(ws1.lesson !== null, "WS1 has lesson");
+  assert(ws1.canvasState.array !== null, "WS1 canvas has array");
+
+  // Create Workspace 2: Blank New Canvas (+ New Canvas click)
+  const ws2Id = store.createWorkspace(undefined, "Canvas 2");
+  const ws2 = store.getActiveWorkspace();
+  assert(ws2.id === ws2Id, "WS2 is active");
+  assert(ws2.title === "Canvas 2", "WS2 title is Canvas 2");
+  assert(ws2.lesson === null, "CRITICAL: WS2 lesson is null (no Second Max)");
+  assert(ws2.topicId === null, "WS2 topicId is null");
+  assert(ws2.lessonId === null, "WS2 lessonId is null");
+  assert(ws2.step === 0, "WS2 step is 0 (idle)");
+  assert(ws2.phase === "idle", "WS2 phase is idle");
+  assert(ws2.playing === false, "WS2 is not playing");
+  assert(ws2.canvasState.array === null, "CRITICAL: WS2 canvas array is null");
+  assert(ws2.canvasState.linkedList === null, "WS2 canvas linkedList is null");
+  assert(ws2.canvasState.tree === null, "WS2 canvas tree is null");
+  assert(Object.keys(ws2.canvasState.variables).length === 0, "WS2 canvas variables empty");
+  assert(ws2.chat.length === 1, "WS2 chat has exactly 1 initial greeting");
+  assert(ws2.notes.length === 0, "WS2 notes empty");
+
+  // Load Binary Search into WS2
+  const bsLesson = lessonFromId("binary-search");
+  store.loadLessonInActive(bsLesson!, "binary-search", "Binary Search");
+  store.updateActiveWorkspace({ step: 2, language: "javascript" });
+  const ws2AfterBS = store.getActiveWorkspace();
+  assert(ws2AfterBS.lessonId === "binary-search", "WS2 loaded binary search");
+  assert(ws2AfterBS.step === 2, "WS2 at step 2");
+  assert(ws2AfterBS.language === "javascript", "WS2 language is javascript");
+
+  // Create Workspace 3: Blank New Canvas
+  const ws3Id = store.createWorkspace(undefined, "Canvas 3");
+  const ws3 = store.getActiveWorkspace();
+  assert(ws3.id === ws3Id, "WS3 is active");
+  assert(ws3.lesson === null, "CRITICAL: WS3 lesson is null (no Binary Search, no Second Max)");
+  assert(ws3.canvasState.array === null, "CRITICAL: WS3 canvas array is null");
+  assert(ws3.step === 0, "WS3 step is 0");
+  assert(ws3.chat.length === 1, "WS3 has fresh AI greeting");
+
+  // Switch to WS1: verify Second Max fully intact
+  store.switchWorkspace(ws1Id);
+  const ws1Check = store.getActiveWorkspace();
+  assert(ws1Check.id === ws1Id, "Switched back to WS1");
+  assert(ws1Check.lessonId === "second-max", "WS1 restored Second Max lesson");
+  assert(ws1Check.step === 4, "WS1 restored step 4");
+  assert(ws1Check.language === "python", "WS1 restored python language");
+  assert(ws1Check.canvasState.array !== null, "WS1 restored canvas array");
+
+  // Switch to WS2: verify Binary Search fully intact
+  store.switchWorkspace(ws2Id);
+  const ws2Check = store.getActiveWorkspace();
+  assert(ws2Check.id === ws2Id, "Switched back to WS2");
+  assert(ws2Check.lessonId === "binary-search", "WS2 restored Binary Search lesson");
+  assert(ws2Check.step === 2, "WS2 restored step 2");
+  assert(ws2Check.language === "javascript", "WS2 restored javascript language");
+
+  // Switch to WS3: verify Canvas 3 is still blank
+  store.switchWorkspace(ws3Id);
+  const ws3Check = store.getActiveWorkspace();
+  assert(ws3Check.id === ws3Id, "Switched back to WS3");
+  assert(ws3Check.lesson === null, "WS3 remains completely blank");
+  assert(ws3Check.canvasState.array === null, "WS3 canvas remains blank");
+}
+
 /* ═══════════════════════════════════════════
    RESULTS
    ═══════════════════════════════════════════ */

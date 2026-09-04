@@ -243,38 +243,50 @@ function loadPersistedState(): {
       const parsed = JSON.parse(workspacesRaw);
       if (Array.isArray(parsed) && parsed.length > 0) {
         // Validate and rehydrate each workspace
-        const hydrated: LearningWorkspace[] = parsed.map((ws: Partial<LearningWorkspace>) => ({
-          id: ws.id || `ws-${Date.now()}`,
-          title: ws.title || "DSA Canvas",
-          topicId: ws.topicId ?? null,
-          lessonId: ws.lessonId ?? null,
-          createdAt: typeof ws.createdAt === "number" ? ws.createdAt : 0,
-          updatedAt: typeof ws.updatedAt === "number" ? ws.updatedAt : 0,
-          mode: ws.mode === "teach" ? "teach" : "learn",
-          lesson: ws.lesson ?? (ws.lessonId ? lessonFromId(ws.lessonId) : null),
-          step: typeof ws.step === "number" ? ws.step : 0,
-          phase: ws.phase || "idle",
-          playing: false,
-          speed: typeof ws.speed === "number" ? ws.speed : 1,
-          draftAnswer: ws.draftAnswer ?? null,
-          selectedAnswer: ws.selectedAnswer ?? null,
-          answerCorrect: ws.answerCorrect ?? null,
-          hintIndex: typeof ws.hintIndex === "number" ? ws.hintIndex : 0,
-          canvasState: ws.canvasState || initialCanvas(),
-          teachState: ws.teachState || initialCanvas(),
-          chat:
-            Array.isArray(ws.chat) && ws.chat.length > 0
-              ? ws.chat
-              : [{ role: "ai", text: "Ready to continue learning." }],
-          clarificationOptions: ws.clarificationOptions ?? null,
-          language:
-            ws.language === "cpp"
-              ? "cpp"
-              : ws.language === "python"
-              ? "python"
-              : "javascript",
-          notes: Array.isArray(ws.notes) ? ws.notes : [],
-        }));
+        const hydrated: LearningWorkspace[] = parsed.map((ws: Partial<LearningWorkspace>) => {
+          const resolvedLesson: Lesson | null =
+            ws.lesson ?? (ws.lessonId ? lessonFromId(ws.lessonId) : null);
+          const resolvedStep = typeof ws.step === "number" ? ws.step : 0;
+          const resolvedCanvas: CanvasState =
+            ws.mode === "teach"
+              ? ws.teachState || initialCanvas()
+              : resolvedLesson
+                ? replay(resolvedLesson.steps, resolvedStep)
+                : ws.canvasState || initialCanvas();
+
+          return {
+            id: ws.id || `ws-${Date.now()}`,
+            title: ws.title || "DSA Canvas",
+            topicId: ws.topicId ?? null,
+            lessonId: ws.lessonId ?? null,
+            createdAt: typeof ws.createdAt === "number" ? ws.createdAt : 0,
+            updatedAt: typeof ws.updatedAt === "number" ? ws.updatedAt : 0,
+            mode: ws.mode === "teach" ? "teach" : "learn",
+            lesson: resolvedLesson,
+            step: resolvedStep,
+            phase: ws.phase || "idle",
+            playing: false,
+            speed: typeof ws.speed === "number" ? ws.speed : 1,
+            draftAnswer: ws.draftAnswer ?? null,
+            selectedAnswer: ws.selectedAnswer ?? null,
+            answerCorrect: ws.answerCorrect ?? null,
+            hintIndex: typeof ws.hintIndex === "number" ? ws.hintIndex : 0,
+            canvasState: resolvedCanvas,
+            teachState: ws.teachState || initialCanvas(),
+            chat:
+              Array.isArray(ws.chat) && ws.chat.length > 0
+                ? ws.chat
+                : [{ role: "ai", text: "Ready to continue learning." }],
+            clarificationOptions: ws.clarificationOptions ?? null,
+            language:
+              ws.language === "cpp"
+                ? "cpp"
+                : ws.language === "python"
+                ? "python"
+                : "javascript",
+            notes: Array.isArray(ws.notes) ? ws.notes : [],
+          };
+        });
 
         const activeId =
           activeIdRaw && hydrated.some((w) => w.id === activeIdRaw)

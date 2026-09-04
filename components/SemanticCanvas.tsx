@@ -1282,6 +1282,9 @@ export default function SemanticCanvas({
           apiRef.current = a as {
             updateScene: (scene: { elements: unknown[]; appState?: Record<string, unknown> }) => void;
           };
+          if (typeof window !== "undefined") {
+            (window as unknown as { __EXCALIDRAW_API__?: unknown }).__EXCALIDRAW_API__ = a;
+          }
           setTimeout(updateCanvas, 0);
         }}
         UIOptions={{
