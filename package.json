@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "npx tsx tests/engine.test.ts && npx tsx tests/journey.test.ts && npx tsx tests/interaction.test.ts && npx tsx tests/dsa_coverage.test.ts && npx tsx tests/workspace_notes_theme.test.ts && npx tsx tests/problem_solving_coverage.test.ts && npx tsx tests/teach_commands.test.ts && npx tsx tests/chat_isolation.test.ts && npx tsx tests/api_routes.test.ts && npx tsx tests/model_router.test.ts && npx tsx tests/verifier.test.ts && npx tsx tests/universal_solver.test.ts && npx tsx tests/universal_benchmarks.test.ts && npx tsx tests/exact_7_queries.test.ts && npx tsx tests/cross_contamination.test.ts && npx tsx tests/narration.test.ts"
+    "test": "npx tsx tests/engine.test.ts && npx tsx tests/journey.test.ts && npx tsx tests/interaction.test.ts && npx tsx tests/dsa_coverage.test.ts && npx tsx tests/workspace_notes_theme.test.ts && npx tsx tests/problem_solving_coverage.test.ts && npx tsx tests/teach_commands.test.ts && npx tsx tests/chat_isolation.test.ts && npx tsx tests/api_routes.test.ts && npx tsx tests/model_router.test.ts && npx tsx tests/verifier.test.ts && npx tsx tests/universal_solver.test.ts && npx tsx tests/universal_benchmarks.test.ts && npx tsx tests/exact_7_queries.test.ts && npx tsx tests/cross_contamination.test.ts && npx tsx tests/narration.test.ts && npx tsx tests/transition_synchronization.test.ts"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",

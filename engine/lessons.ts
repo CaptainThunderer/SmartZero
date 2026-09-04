@@ -429,6 +429,230 @@ export function buildBinarySearchLesson(
 }
 
 /* ═══════════════════════════════════════════════════════════
+   KADANE'S ALGORITHM — Maximum Subarray Sum
+   Input: [-2, 1, -3, 4, -1, 2, 1, -5, 4]
+   ═══════════════════════════════════════════════════════════ */
+export function buildKadaneLesson(
+  values: number[] = [-2, 1, -3, 4, -1, 2, 1, -5, 4]
+): Lesson {
+  const steps: LessonStep[] = [];
+  const nums = values && values.length >= 2 ? values : [-2, 1, -3, 4, -1, 2, 1, -5, 4];
+
+  let currentSum = nums[0];
+  let maxSum = nums[0];
+  let bestStart = 0;
+  let bestEnd = 0;
+  let tempStart = 0;
+
+  // Step 0: Initialize
+  steps.push({
+    actions: [
+      { action: "reset_scene" },
+      { action: "create_array", id: "arr1", values: nums },
+      { action: "create_variable", name: "currentSum", value: nums[0] },
+      { action: "create_variable", name: "maxSum", value: nums[0] },
+      { action: "create_pointer", pointer: "i", targetIndex: 0 },
+      { action: "highlight_element", indices: [0] },
+      {
+        action: "show_callout",
+        text: `Initialize: currentSum = ${nums[0]}, maxSum = ${nums[0]} at index 0.`,
+        boxType: "info",
+      },
+    ],
+    codeLine: "init",
+    narration: `Initialize Kadane's algorithm. Set currentSum and maxSum to ${nums[0]} at index 0.`,
+    narrative: {
+      currentStep: "Initialize Kadane's Algorithm",
+      why: "At start, the first element forms the initial running subarray and global maximum.",
+      whatChanged: "Initialized currentSum and maxSum to first element.",
+      whatToNotice: "Both currentSum and maxSum start at nums[0].",
+      keyInsight: "Kadane's algorithm maintains the optimal subarray ending at each index.",
+      nextStep: "Inspect next elements and choose whether to extend or reset.",
+    },
+    explanation: `Kadane's algorithm finds the maximum-sum contiguous subarray in one pass. We initialize currentSum = ${nums[0]} and maxSum = ${nums[0]} at index 0.`,
+  });
+
+  for (let i = 1; i < nums.length; i++) {
+    const val = nums[i];
+    const prevCurrent = currentSum;
+    const extendSum = currentSum + val;
+    const reset = val > extendSum;
+    currentSum = Math.max(val, extendSum);
+
+    if (reset) {
+      tempStart = i;
+    }
+
+    const isNewMax = currentSum > maxSum;
+    if (isNewMax) {
+      maxSum = currentSum;
+      bestStart = tempStart;
+      bestEnd = i;
+    }
+
+    const decisionText = reset
+      ? `currentSum (${prevCurrent} + ${val} = ${extendSum}) is less than ${val}. Reset and start new subarray at index ${i}.`
+      : `currentSum + ${val} = ${extendSum} >= ${val}. Extend existing subarray.`;
+
+    const isInflection = i === 3;
+
+    steps.push({
+      actions: [
+        { action: "move_pointer", pointer: "i", targetIndex: i },
+        { action: "highlight_element", indices: [i] },
+        { action: "update_variable", name: "currentSum", value: currentSum },
+        { action: "update_variable", name: "maxSum", value: maxSum },
+        {
+          action: "show_callout",
+          text: `Index ${i} (${val}): ${decisionText} (maxSum = ${maxSum})`,
+          boxType: isNewMax ? "success" : "info",
+        },
+      ],
+      codeLine: reset ? "reset_branch" : "extend_branch",
+      narration: isNewMax
+        ? `At index ${i}, value is ${val}. Subarray sum reaches new maximum ${maxSum}.`
+        : `At index ${i}, value is ${val}. currentSum updates to ${currentSum}.`,
+      narrative: {
+        currentStep: `Process element at index ${i} (${val})`,
+        why: reset
+          ? "Previous running sum was negative, so extending it only hurts subsequent subarrays."
+          : "Extending previous positive running sum increases subarray total.",
+        whatChanged: `currentSum = ${currentSum}, maxSum = ${maxSum}`,
+        whatToNotice: `Comparing extending (${prevCurrent} + ${val}) vs starting fresh (${val}).`,
+        keyInsight: reset
+          ? "A negative running sum is discarded because starting fresh cannot be worse."
+          : "A positive running sum contributes positively to subsequent elements.",
+        nextStep: i < nums.length - 1 ? `Advance to index ${i + 1}.` : "Conclude algorithm and return maximum sum.",
+      },
+      pause: isInflection,
+      question: isInflection
+        ? {
+            prompt: `We are at index ${i} (value ${val}) with previous currentSum = ${prevCurrent}. Should we extend or start fresh?`,
+            choices: [
+              { id: "a", text: `Start fresh at ${val} because ${prevCurrent} + ${val} (${extendSum}) < ${val}` },
+              { id: "b", text: `Keep adding to ${prevCurrent} regardless of negative sum` },
+              { id: "c", text: "Reset both currentSum and maxSum to 0" },
+              { id: "d", text: "Skip this element" },
+            ],
+            correctId: "a",
+            hints: [
+              `Compare extending (${prevCurrent} + ${val} = ${extendSum}) against starting fresh at ${val}.`,
+              "A negative running prefix will only reduce any future subarray sum.",
+            ],
+            misconceptions: {
+              b: {
+                code: "NEGATIVE_NUMBER_MISCONCEPTION",
+                feedback: "Carrying a negative sum drags down future totals. Discard negative running sums!",
+              },
+              c: {
+                code: "INCORRECT_COMPARISON",
+                feedback: "We never reset maxSum when currentSum resets; maxSum preserves our global best.",
+              },
+            },
+          }
+        : undefined,
+      explanation: `${decisionText} Global maxSum is currently ${maxSum}.`,
+    });
+  }
+
+  // Final Step: Highlight maximum contiguous subarray
+  const maxSubarrayIndices: number[] = [];
+  for (let idx = bestStart; idx <= bestEnd; idx++) {
+    maxSubarrayIndices.push(idx);
+  }
+  const maxSubarrayVals = nums.slice(bestStart, bestEnd + 1);
+
+  steps.push({
+    actions: [
+      { action: "highlight_element", indices: maxSubarrayIndices },
+      {
+        action: "show_callout",
+        text: `Maximum contiguous subarray: [${maxSubarrayVals.join(", ")}] with sum = ${maxSum}.`,
+        boxType: "success",
+      },
+      { action: "show_complexity", time: "O(n)", space: "O(1)" },
+    ],
+    codeLine: "return",
+    narration: `Kadane's algorithm complete. Maximum contiguous subarray is [${maxSubarrayVals.join(", ")}] with sum ${maxSum}.`,
+    narrative: {
+      currentStep: "Algorithm Complete",
+      why: "Single pass completed with invariant guaranteeing global maximum.",
+      whatChanged: `Found maximum subarray [${maxSubarrayVals.join(", ")}] with sum ${maxSum}.`,
+      whatToNotice: `Maximum sum contiguous subarray is bounded by indices [${bestStart}..${bestEnd}].`,
+      keyInsight: "Linear time O(n) scan with O(1) space guarantees optimal contiguous subarray sum.",
+      nextStep: "Algorithm finished.",
+    },
+    explanation: `Done! Maximum subarray is [${maxSubarrayVals.join(", ")}] starting at index ${bestStart} and ending at index ${bestEnd}, with maximum sum = ${maxSum}. Time complexity is O(n), space complexity is O(1).`,
+  });
+
+  return {
+    id: "max-subarray",
+    title: "Kadane's Algorithm",
+    dataStructure: "Array",
+    pattern: "Dynamic Programming / Linear Scan",
+    objective: `Find the maximum-sum contiguous subarray in [${nums.join(", ")}].`,
+    difficulty: "Medium",
+    steps,
+    code: {
+      javascript: [
+        "function maxSubArray(nums) {",
+        "  let currentSum = nums[0];",
+        "  let maxSum = nums[0];",
+        "  for (let i = 1; i < nums.length; i++) {",
+        "    currentSum = Math.max(nums[i], currentSum + nums[i]);",
+        "    maxSum = Math.max(maxSum, currentSum);",
+        "  }",
+        "  return maxSum;",
+        "}",
+      ],
+      cpp: [
+        "#include <vector>",
+        "#include <algorithm>",
+        "int maxSubArray(const std::vector<int>& nums) {",
+        "    int currentSum = nums[0];",
+        "    int maxSum = nums[0];",
+        "    for (size_t i = 1; i < nums.size(); ++i) {",
+        "        currentSum = std::max(nums[i], currentSum + nums[i]);",
+        "        maxSum = std::max(maxSum, currentSum);",
+        "    }",
+        "    return maxSum;",
+        "}",
+      ],
+      python: [
+        "def max_sub_array(nums: list[int]) -> int:",
+        "    current_sum = nums[0]",
+        "    max_sum = nums[0]",
+        "    for val in nums[1:]:",
+        "        current_sum = max(val, current_sum + val)",
+        "        max_sum = max(max_sum, current_sum)",
+        "    return max_sum",
+      ],
+    },
+    lineMap: {
+      javascript: {
+        init: 2,
+        extend_branch: 5,
+        reset_branch: 5,
+        return: 8,
+      },
+      cpp: {
+        init: 4,
+        extend_branch: 7,
+        reset_branch: 7,
+        return: 10,
+      },
+      python: {
+        init: 2,
+        extend_branch: 5,
+        reset_branch: 5,
+        return: 7,
+      },
+    },
+  };
+}
+
+
+/* ═══════════════════════════════════════════════════════════
    BST INSERTION
    Insert 65 into BST: 50, 30, 70, 60, 80
    ═══════════════════════════════════════════════════════════ */
@@ -799,6 +1023,7 @@ export function lessonFromId(id: string, customValues?: number[]): Lesson | null
   if (id === "binary-search") return buildBinarySearchLesson();
   if (id === "bst-insert") return buildBSTLesson();
   if (id === "linked-list-reverse") return buildLinkedListLesson();
+  if (id === "max-subarray" || id === "kadane") return buildKadaneLesson(customValues);
 
   if (id === "bubble-sort") return buildBubbleSortLesson(customValues);
   if (id === "selection-sort") return buildSelectionSortLesson(customValues);
@@ -838,6 +1063,7 @@ export const SUPPORTED_LESSONS = [
   { id: "binary-search", title: "Binary Search" },
   { id: "bst-insert", title: "BST Insertion" },
   { id: "linked-list-reverse", title: "Linked List Reversal" },
+  { id: "max-subarray", title: "Kadane's Algorithm" },
   { id: "bubble-sort", title: "Bubble Sort" },
   { id: "selection-sort", title: "Selection Sort" },
   { id: "insertion-sort", title: "Insertion Sort" },

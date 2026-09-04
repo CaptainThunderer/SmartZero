@@ -41,7 +41,7 @@ import SemanticCanvas from "./SemanticCanvas";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import NotesPanel from "./NotesPanel";
 import { applyAction, initialCanvas, replay } from "../engine/core";
-import { lessonFromId, SUPPORTED_LESSONS } from "../engine/lessons";
+import { lessonFromId, getDynamicLesson, SUPPORTED_LESSONS } from "../engine/lessons";
 import { useWorkspaceStore, generateWorkspaceTitle } from "../stores/workspaceStore";
 import {
   FeatherlessNarrationController,
@@ -77,6 +77,7 @@ const TEACH_TOOLS = [
 function formatWorkspaceTitle(raw: string): string {
   if (!raw) return "Canvas";
   const clean = raw.trim();
+  if (/kadane/i.test(clean)) return "Kadane Algorithm";
   if (clean.length <= 26) return clean;
   return clean.slice(0, 24) + "...";
 }
@@ -301,10 +302,16 @@ export default function SmartZero() {
         preamble ||
         `**Lesson Loaded: ${l.title}**\n\n${l.objective}\n\n• **Data Structure**: ${l.dataStructure}\n• **Pattern**: ${l.pattern}\n• **Difficulty**: ${l.difficulty}\n\nPress **Play** or **Next** to walk through the algorithm step by step.`;
 
+      const resolvedTopicId =
+        (l as any).topicId ||
+        (l.id === "max-subarray" || /kadane/i.test(l.title + " " + l.pattern)
+          ? "max-subarray"
+          : l.id);
+
       updateWorkspace(targetId, (prev) => ({
         lesson: l,
         lessonId: l.id,
-        topicId: l.id,
+        topicId: resolvedTopicId,
         title: formatWorkspaceTitle(l.title),
         step: 0,
         phase: "idle",
@@ -318,7 +325,7 @@ export default function SmartZero() {
         chat: [...prev.chat, { role: "ai", text: intro }],
       }));
     },
-    [activeWorkspaceId, updateWorkspace]
+    [activeWs?.id, updateWorkspace]
   );
 
   const loadLesson = useCallback(
@@ -454,24 +461,43 @@ export default function SmartZero() {
       } else if (task.problemPlan) {
         const customLesson = buildProblemSolvingLesson(task.problemPlan);
         startLesson(customLesson, task.explanation, targetWsId);
-      } else if (task.lessonId && lessonFromId(task.lessonId, task.inputData)) {
-        const regLesson = lessonFromId(task.lessonId, task.inputData)!;
+      } else if (
+        (task.lessonId && lessonFromId(task.lessonId, task.inputData)) ||
+        (task.topicId && lessonFromId(task.topicId, task.inputData))
+      ) {
+        const targetLessonId = (task.lessonId && lessonFromId(task.lessonId, task.inputData))
+          ? task.lessonId
+          : task.topicId!;
+        const regLesson = lessonFromId(targetLessonId, task.inputData)!;
         startLesson(regLesson, task.explanation, targetWsId);
       } else if (
         task.intent === "problem_solving" ||
         task.intent === "implementation" ||
-        task.intent === "visualize"
+        task.intent === "visualize" ||
+        task.intent === "explain"
       ) {
-        const spec = normalizeToProblemSpec(q);
-        const parsed = parseProblemStatement(q) || {
-          problemType: "generic-programming-problem",
-          numbers: [1, 2, 3, 4, 5],
-          storyContext: q,
-          problemSpec: spec,
-        };
-        const plan = solveDSAProblem(q, parsed);
-        const customLesson = buildProblemSolvingLesson(plan);
-        startLesson(customLesson, task.explanation, targetWsId);
+        const parsed = parseProblemStatement(q);
+        if (parsed) {
+          const plan = solveDSAProblem(q, parsed);
+          const customLesson = buildProblemSolvingLesson(plan);
+          startLesson(customLesson, task.explanation, targetWsId);
+        } else if (task.topicId && lessonFromId(task.topicId, task.inputData)) {
+          const regLesson = lessonFromId(task.topicId, task.inputData)!;
+          startLesson(regLesson, task.explanation, targetWsId);
+        } else if (task.topicId && getDynamicLesson(task.topicId)) {
+          const dynLesson = getDynamicLesson(task.topicId)!;
+          startLesson(dynLesson, task.explanation, targetWsId);
+        } else if (task.explanation) {
+          updateWorkspace(targetWsId, (prev) => ({
+            chat: [
+              ...prev.chat,
+              {
+                role: "ai",
+                text: task.explanation,
+              },
+            ],
+          }));
+        }
       } else if (task.explanation) {
         updateWorkspace(targetWsId, (prev) => ({
           chat: [
