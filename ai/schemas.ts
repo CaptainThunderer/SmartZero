@@ -143,13 +143,51 @@ export const AIResponseSchema = z.object({
   explanation: z.string().optional(),
 });
 
+export const ProblemSpecSchema = z.object({
+  originalQuestion: z.string(),
+  cleanedStatement: z.string(),
+  task: z.string(),
+  inputs: z.array(z.string()),
+  outputs: z.string(),
+  constraints: z.array(z.string()),
+  examples: z.array(
+    z.object({
+      input: z.string(),
+      output: z.string(),
+      explanation: z.string().optional(),
+    })
+  ),
+  edgeCases: z.array(z.string()),
+  knownTopic: z.string().nullable().optional(),
+  algorithmCandidates: z.array(z.string()).optional(),
+  requestedLanguage: SupportedLanguageEnum.optional(),
+  visualizationPotential: z.boolean().optional(),
+  ambiguity: z.string().optional(),
+  confidence: z.number(),
+});
+
+export const ModelTaskTypeEnum = z.enum([
+  "TEXT_PROBLEM_SOLVING",
+  "DSA_REASONING",
+  "CODE_GENERATION",
+  "CODE_DEBUGGING",
+  "LONG_CONTEXT",
+  "VISION",
+  "GENERAL_EXPLANATION",
+  "COMPARISON",
+  "COMPLEX_REASONING",
+]);
+
 export const InterpretRequestSchema = z.object({
   question: z.string().min(1).max(5000),
+  imageBase64: z.string().optional(),
   context: z
     .object({
       topicId: z.string().nullable().optional(),
       lessonId: z.string().nullable().optional(),
       language: SupportedLanguageEnum.optional(),
+      mode: z.string().optional(),
+      teachSummary: z.string().optional(),
     })
     .optional(),
 });

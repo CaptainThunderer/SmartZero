@@ -48,7 +48,7 @@ export default function NotesPanel({ theme }: { theme: AppTheme }) {
   const isDark = theme === "dark";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+    <div data-testid="notes-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
       <div
         className={`w-full max-w-lg rounded-2xl shadow-2xl border flex flex-col max-h-[85vh] transition-all overflow-hidden ${
           isDark

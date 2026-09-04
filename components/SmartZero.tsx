@@ -11,6 +11,7 @@ import {
   Layers,
   Lightbulb,
   Link2,
+  Minus,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -19,15 +20,18 @@ import {
   Pause,
   Pen,
   Play,
+  Plus,
   Pointer,
   RotateCcw,
   Send,
   Sparkles,
   SquareFunction,
   Sun,
+  Trash2,
   TreePine,
   Undo2,
   Variable,
+  X,
   XCircle,
 } from "lucide-react";
 import SemanticCanvas from "./SemanticCanvas";
@@ -37,20 +41,14 @@ import { applyAction, initialCanvas, replay } from "../engine/core";
 import { lessonFromId, SUPPORTED_LESSONS } from "../engine/lessons";
 import { DSA_CATEGORIES } from "../engine/registry";
 import { useWorkspaceStore, generateWorkspaceTitle } from "../stores/workspaceStore";
+import { parseTeachCommand } from "../teach/commandParser";
+import { executeTeachCommand } from "../teach/commandExecutor";
+import { buildProblemSolvingLesson } from "../agent/problemSolver";
 import type { Lesson, LessonPhase, CanvasState, LessonStep, ChatMessage, DSLAction, SupportedLanguage } from "../types/dsa";
 
 /* ══════════════════════════════════════════════
    Constants
    ══════════════════════════════════════════════ */
-const SUGGESTED_PROMPTS = [
-  "Sort [8, 3, 5, 1, 9] using quick sort",
-  "Explain merge sort visually",
-  "Insert 65 into this BST",
-  "Show BFS on this graph",
-  "Reverse a linked list",
-  "Compare merge sort and quicksort",
-  "Explain dynamic programming",
-];
 
 const TEACH_TOOLS = [
   { id: "array", label: "Array", icon: Layers },
@@ -60,6 +58,8 @@ const TEACH_TOOLS = [
   { id: "pointer", label: "Pointer", icon: Pointer },
   { id: "loop", label: "Loop", icon: SquareFunction },
   { id: "pen", label: "Pen", icon: Pen },
+  { id: "undo", label: "Undo", icon: Undo2 },
+  { id: "clear", label: "Clear", icon: Trash2 },
 ] as const;
 
 /* ══════════════════════════════════════════════
@@ -73,6 +73,7 @@ export default function SmartZero() {
     toggleTheme,
     getActiveWorkspace,
     updateActiveWorkspace,
+    updateWorkspace,
     createWorkspace,
     switchWorkspace,
     findWorkspaceByTopic,
@@ -112,6 +113,20 @@ export default function SmartZero() {
   const [input, setInput] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* ── Teach Mode UI State (Palette Dialogs) ── */
+  const [activeTeachDialog, setActiveTeachDialog] = useState<
+    "array" | "list" | "tree" | "variable" | "pointer" | "loop" | null
+  >(null);
+  const [dlgArray, setDlgArray] = useState("10, 5, 20, 8, 15");
+  const [dlgList, setDlgList] = useState("1, 2, 3, 4");
+  const [dlgTreeType, setDlgTreeType] = useState<"bst" | "tree">("bst");
+  const [dlgTree, setDlgTree] = useState("50, 30, 70, 20, 40");
+  const [dlgVarName, setDlgVarName] = useState("max");
+  const [dlgVarVal, setDlgVarVal] = useState("10");
+  const [dlgPtrName, setDlgPtrName] = useState("i");
+  const [dlgPtrIdx, setDlgPtrIdx] = useState("0");
+  const [dlgLoopText, setDlgLoopText] = useState("for (let i = 0; i < n; i++)");
 
   /* ── Helper Callbacks to Update Active Workspace ── */
   const setDraftAnswer = useCallback(
@@ -201,8 +216,43 @@ export default function SmartZero() {
     return "teaching";
   }
 
+  /* ── Summarize Teach State for Context ── */
+  const summarizeTeachState = useCallback((state: CanvasState): string => {
+    const parts: string[] = [];
+    if (state.array && state.array.values.length > 0) {
+      parts.push(`Array: [${state.array.values.join(", ")}]`);
+      if (state.array.pointers && Object.keys(state.array.pointers).length > 0) {
+        parts.push(
+          `Pointers: ${Object.entries(state.array.pointers)
+            .map(([pName, pIdx]) => `${pName}@${pIdx}`)
+            .join(", ")}`
+        );
+      }
+    }
+    if (state.linkedList && state.linkedList.nodes.length > 0) {
+      parts.push(`Linked List: ${state.linkedList.nodes.map((n) => n.value).join(" -> ")}`);
+    }
+    if (state.tree && state.tree.nodes.length > 0) {
+      parts.push(`Tree Nodes: [${state.tree.nodes.map((n) => n.value).join(", ")}]`);
+    }
+    if (state.variables && Object.keys(state.variables).length > 0) {
+      parts.push(`Variables: ${JSON.stringify(state.variables)}`);
+    }
+    if (state.stack && state.stack.items.length > 0) {
+      parts.push(`Stack: [${state.stack.items.join(", ")}]`);
+    }
+    if (state.queue && state.queue.items.length > 0) {
+      parts.push(`Queue: [${state.queue.items.join(", ")}]`);
+    }
+    if (state.graph && state.graph.nodes.length > 0) {
+      parts.push(`Graph: ${state.graph.nodes.length} nodes, ${state.graph.edges.length} edges`);
+    }
+    return parts.length > 0 ? parts.join(" | ") : "Empty canvas";
+  }, []);
+
   const startLesson = useCallback(
-    (l: Lesson, preamble?: string) => {
+    (l: Lesson, preamble?: string, wsId?: string) => {
+      const targetId = wsId || activeWorkspaceId;
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
@@ -212,11 +262,16 @@ export default function SmartZero() {
         preamble ||
         `**Lesson Loaded: ${l.title}**\n\n${l.objective}\n\n• **Data Structure**: ${l.dataStructure}\n• **Pattern**: ${l.pattern}\n• **Difficulty**: ${l.difficulty}\n\nPress **Play** or **Next** to walk through the algorithm step by step.`;
 
-      updateActiveWorkspace((prev) => ({
+      updateWorkspace(targetId, (prev) => ({
         lesson: l,
         lessonId: l.id,
         topicId: prev.topicId || l.id,
-        title: prev.title === "New Canvas" || /^Canvas \d+$/.test(prev.title) ? l.title : prev.title,
+        title:
+          prev.title === "New Canvas" ||
+          /^Canvas \d+$/.test(prev.title) ||
+          /^Workspace \d+$/.test(prev.title)
+            ? l.title
+            : prev.title,
         step: 0,
         phase: "idle",
         playing: false,
@@ -229,14 +284,14 @@ export default function SmartZero() {
         chat: [...prev.chat, { role: "ai", text: intro }],
       }));
     },
-    [updateActiveWorkspace]
+    [activeWorkspaceId, updateWorkspace]
   );
 
   const loadLesson = useCallback(
-    (id: string, preamble?: string, customValues?: number[]) => {
+    (id: string, preamble?: string, customValues?: number[], wsId?: string) => {
       const l = lessonFromId(id, customValues);
       if (!l) return;
-      startLesson(l, preamble);
+      startLesson(l, preamble, wsId);
     },
     [startLesson]
   );
@@ -248,87 +303,87 @@ export default function SmartZero() {
     const q = text.trim();
     if (!q) return;
     setInput("");
-    updateActiveWorkspace((prev) => ({
+    const targetWsId = activeWorkspaceId;
+    updateWorkspace(targetWsId, (prev) => ({
       chat: [...prev.chat, { role: "user", text: q }],
     }));
     setAiBusy(true);
 
     try {
+      const currentWs = useWorkspaceStore
+        .getState()
+        .workspaces.find((w) => w.id === targetWsId);
+
+      const contextPayload: Record<string, unknown> = {
+        topicId: currentWs?.topicId || null,
+        lessonId: currentWs?.lessonId || null,
+        language: currentWs?.language || "javascript",
+        mode: currentWs?.mode || "learn",
+      };
+      if (currentWs?.mode === "teach") {
+        contextPayload.teachSummary = summarizeTeachState(currentWs.teachState);
+      }
+
       const r = await fetch("/api/interpret", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: q,
-          context: {
-            topicId: activeWs.topicId,
-            lessonId: activeWs.lessonId,
-            language: activeWs.language,
-          },
+          context: contextPayload,
         }),
       });
-      const task = await r.json();
-      if (!r.ok) throw new Error(task.error || "Unable to interpret question");
 
-      updateActiveWorkspace({
-        clarificationOptions: task.clarificationOptions || null,
-      });
-
-      // Check if question belongs to a different DSA topic (unrelated)
-      const isUnrelatedTopic = Boolean(
-        task.topicId &&
-        activeWs.topicId &&
-        task.topicId !== activeWs.topicId &&
-        activeWs.lesson !== null
-      );
-
-      if (isUnrelatedTopic && (task.intent === "visualize" || task.intent === "explain")) {
-        const existingWs = findWorkspaceByTopic(task.topicId!);
-        if (existingWs) {
-          // Switch to existing workspace for this topic
-          switchWorkspace(existingWs.id);
-          updateActiveWorkspace((prev) => {
-            const nextChat = [...prev.chat, { role: "user" as const, text: q }];
-            if (task.explanation) {
-              nextChat.push({ role: "ai" as const, text: task.explanation });
-            }
-            return { chat: nextChat };
-          });
-          if (task.lessonId) {
-            loadLesson(task.lessonId, undefined, task.inputData);
-          }
-          return;
+      let task: any;
+      try {
+        const contentType = r.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          task = await r.json();
         } else {
-          // Create new dedicated workspace for this topic
-          const title = generateWorkspaceTitle(
-            task.algorithm || task.topicId!,
-            task.inputData,
-            task.targetValue
+          const rawText = await r.text();
+          throw new Error(
+            `Server returned non-JSON response (${r.status}): ${rawText.slice(0, 100)}`
           );
-          const greeting =
+        }
+      } catch (parseErr: any) {
+        throw new Error(parseErr?.message || "Failed to parse response from server.");
+      }
+
+      if (!r.ok) {
+        throw new Error(task?.error || `Request failed with status ${r.status}`);
+      }
+
+      // If user is in Teach mode, do not override canvas or force switch to learn unless explicitly requested
+      if (currentWs?.mode === "teach") {
+        const wantsLearnMode = /\b(switch to learn|load lesson|open lesson|leave teach|learn mode)\b/i.test(q);
+        if (!wantsLearnMode) {
+          const explanation =
             task.explanation ||
-            `Welcome to **${title}**! Let's explore this algorithm step by step.`;
-          createWorkspace(
-            task.topicId!,
-            title,
-            task.lessonId || undefined,
-            task.inputData,
-            greeting
-          );
+            (task.problemPlan
+              ? `${task.problemPlan.objective}\n\n${task.problemPlan.reasoning}\n\n**Complexity**: Time ${task.problemPlan.complexity.time}, Space ${task.problemPlan.complexity.space}`
+              : "I have analyzed your question in the context of your current Teach canvas.");
+          updateWorkspace(targetWsId, (prev) => ({
+            chat: [...prev.chat, { role: "ai", text: explanation }],
+            clarificationOptions: task.clarificationOptions || null,
+          }));
           return;
         }
       }
 
+      updateWorkspace(targetWsId, {
+        clarificationOptions: task.clarificationOptions || null,
+      });
+
       if (/\b(python|py)\b/i.test(q)) {
-        updateActiveWorkspace({ language: "python" });
+        updateWorkspace(targetWsId, { language: "python" });
       } else if (/\b(c\+\+|cpp)\b/i.test(q)) {
-        updateActiveWorkspace({ language: "cpp" });
+        updateWorkspace(targetWsId, { language: "cpp" });
       } else if (/\b(javascript|js|node)\b/i.test(q)) {
-        updateActiveWorkspace({ language: "javascript" });
+        updateWorkspace(targetWsId, { language: "javascript" });
       }
 
-      // Stays in current workspace
+      // Stays in current target workspace
       if (task.intent === "unsupported_non_dsa") {
-        updateActiveWorkspace((prev) => ({
+        updateWorkspace(targetWsId, (prev) => ({
           chat: [
             ...prev.chat,
             {
@@ -340,7 +395,7 @@ export default function SmartZero() {
           ],
         }));
       } else if (task.intent === "clarification") {
-        updateActiveWorkspace((prev) => ({
+        updateWorkspace(targetWsId, (prev) => ({
           chat: [
             ...prev.chat,
             {
@@ -351,31 +406,16 @@ export default function SmartZero() {
             },
           ],
         }));
-      } else if (task.intent === "compare" || task.intent === "complexity") {
-        updateActiveWorkspace((prev) => ({
-          chat: [
-            ...prev.chat,
-            {
-              role: "ai",
-              text:
-                task.explanation ||
-                `Here is the analysis for ${task.algorithm || "this topic"}.`,
-            },
-          ],
-        }));
       } else if (task.customLesson) {
-        startLesson(task.customLesson, task.explanation);
-      } else if (
-        task.lessonId &&
-        (task.intent === "visualize" || !task.explanation)
-      ) {
-        loadLesson(
-          task.lessonId,
-          `I understand the question. Building interactive visualization for ${task.algorithm || task.lessonId}.`,
-          task.inputData
-        );
+        startLesson(task.customLesson, task.explanation, targetWsId);
+      } else if (task.problemPlan) {
+        const customLesson = buildProblemSolvingLesson(task.problemPlan);
+        startLesson(customLesson, task.explanation, targetWsId);
+      } else if (task.lessonId && lessonFromId(task.lessonId, task.inputData)) {
+        const regLesson = lessonFromId(task.lessonId, task.inputData)!;
+        startLesson(regLesson, task.explanation, targetWsId);
       } else if (task.explanation) {
-        updateActiveWorkspace((prev) => ({
+        updateWorkspace(targetWsId, (prev) => ({
           chat: [
             ...prev.chat,
             {
@@ -384,15 +424,8 @@ export default function SmartZero() {
             },
           ],
         }));
-        if (task.lessonId) {
-          loadLesson(
-            task.lessonId,
-            `Interactive lesson loaded for ${task.algorithm || task.lessonId}. Use Play or Next to explore.`,
-            task.inputData
-          );
-        }
       } else {
-        updateActiveWorkspace((prev) => ({
+        updateWorkspace(targetWsId, (prev) => ({
           chat: [
             ...prev.chat,
             {
@@ -403,7 +436,7 @@ export default function SmartZero() {
         }));
       }
     } catch (e) {
-      updateActiveWorkspace((prev) => ({
+      updateWorkspace(targetWsId, (prev) => ({
         chat: [
           ...prev.chat,
           {
@@ -654,67 +687,81 @@ export default function SmartZero() {
   }
 
   /* ══════════════════════════════════════════
-     Teach Mode Tool Handlers
+     Teach Mode Command & Tool Handlers
      ══════════════════════════════════════════ */
+  const runTeachCommand = useCallback(
+    (rawCmd: string) => {
+      const trimmed = rawCmd.trim();
+      if (!trimmed) return;
+
+      const parsed = parseTeachCommand(trimmed);
+      if (!parsed.success || !parsed.command) {
+        return;
+      }
+
+      const currentHistory = activeWs.teachHistory || [];
+      const res = executeTeachCommand(parsed.command, activeWs.teachState, currentHistory);
+      if (!res.success) {
+        return;
+      }
+
+      updateActiveWorkspace({
+        teachState: res.newState,
+        teachHistory: res.history,
+      });
+    },
+    [activeWs.teachHistory, activeWs.teachState, updateActiveWorkspace]
+  );
+
   function teachToolClick(toolId: string) {
-    let action: DSLAction | null = null;
     switch (toolId) {
       case "array":
-        action = {
-          action: "create_array",
-          id: "manual-array",
-          values: [10, 20, 30, 40],
-        };
-        break;
-      case "variable":
-        action = {
-          action: "create_variable",
-          name: "max",
-          value: 0,
-        };
-        break;
-      case "pointer":
-        if (teachState.array) {
-          action = {
-            action: "create_pointer",
-            pointer: "i",
-            targetIndex: 0,
-          };
+        if (activeWs.teachState.array && activeWs.teachState.array.values.length > 0) {
+          setDlgArray(activeWs.teachState.array.values.join(", "));
+        } else {
+          setDlgArray("10, 5, 20, 8, 15");
         }
+        setActiveTeachDialog("array");
         break;
       case "list":
-        action = {
-          action: "create_linked_list",
-          values: [1, 2, 3, 4],
-        };
+        if (activeWs.teachState.linkedList && activeWs.teachState.linkedList.nodes.length > 0) {
+          setDlgList(activeWs.teachState.linkedList.nodes.map((n) => n.value).join(", "));
+        } else {
+          setDlgList("1, 2, 3, 4");
+        }
+        setActiveTeachDialog("list");
         break;
       case "tree":
-        action = {
-          action: "create_tree",
-          nodes: [
-            { id: "t50", value: 50, x: 300, y: 80, visible: true },
-            { id: "t30", value: 30, x: 180, y: 170, visible: true },
-            { id: "t70", value: 70, x: 420, y: 170, visible: true },
-          ],
-          edges: [
-            ["t50", "t30"],
-            ["t50", "t70"],
-          ],
-        };
+        if (activeWs.teachState.tree && activeWs.teachState.tree.nodes.length > 0) {
+          setDlgTree(activeWs.teachState.tree.nodes.map((n) => n.value).join(", "));
+        } else {
+          setDlgTree("50, 30, 70, 20, 40");
+        }
+        setActiveTeachDialog("tree");
+        break;
+      case "variable":
+        setActiveTeachDialog("variable");
+        break;
+      case "pointer":
+        setActiveTeachDialog("pointer");
         break;
       case "loop":
-        action = {
-          action: "show_message",
-          text: "for (i = 0; i < n; i++) — loop step",
-        };
+        setActiveTeachDialog("loop");
         break;
       case "pen":
+        updateActiveWorkspace((prev) => ({
+          teachState: {
+            ...prev.teachState,
+            message: "Pen active. Use palette tools or slash commands to structure your canvas.",
+          },
+        }));
         break;
-    }
-    if (action) {
-      updateActiveWorkspace((prev) => ({
-        teachState: applyAction(prev.teachState, action!),
-      }));
+      case "undo":
+        runTeachCommand("/undo");
+        break;
+      case "clear":
+        runTeachCommand("/clear");
+        break;
     }
   }
 
@@ -838,33 +885,35 @@ export default function SmartZero() {
         </div>
       </header>
 
-      {/* ── TEACH TOOLBAR ── */}
+      {/* ── TEACH PALETTE TOOLBAR ── */}
       {mode === "teach" && (
         <div
-          className={`h-11 shrink-0 border-b flex items-center px-4 gap-1.5 overflow-x-auto z-10 ${
+          className={`shrink-0 border-b z-10 ${
             isDark ? "bg-[#181824] border-[#27273D]" : "bg-white border-[#E7E7E2]"
           }`}
         >
-          <span className="text-[10px] text-[#9498B3] mr-2 font-bold uppercase tracking-wider">
-            Teach Palette
-          </span>
-          {TEACH_TOOLS.map((t) => {
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.id}
-                onClick={() => teachToolClick(t.id)}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
-                  isDark
-                    ? "text-[#C7C9D9] hover:bg-[#252646] hover:text-white"
-                    : "text-[#4A4E68] hover:bg-[#F2F2EE] hover:text-[#232946]"
-                }`}
-              >
-                <Icon size={13} className="text-[#5B5FEF]" />
-                {t.label}
-              </button>
-            );
-          })}
+          <div className="h-11 flex items-center px-4 gap-1.5 overflow-x-auto">
+            <span className="text-[10px] text-[#9498B3] mr-2 font-bold uppercase tracking-wider shrink-0">
+              Teach Palette
+            </span>
+            {TEACH_TOOLS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => teachToolClick(t.id)}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors shrink-0 ${
+                    isDark
+                      ? "text-[#C7C9D9] hover:bg-[#252646] hover:text-white"
+                      : "text-[#4A4E68] hover:bg-[#F2F2EE] hover:text-[#232946]"
+                  }`}
+                >
+                  <Icon size={13} className="text-[#5B5FEF]" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -903,6 +952,8 @@ export default function SmartZero() {
               {chat.map((msg, i) => (
                 <div
                   key={i}
+                  data-testid="chat-message"
+                  data-role={msg.role}
                   className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
                 >
                   <div
@@ -955,31 +1006,7 @@ export default function SmartZero() {
               </div>
             )}
 
-            {/* Suggested Question Pills */}
-            <div
-              className={`p-2.5 border-t space-y-1.5 shrink-0 ${
-                isDark ? "border-[#27273D] bg-[#12121A]/50" : "border-[#E7E7E2] bg-[#FAFAF8]"
-              }`}
-            >
-              <div className="text-[9px] font-bold text-[#9498B3] uppercase tracking-wider">
-                Explore Curriculum
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {SUGGESTED_PROMPTS.slice(0, 4).map((p, i) => (
-                  <button
-                    key={i}
-                    onClick={() => ask(p)}
-                    className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors ${
-                      isDark
-                        ? "bg-[#181824] border-[#2A2D48] text-[#9498B3] hover:bg-[#252646] hover:text-white"
-                        : "bg-white border-[#E7E7E2] text-[#6B6F8A] hover:bg-[#F2F2EE] hover:text-[#232946]"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
+
 
             {/* Input form */}
             <div className={`p-2.5 border-t shrink-0 ${isDark ? "border-[#27273D]" : "border-[#E7E7E2]"}`}>
@@ -1192,86 +1219,453 @@ export default function SmartZero() {
             )}
           </div>
 
-          {/* Bottom Playback & Stepper Controls Bar */}
+          {/* Bottom Controls Bar */}
           <div
             className={`h-11 shrink-0 border-t flex items-center justify-between px-4 z-10 select-none ${
               isDark ? "bg-[#181824] border-[#27273D]" : "bg-white border-[#E7E7E2]"
             }`}
           >
-            <div className="flex items-center gap-2">
-              <button
-                onClick={restart}
-                disabled={!lesson}
-                className={`p-1.5 rounded-lg border transition-colors disabled:opacity-40 ${
-                  isDark
-                    ? "border-[#2A2D48] text-[#A0A6C2] hover:bg-[#252646]"
-                    : "border-[#DDDDE7] text-[#6B6F8A] hover:bg-[#F2F2EE]"
-                }`}
-                title="Restart lesson"
-              >
-                <RotateCcw size={14} />
-              </button>
-              <button
-                onClick={prev}
-                disabled={!lesson || step <= 0}
-                className={`p-1.5 rounded-lg border transition-colors disabled:opacity-40 ${
-                  isDark
-                    ? "border-[#2A2D48] text-[#A0A6C2] hover:bg-[#252646]"
-                    : "border-[#DDDDE7] text-[#6B6F8A] hover:bg-[#F2F2EE]"
-                }`}
-                title="Previous step"
-              >
-                <Undo2 size={14} />
-              </button>
-              <button
-                onClick={togglePlay}
-                disabled={!lesson || phase === "waiting_for_learner" || phase === "completed"}
-                className="px-3 py-1.5 rounded-lg bg-[#5B5FEF] hover:bg-[#4D51E0] disabled:opacity-40 text-white text-[11px] font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
-              >
-                {playing ? <Pause size={13} /> : <Play size={13} />}
-                <span>{playing ? "Pause" : "Play"}</span>
-              </button>
-              <button
-                onClick={next}
-                disabled={!lesson || step >= total - 1 || phase === "waiting_for_learner"}
-                className={`p-1.5 rounded-lg border transition-colors disabled:opacity-40 ${
-                  isDark
-                    ? "border-[#2A2D48] text-[#A0A6C2] hover:bg-[#252646]"
-                    : "border-[#DDDDE7] text-[#6B6F8A] hover:bg-[#F2F2EE]"
-                }`}
-                title="Next step"
-              >
-                <ArrowRight size={14} />
-              </button>
+            {mode === "teach" ? (
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-2 text-[11px] text-[#9498B3]">
+                  <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                  <span className="font-semibold text-[#5B5FEF]">Teach Sandbox</span>
+                  <span>•</span>
+                  <span>
+                    {activeWs.teachState.array
+                      ? `Array (${activeWs.teachState.array.values.length})`
+                      : activeWs.teachState.tree
+                        ? `Tree (${activeWs.teachState.tree.nodes.length})`
+                        : activeWs.teachState.linkedList
+                          ? `List (${activeWs.teachState.linkedList.nodes.length})`
+                          : "Interactive Canvas"}
+                  </span>
+                  {Object.keys(activeWs.teachState.variables).length > 0 && (
+                    <>
+                      <span>•</span>
+                      <span>Vars: {Object.keys(activeWs.teachState.variables).join(", ")}</span>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[#9498B3]">Quick templates:</span>
+                  <button
+                    type="button"
+                    onClick={() => runTeachCommand("/array(10,5,20,8,15)")}
+                    className={`px-2 py-0.5 rounded border text-[10px] font-mono transition-colors ${
+                      isDark
+                        ? "border-[#2E314D] hover:bg-[#252646] text-[#A5B4FC]"
+                        : "border-[#DDDDE7] hover:bg-[#F2F2EE] text-[#5B5FEF]"
+                    }`}
+                  >
+                    /array(...)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runTeachCommand("/pointer(i,0)")}
+                    className={`px-2 py-0.5 rounded border text-[10px] font-mono transition-colors ${
+                      isDark
+                        ? "border-[#2E314D] hover:bg-[#252646] text-[#A5B4FC]"
+                        : "border-[#DDDDE7] hover:bg-[#F2F2EE] text-[#5B5FEF]"
+                    }`}
+                  >
+                    /pointer(i,0)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runTeachCommand("/var(max=10)")}
+                    className={`px-2 py-0.5 rounded border text-[10px] font-mono transition-colors ${
+                      isDark
+                        ? "border-[#2E314D] hover:bg-[#252646] text-[#A5B4FC]"
+                        : "border-[#DDDDE7] hover:bg-[#F2F2EE] text-[#5B5FEF]"
+                    }`}
+                  >
+                    /var(...)
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={restart}
+                    disabled={!lesson}
+                    className={`p-1.5 rounded-lg border transition-colors disabled:opacity-40 ${
+                      isDark
+                        ? "border-[#2A2D48] text-[#A0A6C2] hover:bg-[#252646]"
+                        : "border-[#DDDDE7] text-[#6B6F8A] hover:bg-[#F2F2EE]"
+                    }`}
+                    title="Restart lesson"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                  <button
+                    onClick={prev}
+                    disabled={!lesson || step <= 0}
+                    className={`p-1.5 rounded-lg border transition-colors disabled:opacity-40 ${
+                      isDark
+                        ? "border-[#2A2D48] text-[#A0A6C2] hover:bg-[#252646]"
+                        : "border-[#DDDDE7] text-[#6B6F8A] hover:bg-[#F2F2EE]"
+                    }`}
+                    title="Previous step"
+                  >
+                    <Undo2 size={14} />
+                  </button>
+                  <button
+                    onClick={togglePlay}
+                    disabled={!lesson || phase === "waiting_for_learner" || phase === "completed"}
+                    className="px-3 py-1.5 rounded-lg bg-[#5B5FEF] hover:bg-[#4D51E0] disabled:opacity-40 text-white text-[11px] font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    {playing ? <Pause size={13} /> : <Play size={13} />}
+                    <span>{playing ? "Pause" : "Play"}</span>
+                  </button>
+                  <button
+                    onClick={next}
+                    disabled={!lesson || step >= total - 1 || phase === "waiting_for_learner"}
+                    className={`p-1.5 rounded-lg border transition-colors disabled:opacity-40 ${
+                      isDark
+                        ? "border-[#2A2D48] text-[#A0A6C2] hover:bg-[#252646]"
+                        : "border-[#DDDDE7] text-[#6B6F8A] hover:bg-[#F2F2EE]"
+                    }`}
+                    title="Next step"
+                  >
+                    <ArrowRight size={14} />
+                  </button>
 
-              {/* Step indicator */}
-              <span className="text-[11px] font-mono text-[#9498B3] ml-2">
-                {lesson ? `Step ${step + 1} / ${total}` : "Idle"}
-              </span>
-            </div>
+                  {/* Step indicator */}
+                  <span className="text-[11px] font-mono text-[#9498B3] ml-2">
+                    {lesson ? `Step ${step + 1} / ${total}` : "Idle"}
+                  </span>
+                </div>
 
-            {/* Playback speed selector */}
-            <div className="flex items-center gap-1.5 text-[11px] text-[#9498B3]">
-              <span className="text-[10px] uppercase font-bold tracking-wider">Speed:</span>
-              {[1, 1.5, 2].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setSpeed(s)}
-                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${
-                    speed === s
-                      ? isDark
-                        ? "bg-[#252646] text-[#A5B4FC]"
-                        : "bg-[#EEF0FD] text-[#5B5FEF]"
-                      : isDark
-                        ? "text-[#A0A6C2] hover:bg-[#1E1E2E]"
-                        : "text-[#6B6F8A] hover:bg-[#F2F2EE]"
-                  }`}
-                >
-                  {s}x
-                </button>
-              ))}
-            </div>
+                {/* Playback speed selector */}
+                <div className="flex items-center gap-1.5 text-[11px] text-[#9498B3]">
+                  <span className="text-[10px] uppercase font-bold tracking-wider">Speed:</span>
+                  {[1, 1.5, 2].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setSpeed(s)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${
+                        speed === s
+                          ? isDark
+                            ? "bg-[#252646] text-[#A5B4FC]"
+                            : "bg-[#EEF0FD] text-[#5B5FEF]"
+                          : isDark
+                            ? "text-[#A0A6C2] hover:bg-[#1E1E2E]"
+                            : "text-[#6B6F8A] hover:bg-[#F2F2EE]"
+                      }`}
+                    >
+                      {s}x
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
+
+          {/* ── TEACH PALETTE INTERACTIVE DIALOG MODAL ── */}
+          {activeTeachDialog && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+              <div
+                className={`w-full max-w-md rounded-2xl shadow-2xl border p-5 space-y-4 ${
+                  isDark ? "bg-[#181824] border-[#2E314D] text-[#F1F5F9]" : "bg-white border-[#E7E7E2] text-[#232946]"
+                }`}
+              >
+                <div className="flex items-center justify-between border-b pb-3">
+                  <h3 className="text-[13px] font-bold">
+                    {activeTeachDialog === "array" && "Array Configuration"}
+                    {activeTeachDialog === "list" && "Linked List Configuration"}
+                    {activeTeachDialog === "tree" && "Tree / BST Configuration"}
+                    {activeTeachDialog === "variable" && "Declare / Update Variable"}
+                    {activeTeachDialog === "pointer" && "Attach Pointer"}
+                    {activeTeachDialog === "loop" && "Annotate Loop"}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTeachDialog(null)}
+                    className="p-1 rounded-lg hover:opacity-75 text-[#9498B3]"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+
+                {/* Array Dialog */}
+                {activeTeachDialog === "array" && (
+                  <div className="space-y-3">
+                    <label className="text-[11px] font-medium block">
+                      Elements (comma-separated):
+                      <input
+                        type="text"
+                        value={dlgArray}
+                        onChange={(e) => setDlgArray(e.target.value)}
+                        placeholder="e.g. 10, 5, 20, 8, 15"
+                        className={`mt-1 w-full h-8 px-3 rounded-lg border text-[11.5px] font-mono outline-none ${
+                          isDark ? "bg-[#12121A] border-[#2E314D] text-white" : "bg-white border-[#DDDDE7] text-[#232946]"
+                        }`}
+                      />
+                    </label>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTeachDialog(null)}
+                        className="px-3 py-1.5 rounded-lg border text-[11px] font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          runTeachCommand(`/array(${dlgArray})`);
+                          setActiveTeachDialog(null);
+                        }}
+                        className="px-4 py-1.5 rounded-lg bg-[#5B5FEF] text-white text-[11px] font-medium"
+                      >
+                        Apply Array
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Linked List Dialog */}
+                {activeTeachDialog === "list" && (
+                  <div className="space-y-3">
+                    <label className="text-[11px] font-medium block">
+                      Node Values (comma-separated):
+                      <input
+                        type="text"
+                        value={dlgList}
+                        onChange={(e) => setDlgList(e.target.value)}
+                        placeholder="e.g. 1, 2, 3, 4"
+                        className={`mt-1 w-full h-8 px-3 rounded-lg border text-[11.5px] font-mono outline-none ${
+                          isDark ? "bg-[#12121A] border-[#2E314D] text-white" : "bg-white border-[#DDDDE7] text-[#232946]"
+                        }`}
+                      />
+                    </label>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTeachDialog(null)}
+                        className="px-3 py-1.5 rounded-lg border text-[11px] font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          runTeachCommand(`/list(${dlgList})`);
+                          setActiveTeachDialog(null);
+                        }}
+                        className="px-4 py-1.5 rounded-lg bg-[#5B5FEF] text-white text-[11px] font-medium"
+                      >
+                        Create List
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tree Dialog */}
+                {activeTeachDialog === "tree" && (
+                  <div className="space-y-3">
+                    <div className="flex gap-4 text-[11px]">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="treeType"
+                          checked={dlgTreeType === "bst"}
+                          onChange={() => setDlgTreeType("bst")}
+                        />
+                        <span>Binary Search Tree (BST)</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="treeType"
+                          checked={dlgTreeType === "tree"}
+                          onChange={() => setDlgTreeType("tree")}
+                        />
+                        <span>General Tree</span>
+                      </label>
+                    </div>
+                    <label className="text-[11px] font-medium block">
+                      Node Values (comma-separated):
+                      <input
+                        type="text"
+                        value={dlgTree}
+                        onChange={(e) => setDlgTree(e.target.value)}
+                        placeholder="e.g. 50, 30, 70, 20, 40"
+                        className={`mt-1 w-full h-8 px-3 rounded-lg border text-[11.5px] font-mono outline-none ${
+                          isDark ? "bg-[#12121A] border-[#2E314D] text-white" : "bg-white border-[#DDDDE7] text-[#232946]"
+                        }`}
+                      />
+                    </label>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTeachDialog(null)}
+                        className="px-3 py-1.5 rounded-lg border text-[11px] font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          runTeachCommand(`/${dlgTreeType}(${dlgTree})`);
+                          setActiveTeachDialog(null);
+                        }}
+                        className="px-4 py-1.5 rounded-lg bg-[#5B5FEF] text-white text-[11px] font-medium"
+                      >
+                        Create Tree
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Variable Dialog */}
+                {activeTeachDialog === "variable" && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[11px] font-medium block">
+                        Variable Name:
+                        <input
+                          type="text"
+                          value={dlgVarName}
+                          onChange={(e) => setDlgVarName(e.target.value)}
+                          placeholder="e.g. max"
+                          className={`mt-1 w-full h-8 px-3 rounded-lg border text-[11.5px] font-mono outline-none ${
+                            isDark ? "bg-[#12121A] border-[#2E314D] text-white" : "bg-white border-[#DDDDE7] text-[#232946]"
+                          }`}
+                        />
+                      </label>
+                      <label className="text-[11px] font-medium block">
+                        Value:
+                        <input
+                          type="text"
+                          value={dlgVarVal}
+                          onChange={(e) => setDlgVarVal(e.target.value)}
+                          placeholder="e.g. 10"
+                          className={`mt-1 w-full h-8 px-3 rounded-lg border text-[11.5px] font-mono outline-none ${
+                            isDark ? "bg-[#12121A] border-[#2E314D] text-white" : "bg-white border-[#DDDDE7] text-[#232946]"
+                          }`}
+                        />
+                      </label>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTeachDialog(null)}
+                        className="px-3 py-1.5 rounded-lg border text-[11px] font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          runTeachCommand(`/var(${dlgVarName}=${dlgVarVal})`);
+                          setActiveTeachDialog(null);
+                        }}
+                        className="px-4 py-1.5 rounded-lg bg-[#5B5FEF] text-white text-[11px] font-medium"
+                      >
+                        Set Variable
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pointer Dialog */}
+                {activeTeachDialog === "pointer" && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[11px] font-medium block">
+                        Pointer Name:
+                        <input
+                          type="text"
+                          value={dlgPtrName}
+                          onChange={(e) => setDlgPtrName(e.target.value)}
+                          placeholder="e.g. i"
+                          className={`mt-1 w-full h-8 px-3 rounded-lg border text-[11.5px] font-mono outline-none ${
+                            isDark ? "bg-[#12121A] border-[#2E314D] text-white" : "bg-white border-[#DDDDE7] text-[#232946]"
+                          }`}
+                        />
+                      </label>
+                      <label className="text-[11px] font-medium block">
+                        Target Index:
+                        <input
+                          type="number"
+                          value={dlgPtrIdx}
+                          onChange={(e) => setDlgPtrIdx(e.target.value)}
+                          placeholder="e.g. 0"
+                          className={`mt-1 w-full h-8 px-3 rounded-lg border text-[11.5px] font-mono outline-none ${
+                            isDark ? "bg-[#12121A] border-[#2E314D] text-white" : "bg-white border-[#DDDDE7] text-[#232946]"
+                          }`}
+                        />
+                      </label>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTeachDialog(null)}
+                        className="px-3 py-1.5 rounded-lg border text-[11px] font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          runTeachCommand(`/pointer(${dlgPtrName},${dlgPtrIdx})`);
+                          setActiveTeachDialog(null);
+                        }}
+                        className="px-4 py-1.5 rounded-lg bg-[#5B5FEF] text-white text-[11px] font-medium"
+                      >
+                        Attach Pointer
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Loop Dialog */}
+                {activeTeachDialog === "loop" && (
+                  <div className="space-y-3">
+                    <label className="text-[11px] font-medium block">
+                      Loop Annotation:
+                      <input
+                        type="text"
+                        value={dlgLoopText}
+                        onChange={(e) => setDlgLoopText(e.target.value)}
+                        placeholder="e.g. for (let i = 0; i < n; i++)"
+                        className={`mt-1 w-full h-8 px-3 rounded-lg border text-[11.5px] font-mono outline-none ${
+                          isDark ? "bg-[#12121A] border-[#2E314D] text-white" : "bg-white border-[#DDDDE7] text-[#232946]"
+                        }`}
+                      />
+                    </label>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTeachDialog(null)}
+                        className="px-3 py-1.5 rounded-lg border text-[11px] font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateActiveWorkspace((prev) => ({
+                            teachState: {
+                              ...prev.teachState,
+                              message: dlgLoopText,
+                            },
+                          }));
+                          setActiveTeachDialog(null);
+                        }}
+                        className="px-4 py-1.5 rounded-lg bg-[#5B5FEF] text-white text-[11px] font-medium"
+                      >
+                        Set Loop
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </main>
 
         {/* ── RIGHT SIDEBAR: SYNCHRONIZED CODE & STATE ── */}
@@ -1367,7 +1761,7 @@ export default function SmartZero() {
 
                   {/* Synchronized Code Viewer */}
                   <pre
-                    className={`p-2.5 text-[10px] leading-[1.8] font-mono select-text ${
+                    className={`p-2.5 text-[13px] leading-[1.8] font-mono select-text ${
                       isDark ? "bg-[#12121A]" : "bg-white"
                     }`}
                   >
@@ -1388,7 +1782,7 @@ export default function SmartZero() {
                                 : "text-[#4A4E68]"
                           }`}
                         >
-                          <span className="text-[#6C7293] mr-2.5 select-none">
+                          <span className="text-[#6C7293] mr-2.5 select-none text-[11px]">
                             {String(i + 1).padStart(2, "0")}
                           </span>
                           {line}
@@ -1404,14 +1798,14 @@ export default function SmartZero() {
                         isDark ? "border-[#27273D] bg-[#181824]" : "border-[#F0F0EC] bg-[#FAFAF8]"
                       }`}
                     >
-                      <div className="text-[8.5px] uppercase tracking-wider text-[#9498B3] font-bold mb-1">
+                      <div className="text-[9.5px] uppercase tracking-wider text-[#9498B3] font-bold mb-1">
                         State Invariants
                       </div>
                       <div className="space-y-0.5">
                         {Object.entries(canvasState.variables).map(([name, val]) => (
                           <div
                             key={name}
-                            className="text-[10.5px] font-mono text-[#10B981] flex items-center justify-between"
+                            className="text-[12px] font-mono text-[#10B981] flex items-center justify-between"
                           >
                             <span className={isDark ? "text-[#C7C9D9]" : "text-[#4A4E68]"}>{name}</span>
                             <span className="font-bold">{String(val)}</span>
@@ -1422,8 +1816,34 @@ export default function SmartZero() {
                   )}
                 </>
               ) : (
-                <div className="p-4 text-[11px] text-[#9498B3] text-center mt-6">
-                  Load a lesson to see synchronized code and variable state.
+                <div className="p-4 text-[12px] text-[#9498B3] text-center mt-6">
+                  {mode === "teach"
+                    ? "No synchronized lesson code."
+                    : "Load a lesson to see synchronized code and variable state."}
+                </div>
+              )}
+
+              {/* Display teach mode variables if present */}
+              {!lesson && mode === "teach" && Object.keys(canvasState.variables).length > 0 && (
+                <div
+                  className={`px-3 py-2 border-t ${
+                    isDark ? "border-[#27273D] bg-[#181824]" : "border-[#F0F0EC] bg-[#FAFAF8]"
+                  }`}
+                >
+                  <div className="text-[9.5px] uppercase tracking-wider text-[#9498B3] font-bold mb-1">
+                    Teach Variables
+                  </div>
+                  <div className="space-y-0.5">
+                    {Object.entries(canvasState.variables).map(([name, val]) => (
+                      <div
+                        key={name}
+                        className="text-[12px] font-mono text-[#10B981] flex items-center justify-between"
+                      >
+                        <span className={isDark ? "text-[#C7C9D9]" : "text-[#4A4E68]"}>{name}</span>
+                        <span className="font-bold">{String(val)}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

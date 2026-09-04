@@ -112,10 +112,11 @@ export function createEmptyWorkspace(
     hintIndex: 0,
     canvasState: initialCanvas(),
     teachState: initialCanvas(),
+    teachHistory: [],
     chat: [
       {
         role: "ai",
-        text: "Hi! I'm your SmartZero AI Teacher. Ask me any DSA question and we'll learn it visually.",
+        text: "Hi! I'm your SmartZero AI Teacher. Ask me any DSA question and we'll learn it visually on the canvas together!",
       },
     ],
     clarificationOptions: null,
@@ -162,7 +163,7 @@ export function createInitialWorkspace(
     initialGreeting ||
     (topicMeta
       ? `Welcome to **${topicMeta.name}**! I'm your AI Teacher for this workspace. We will explore ${topicMeta.summary.toLowerCase()}`
-      : "Hi! I'm your SmartZero AI Teacher. Ask me any DSA question and we'll learn it visually.");
+      : "Hi! I'm your SmartZero AI Teacher. Ask me any DSA question and we'll learn it visually on the canvas together!");
 
   return {
     id: wsId,
@@ -212,10 +213,11 @@ export function createDeterministicDefaultWorkspace(): LearningWorkspace {
     hintIndex: 0,
     canvasState: initialCanvas(),
     teachState: initialCanvas(),
+    teachHistory: [],
     chat: [
       {
         role: "ai",
-        text: "Hi! I'm your SmartZero AI Teacher. Ask me any DSA question and we'll learn it visually.",
+        text: "Hi! I'm your SmartZero AI Teacher. Ask me any DSA question and we'll learn it visually on the canvas together!",
       },
     ],
     clarificationOptions: null,
@@ -276,7 +278,7 @@ function loadPersistedState(): {
             chat:
               Array.isArray(ws.chat) && ws.chat.length > 0
                 ? ws.chat
-                : [{ role: "ai", text: "Ready to continue learning." }],
+                : [{ role: "ai", text: "Hi! I'm your SmartZero AI Teacher. Ask me any DSA question and we'll learn it visually on the canvas together!" }],
             clarificationOptions: ws.clarificationOptions ?? null,
             language:
               ws.language === "cpp"
@@ -327,6 +329,7 @@ export interface WorkspaceStore {
 
   /* ── Workspace Management ── */
   getActiveWorkspace: () => LearningWorkspace;
+  createEmptyCanvas: (title?: string) => string;
   createWorkspace: (
     topicId?: string,
     title?: string,
@@ -339,6 +342,12 @@ export interface WorkspaceStore {
   renameWorkspace: (id: string, newTitle: string) => void;
   findWorkspaceByTopic: (topicId: string) => LearningWorkspace | undefined;
   updateActiveWorkspace: (
+    updater:
+      | Partial<LearningWorkspace>
+      | ((prev: LearningWorkspace) => Partial<LearningWorkspace>)
+  ) => void;
+  updateWorkspace: (
+    id: string,
     updater:
       | Partial<LearningWorkspace>
       | ((prev: LearningWorkspace) => Partial<LearningWorkspace>)
@@ -396,15 +405,37 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return found || workspaces[0];
   },
 
+  createEmptyCanvas: (title?: string) => {
+    const nextTitle = title || `Canvas ${get().workspaces.length + 1}`;
+    const newWs = createEmptyWorkspace(undefined, nextTitle);
+
+    set((state) => {
+      const updatedList = state.workspaces.map((w) =>
+        w.id === state.activeWorkspaceId ? { ...w, playing: false } : w
+      );
+      return {
+        workspaces: [...updatedList, newWs],
+        activeWorkspaceId: newWs.id,
+        isHydrated: true,
+      };
+    });
+
+    persistWorkspaces(get().workspaces, newWs.id);
+    return newWs.id;
+  },
+
   createWorkspace: (topicId, title, lessonId, inputData, initialGreeting) => {
-    const newWs = createInitialWorkspace(
-      undefined,
-      topicId,
-      title,
-      lessonId,
-      inputData,
-      initialGreeting
-    );
+    const newWs =
+      !topicId && !lessonId
+        ? createEmptyWorkspace(undefined, title || "New Canvas")
+        : createInitialWorkspace(
+            undefined,
+            topicId,
+            title,
+            lessonId,
+            inputData,
+            initialGreeting
+          );
 
     set((state) => {
       // Pause outgoing active workspace
@@ -495,19 +526,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     );
   },
 
-  updateActiveWorkspace: (updater) => {
+  updateWorkspace: (id: string, updater) => {
     set((state) => {
-      const activeWs = state.workspaces.find((w) => w.id === state.activeWorkspaceId);
-      if (!activeWs) return state;
+      const targetWs = state.workspaces.find((w) => w.id === id);
+      if (!targetWs) return state;
 
-      const patch = typeof updater === "function" ? updater(activeWs) : updater;
+      const patch = typeof updater === "function" ? updater(targetWs) : updater;
       if (!patch) return state;
 
       // Guard against no-op updates: check if any property actually changed
       const keys = Object.keys(patch) as (keyof LearningWorkspace)[];
       let hasChanges = false;
       for (const k of keys) {
-        if (patch[k] !== activeWs[k]) {
+        if (patch[k] !== targetWs[k]) {
           hasChanges = true;
           break;
         }
@@ -516,27 +547,31 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
       // Keep canvasState in sync if step changed and canvasState was not explicitly provided
       if (patch.step !== undefined && patch.canvasState === undefined) {
-        const targetLesson = patch.lesson !== undefined ? patch.lesson : activeWs.lesson;
-        const targetMode = patch.mode !== undefined ? patch.mode : activeWs.mode;
+        const targetLesson = patch.lesson !== undefined ? patch.lesson : targetWs.lesson;
+        const targetMode = patch.mode !== undefined ? patch.mode : targetWs.mode;
         if (targetMode === "learn" && targetLesson) {
           patch.canvasState = replay(targetLesson.steps, patch.step);
         }
       }
 
-      const updatedActive: LearningWorkspace = {
-        ...activeWs,
+      const updatedWs: LearningWorkspace = {
+        ...targetWs,
         ...patch,
         updatedAt: Date.now(),
       };
 
       const nextWorkspaces = state.workspaces.map((w) =>
-        w.id === state.activeWorkspaceId ? updatedActive : w
+        w.id === id ? updatedWs : w
       );
 
       return { workspaces: nextWorkspaces, isHydrated: true };
     });
 
     persistWorkspaces(get().workspaces, get().activeWorkspaceId);
+  },
+
+  updateActiveWorkspace: (updater) => {
+    get().updateWorkspace(get().activeWorkspaceId, updater);
   },
 
   loadLessonInActive: (lesson: Lesson, topicId?: string, customTitle?: string) => {

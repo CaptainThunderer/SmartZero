@@ -3,8 +3,17 @@ import { getAIProvider } from "../../../ai";
 import { LessonRequestSchema } from "../../../ai/schemas";
 
 export async function POST(req: Request) {
+  let body: unknown;
   try {
-    const body = await req.json();
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON in request body." },
+      { status: 400 }
+    );
+  }
+
+  try {
     const parsed = LessonRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

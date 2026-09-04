@@ -380,6 +380,34 @@ export type DSATask = {
   customLesson?: Lesson;
 };
 
+export type ProblemSpec = {
+  originalQuestion: string;
+  cleanedStatement: string;
+  task: string;
+  inputs: string[];
+  outputs: string;
+  constraints: string[];
+  examples: { input: string; output: string; explanation?: string }[];
+  edgeCases: string[];
+  knownTopic?: string | null;
+  algorithmCandidates?: string[];
+  requestedLanguage?: "javascript" | "cpp" | "python";
+  visualizationPotential?: boolean;
+  ambiguity?: string;
+  confidence: number;
+};
+
+export type ModelTaskType =
+  | "TEXT_PROBLEM_SOLVING"
+  | "DSA_REASONING"
+  | "CODE_GENERATION"
+  | "CODE_DEBUGGING"
+  | "LONG_CONTEXT"
+  | "VISION"
+  | "GENERAL_EXPLANATION"
+  | "COMPARISON"
+  | "COMPLEX_REASONING";
+
 export type LessonPlan = Lesson;
 
 /* ──── Lesson State Machine ──── */
@@ -437,6 +465,7 @@ export type LearningWorkspace = {
   /* Canvas state */
   canvasState: CanvasState;
   teachState: CanvasState;
+  teachHistory?: CanvasState[];
 
   /* AI Tutor conversation */
   chat: ChatMessage[];

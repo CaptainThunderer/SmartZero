@@ -14,7 +14,8 @@ function resilient(primary: AIProvider): AIProvider {
         local.intent === "code_explanation" ||
         local.intent === "debugging" ||
         local.intent === "implementation" ||
-        local.customLesson
+        local.customLesson ||
+        local.lessonId
       ) {
         return fallbackProvider.interpretQuestion(input, context);
       }

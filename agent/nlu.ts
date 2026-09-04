@@ -58,6 +58,8 @@ export interface NLUContext {
   topicId?: string | null;
   lessonId?: string | null;
   language?: "javascript" | "cpp" | "python";
+  mode?: string;
+  teachSummary?: string;
 }
 
 /* ──── Main NLU Intent Interpreter ──── */

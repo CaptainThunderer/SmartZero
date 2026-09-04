@@ -9,6 +9,7 @@ export default function WorkspaceSwitcher({ theme }: { theme: AppTheme }) {
     workspaces,
     activeWorkspaceId,
     createWorkspace,
+    createEmptyCanvas,
     switchWorkspace,
     deleteWorkspace,
     renameWorkspace,
@@ -61,6 +62,7 @@ export default function WorkspaceSwitcher({ theme }: { theme: AppTheme }) {
           return (
             <div
               key={ws.id}
+              data-active={isActive ? "true" : "false"}
               onClick={() => !isEditing && switchWorkspace(ws.id)}
               onDoubleClick={() => startRename(ws.id, ws.title)}
               className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11.5px] font-medium transition-all cursor-pointer border ${
@@ -149,7 +151,7 @@ export default function WorkspaceSwitcher({ theme }: { theme: AppTheme }) {
 
         {/* New Canvas Button */}
         <button
-          onClick={() => createWorkspace(undefined, `Canvas ${workspaces.length + 1}`)}
+          onClick={() => createEmptyCanvas(`Canvas ${workspaces.length + 1}`)}
           className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors border border-dashed ${
             isDark
               ? "border-[#3E4466] text-[#A0A6C2] hover:bg-[#1E1E2E] hover:text-white hover:border-[#6366F1]"
