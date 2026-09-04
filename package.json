@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "npx tsx tests/engine.test.ts && npx tsx tests/journey.test.ts"
+    "test": "npx tsx tests/engine.test.ts && npx tsx tests/journey.test.ts && npx tsx tests/interaction.test.ts"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",

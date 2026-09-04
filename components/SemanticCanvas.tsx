@@ -344,10 +344,20 @@ export default function SemanticCanvas({ state }: { state: CanvasState }) {
   const apiRef = useRef<{ updateScene: (scene: { elements: unknown[] }) => void } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const prevStateRef = useRef<string>("");
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadExcalidraw().then(() => setLoaded(true));
   }, []);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [loaded]);
 
   const updateCanvas = useCallback(() => {
     if (!apiRef.current || !convertFn) return;
@@ -377,7 +387,7 @@ export default function SemanticCanvas({ state }: { state: CanvasState }) {
   const initialElements = convertFn ? convertFn(specs) : [];
 
   return (
-    <div className="h-full w-full excalidraw-wrapper">
+    <div ref={containerRef} className="h-full w-full excalidraw-wrapper">
       <Exc
         initialData={{
           elements: initialElements,
