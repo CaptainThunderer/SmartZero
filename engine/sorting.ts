@@ -460,8 +460,7 @@ export function buildQuickSortLesson(values: number[] = [8, 3, 5, 1, 9, 2]): Les
       { action: "reset_scene" },
       { action: "create_array", id: "arr-quick", values: [...arr] },
       { action: "create_variable", name: "pivot", value: arr[arr.length - 1] },
-      { action: "create_pointer", pointer: "i", targetIndex: -1 },
-      { action: "create_pointer", pointer: "j", targetIndex: 0 },
+      { action: "create_pointer", pointer: "pivot", targetIndex: arr.length - 1 },
     ],
     codeLine: "init",
     explanation: "Quick Sort: Partition around a pivot element. Elements smaller than pivot go left; elements larger go right.",
@@ -472,6 +471,7 @@ export function buildQuickSortLesson(values: number[] = [8, 3, 5, 1, 9, 2]): Les
     steps.push({
       actions: [
         { action: "update_variable", name: "pivot", value: pivot },
+        { action: "create_pointer", pointer: "pivot", targetIndex: high },
         { action: "highlight_element", indices: [high] },
         { action: "show_message", text: `Partitioning window [${low}..${high}], pivot = ${pivot}` },
       ],
@@ -483,8 +483,8 @@ export function buildQuickSortLesson(values: number[] = [8, 3, 5, 1, 9, 2]): Les
     for (let j = low; j < high; j++) {
       steps.push({
         actions: [
-          { action: "move_pointer", pointer: "j", targetIndex: j },
-          { action: "compare", text: `Is arr[${j}] (${arr[j]}) < pivot (${pivot})?` },
+          { action: "create_pointer", pointer: "scan", targetIndex: j },
+          { action: "compare", text: `Compare: arr[${j}] (${arr[j]}) vs Pivot (${pivot}) → ${arr[j] < pivot ? "Smaller (Swap)" : "Larger (Keep)"}` },
         ],
         codeLine: "compare",
         explanation: `Comparing arr[${j}] (${arr[j]}) with pivot (${pivot}).`,
@@ -498,12 +498,12 @@ export function buildQuickSortLesson(values: number[] = [8, 3, 5, 1, 9, 2]): Les
 
         steps.push({
           actions: [
-            { action: "move_pointer", pointer: "i", targetIndex: i },
+            { action: "create_pointer", pointer: "left", targetIndex: i },
             { action: "swap_elements", i, j },
             { action: "show_message", text: `Swapped arr[${i}] and arr[${j}] to place smaller element on left` },
           ],
           codeLine: "swap",
-          explanation: `arr[${j}] is smaller than pivot. Advanced i to ${i} and swapped arr[${i}] with arr[${j}].`,
+          explanation: `arr[${j}] is smaller than pivot. Advanced left boundary to ${i} and swapped arr[${i}] with arr[${j}].`,
         });
       }
     }
@@ -517,6 +517,8 @@ export function buildQuickSortLesson(values: number[] = [8, 3, 5, 1, 9, 2]): Les
     steps.push({
       actions: [
         { action: "swap_elements", i: pIdx, j: high },
+        { action: "create_pointer", pointer: "pivot", targetIndex: pIdx },
+        { action: "set_sorted_region", startIndex: pIdx, endIndex: pIdx },
         { action: "highlight_element", indices: [pIdx] },
         { action: "show_message", text: `Pivot ${pivot} placed into its final sorted position at index ${pIdx}` },
       ],

@@ -304,3 +304,268 @@ export function buildDFSGraphLesson(): Lesson {
     },
   };
 }
+
+export function buildDijkstraGraphLesson(): Lesson {
+  const nodes: GraphNode[] = [
+    { id: "A", label: "A (0)", x: 150, y: 140 },
+    { id: "B", label: "B (∞)", x: 270, y: 60 },
+    { id: "C", label: "C (∞)", x: 270, y: 220 },
+    { id: "D", label: "D (∞)", x: 420, y: 60 },
+    { id: "E", label: "E (∞)", x: 420, y: 220 },
+  ];
+
+  const edges: GraphEdge[] = [
+    { from: "A", to: "B", weight: 4, directed: true },
+    { from: "A", to: "C", weight: 2, directed: true },
+    { from: "C", to: "B", weight: 1, directed: true },
+    { from: "B", to: "D", weight: 5, directed: true },
+    { from: "C", to: "E", weight: 4, directed: true },
+    { from: "D", to: "E", weight: 1, directed: true },
+  ];
+
+  const steps: LessonStep[] = [
+    {
+      actions: [
+        { action: "reset_scene" },
+        {
+          action: "set_board_header",
+          title: "Dijkstra's Shortest Path",
+          subtitle: "Greedy Edge Relaxation • Min-Priority Queue",
+          badge: "O((V + E) log V)",
+        },
+        { action: "create_graph", nodes, edges },
+        { action: "create_variable", name: "dist_A", value: 0 },
+        { action: "create_variable", name: "dist_B", value: "∞" },
+        { action: "create_variable", name: "dist_C", value: "∞" },
+        { action: "create_variable", name: "dist_D", value: "∞" },
+        { action: "create_variable", name: "dist_E", value: "∞" },
+        {
+          action: "compare",
+          text: "Start at source A with dist = 0. All other vertices initialize with dist = ∞.\nMin-heap has (0, A).",
+        },
+      ],
+      codeLine: "init",
+      explanation: "Dijkstra's algorithm finds the shortest path from a source vertex to all other vertices in a weighted graph with non-negative edge weights.",
+      narrative: {
+        currentStep: "Initialize Distances",
+        why: "Tentative distance to source is 0; unknown vertices start at infinity.",
+        whatChanged: "dist[A] = 0; dist[B..E] = ∞. Min-priority queue initialized with (0, A).",
+        whatToNotice: "All edge weights are non-negative, which is required for the greedy choice property.",
+        keyInsight: "Always extract the unvisited vertex with the minimum tentative distance.",
+        nextStep: "Extract vertex A and relax its outgoing edges.",
+      },
+    },
+    {
+      actions: [
+        { action: "visit_graph_node", id: "A" },
+        { action: "highlight_edge", from: "A", to: "C" },
+        { action: "highlight_edge", from: "A", to: "B" },
+        { action: "update_variable", name: "dist_C", value: 2 },
+        { action: "update_variable", name: "dist_B", value: 4 },
+        {
+          action: "compare",
+          text: "Extract A (min dist 0). Relax outgoing edges:\n• Edge A → C (weight 2): 0 + 2 = 2 < ∞ → dist[C] = 2\n• Edge A → B (weight 4): 0 + 4 = 4 < ∞ → dist[B] = 4",
+        },
+      ],
+      codeLine: "relax",
+      explanation: "Extract min-distance vertex A. Relax edge A->C (dist 2) and A->B (dist 4).",
+      narrative: {
+        currentStep: "Relax Outgoing Edges from A",
+        why: "Paths A→C and A→B improve upon the initial infinity values.",
+        whatChanged: "dist[C] updated to 2; dist[B] updated to 4.",
+        whatToNotice: "C has tentative distance 2, which is smaller than B's distance 4.",
+        keyInsight: "Vertex with the smallest tentative distance is guaranteed optimal and never needs revisiting.",
+        nextStep: "Extract vertex C next (distance 2 < distance 4).",
+      },
+    },
+    {
+      actions: [],
+      codeLine: "relax",
+      pause: true,
+      explanation: "Which vertex will the min-priority queue extract next?",
+      question: {
+        prompt: "Tentative distances: dist[C] = 2, dist[B] = 4. Which vertex does Dijkstra extract next?",
+        choices: [
+          { id: "c", text: "Vertex C (minimum tentative distance = 2)" },
+          { id: "b", text: "Vertex B (tentative distance = 4)" },
+          { id: "d", text: "Vertex D (tentative distance = ∞)" },
+        ],
+        correctId: "c",
+        hints: [
+          "Dijkstra greedily chooses the unvisited vertex with the smallest tentative distance.",
+          "Compare dist[C] = 2 and dist[B] = 4.",
+        ],
+        misconceptions: {
+          b: { code: "GREEDY_CHOICE_VIOLATION", feedback: "dist[C] is 2, which is strictly smaller than dist[B] = 4. Dijkstra always picks the minimum." },
+        },
+      },
+      narrative: {
+        currentStep: "Interactive Check: Min-Queue Extraction",
+        why: "Confirms the learner understands the greedy choice property.",
+        whatChanged: "Paused for decision.",
+        whatToNotice: "Min-heap returns node with smallest tentative distance.",
+        keyInsight: "The greedy choice ensures optimal substructure holds.",
+        nextStep: "Extract C and relax its neighbors.",
+      },
+    },
+    {
+      actions: [
+        { action: "visit_graph_node", id: "C" },
+        { action: "highlight_edge", from: "C", to: "B" },
+        { action: "highlight_edge", from: "C", to: "E" },
+        { action: "update_variable", name: "dist_B", value: 3 },
+        { action: "update_variable", name: "dist_E", value: 6 },
+        {
+          action: "compare",
+          text: "Extract C (min dist 2). Relax outgoing edges:\n• Edge C → B (weight 1): dist[C] + 1 = 2 + 1 = 3 < dist[B] (4) → SHORTER PATH TO B FOUND! dist[B] = 3\n• Edge C → E (weight 4): dist[C] + 4 = 2 + 4 = 6 < ∞ → dist[E] = 6",
+        },
+      ],
+      codeLine: "relax",
+      explanation: "From C, edge C->B has weight 1. Since 2 + 1 = 3 < 4, we find a shorter path to B via C! Update dist[B] = 3.",
+      narrative: {
+        currentStep: "Shorter Path Discovered via C",
+        why: "Path A → C → B has length 3, which is shorter than direct edge A → B of length 4.",
+        whatChanged: "dist[B] reduced from 4 to 3! dist[E] set to 6.",
+        whatToNotice: "Edge relaxation successfully improves an existing tentative distance.",
+        keyInsight: "Dijkstra dynamically updates distances whenever a superior path through an intermediate node is found.",
+        nextStep: "Next minimum in priority queue is B (distance 3).",
+      },
+    },
+    {
+      actions: [
+        { action: "visit_graph_node", id: "B" },
+        { action: "highlight_edge", from: "B", to: "D" },
+        { action: "update_variable", name: "dist_D", value: 8 },
+        {
+          action: "compare",
+          text: "Extract B (min dist 3). Relax outgoing edge:\n• Edge B → D (weight 5): dist[B] + 5 = 3 + 5 = 8 < ∞ → dist[D] = 8",
+        },
+      ],
+      codeLine: "relax",
+      explanation: "Extract B (distance 3). Relax edge B->D: 3 + 5 = 8. Update dist[D] = 8.",
+      narrative: {
+        currentStep: "Relax from Vertex B",
+        why: "Path A → C → B → D gives tentative distance 8 to D.",
+        whatChanged: "dist[D] updated to 8.",
+        whatToNotice: "Queue now has E (6) and D (8).",
+        keyInsight: "Vertex B is now finalized; its distance 3 can never be improved.",
+        nextStep: "Extract E (distance 6 < 8).",
+      },
+    },
+    {
+      actions: [
+        { action: "visit_graph_node", id: "E" },
+        {
+          action: "compare",
+          text: "Extract E (min dist 6). All reachable neighbors already relaxed or finalized.",
+        },
+      ],
+      codeLine: "relax",
+      explanation: "Extract E (distance 6). No unvisited outgoing edges to relax.",
+      narrative: {
+        currentStep: "Finalize Vertex E",
+        why: "E is the next minimum. Distance 6 is optimal.",
+        whatChanged: "E marked as visited.",
+        whatToNotice: "Only vertex D remains in the queue.",
+        keyInsight: "Vertices are finalized in non-decreasing order of their shortest path distances.",
+        nextStep: "Extract remaining vertex D.",
+      },
+    },
+    {
+      actions: [
+        { action: "visit_graph_node", id: "D" },
+        {
+          action: "show_insight_card",
+          title: "Shortest Paths from Source A",
+          text: "Final shortest distances from A:\n• A: 0\n• B: 3 (via A → C → B)\n• C: 2 (via A → C)\n• E: 6 (via A → C → E)\n• D: 8 (via A → C → B → D)",
+        },
+        {
+          action: "compare",
+          text: "ALL VERTICES FINALIZED! Shortest paths: A=0, C=2, B=3, E=6, D=8",
+        },
+        { action: "show_complexity", time: "O((V + E) log V)", space: "O(V)" },
+      ],
+      codeLine: "done",
+      explanation: "Dijkstra's algorithm complete! Found shortest path from source A to all vertices.",
+      narrative: {
+        currentStep: "Algorithm Complete",
+        why: "All reachable vertices visited and finalized with their guaranteed shortest paths.",
+        whatChanged: "All vertices marked finalized; result card rendered.",
+        whatToNotice: "Notice how B's final path went through C rather than directly from A.",
+        keyInsight: "Greedy choice + edge relaxation guarantees optimal shortest paths in non-negative weighted graphs.",
+        nextStep: "Review implementation in JS, C++, and Python.",
+      },
+    },
+  ];
+
+  return {
+    id: "dijkstra",
+    title: "Dijkstra's Shortest Path",
+    dataStructure: "Graph",
+    pattern: "Greedy Choice & Edge Relaxation",
+    objective: "Find the shortest path from a source vertex to all other vertices in a weighted graph",
+    difficulty: "Advanced",
+    steps,
+    code: {
+      javascript: [
+        "function dijkstra(graph, start) {",
+        "  const dist = { [start]: 0 };",
+        "  const pq = new MinPriorityQueue();",
+        "  pq.enqueue(start, 0);",
+        "  while (!pq.isEmpty()) {",
+        "    const { element: u, priority: d } = pq.dequeue();",
+        "    if (d > (dist[u] ?? Infinity)) continue;",
+        "    for (const [v, weight] of graph[u]) {",
+        "      if (d + weight < (dist[v] ?? Infinity)) {",
+        "        dist[v] = d + weight;",
+        "        pq.enqueue(v, dist[v]);",
+        "      }",
+        "    }",
+        "  }",
+        "  return dist;",
+        "}",
+      ],
+      cpp: [
+        "vector<int> dijkstra(int n, vector<vector<pair<int,int>>>& adj, int src) {",
+        "    vector<int> dist(n, 1e9);",
+        "    priority_queue<pair<int,int>, vector<pair<int,int>>, greater<>> pq;",
+        "    dist[src] = 0;",
+        "    pq.push({0, src});",
+        "    while (!pq.empty()) {",
+        "        auto [d, u] = pq.top(); pq.pop();",
+        "        if (d > dist[u]) continue;",
+        "        for (auto& [v, w] : adj[u]) {",
+        "            if (d + w < dist[v]) {",
+        "                dist[v] = d + w;",
+        "                pq.push({dist[v], v});",
+        "            }",
+        "        }",
+        "    }",
+        "    return dist;",
+        "}",
+      ],
+      python: [
+        "import heapq",
+        "",
+        "def dijkstra(graph, start):",
+        "    dist = {start: 0}",
+        "    pq = [(0, start)]",
+        "    while pq:",
+        "        d, u = heapq.heappop(pq)",
+        "        if d > dist.get(u, float('inf')):",
+        "            continue",
+        "        for v, weight in graph.get(u, []):",
+        "            if d + weight < dist.get(v, float('inf')):",
+        "                dist[v] = d + weight",
+        "                heapq.heappush(pq, (dist[v], v))",
+        "    return dist",
+      ],
+    },
+    lineMap: {
+      javascript: { init: 2, relax: 10, done: 15 },
+      cpp: { init: 4, relax: 11, done: 17 },
+      python: { init: 4, relax: 11, done: 14 },
+    },
+  };
+}
+

@@ -40,11 +40,15 @@ import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import NotesPanel from "./NotesPanel";
 import { applyAction, initialCanvas, replay } from "../engine/core";
 import { lessonFromId, SUPPORTED_LESSONS } from "../engine/lessons";
-import { DSA_CATEGORIES } from "../engine/registry";
 import { useWorkspaceStore, generateWorkspaceTitle } from "../stores/workspaceStore";
 import { parseTeachCommand } from "../teach/commandParser";
 import { executeTeachCommand } from "../teach/commandExecutor";
-import { buildProblemSolvingLesson } from "../agent/problemSolver";
+import {
+  buildProblemSolvingLesson,
+  normalizeToProblemSpec,
+  solveDSAProblem,
+  parseProblemStatement,
+} from "../agent/problemSolver";
 import type { Lesson, LessonPhase, CanvasState, LessonStep, ChatMessage, DSLAction, SupportedLanguage } from "../types/dsa";
 
 /* ══════════════════════════════════════════════
@@ -62,6 +66,13 @@ const TEACH_TOOLS = [
   { id: "undo", label: "Undo", icon: Undo2 },
   { id: "clear", label: "Clear", icon: Trash2 },
 ] as const;
+
+function formatWorkspaceTitle(raw: string): string {
+  if (!raw) return "Canvas";
+  const clean = raw.trim();
+  if (clean.length <= 26) return clean;
+  return clean.slice(0, 24) + "...";
+}
 
 /* ══════════════════════════════════════════════
    SmartZero Main Component
@@ -114,6 +125,7 @@ export default function SmartZero() {
   const [input, setInput] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestSeqRef = useRef<Record<string, number>>({});
 
   /* ── Teach Mode UI State (Palette Dialogs) ── */
   const [activeTeachDialog, setActiveTeachDialog] = useState<
@@ -266,13 +278,8 @@ export default function SmartZero() {
       updateWorkspace(targetId, (prev) => ({
         lesson: l,
         lessonId: l.id,
-        topicId: prev.topicId || l.id,
-        title:
-          prev.title === "New Canvas" ||
-          /^Canvas \d+$/.test(prev.title) ||
-          /^Workspace \d+$/.test(prev.title)
-            ? l.title
-            : prev.title,
+        topicId: l.id,
+        title: formatWorkspaceTitle(l.title),
         step: 0,
         phase: "idle",
         playing: false,
@@ -305,6 +312,9 @@ export default function SmartZero() {
     if (!q) return;
     setInput("");
     const targetWsId = activeWorkspaceId;
+    const currentSeq = (requestSeqRef.current[targetWsId] || 0) + 1;
+    requestSeqRef.current[targetWsId] = currentSeq;
+
     updateWorkspace(targetWsId, (prev) => ({
       chat: [...prev.chat, { role: "user", text: q }],
     }));
@@ -347,6 +357,10 @@ export default function SmartZero() {
         }
       } catch (parseErr: any) {
         throw new Error(parseErr?.message || "Failed to parse response from server.");
+      }
+
+      if (requestSeqRef.current[targetWsId] !== currentSeq) {
+        return;
       }
 
       if (!r.ok) {
@@ -415,6 +429,21 @@ export default function SmartZero() {
       } else if (task.lessonId && lessonFromId(task.lessonId, task.inputData)) {
         const regLesson = lessonFromId(task.lessonId, task.inputData)!;
         startLesson(regLesson, task.explanation, targetWsId);
+      } else if (
+        task.intent === "problem_solving" ||
+        task.intent === "implementation" ||
+        task.intent === "visualize"
+      ) {
+        const spec = normalizeToProblemSpec(q);
+        const parsed = parseProblemStatement(q) || {
+          problemType: "generic-programming-problem",
+          numbers: [1, 2, 3, 4, 5],
+          storyContext: q,
+          problemSpec: spec,
+        };
+        const plan = solveDSAProblem(q, parsed);
+        const customLesson = buildProblemSolvingLesson(plan);
+        startLesson(customLesson, task.explanation, targetWsId);
       } else if (task.explanation) {
         updateWorkspace(targetWsId, (prev) => ({
           chat: [
@@ -437,6 +466,9 @@ export default function SmartZero() {
         }));
       }
     } catch (e) {
+      if (requestSeqRef.current[targetWsId] !== currentSeq) {
+        return;
+      }
       updateWorkspace(targetWsId, (prev) => ({
         chat: [
           ...prev.chat,
@@ -447,7 +479,9 @@ export default function SmartZero() {
         ],
       }));
     } finally {
-      setAiBusy(false);
+      if (requestSeqRef.current[targetWsId] === currentSeq) {
+        setAiBusy(false);
+      }
     }
   }
 

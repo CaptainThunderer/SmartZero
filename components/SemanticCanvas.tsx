@@ -124,85 +124,6 @@ export function buildScene(state: CanvasState, theme: "light" | "dark" = "light"
     }
   }
 
-  /* ── Callout Box ── */
-  if (state.callout) {
-    const boxColor =
-      state.callout.boxType === "insight"
-        ? colors.cellBorderActive
-        : state.callout.boxType === "warning"
-          ? colors.compare
-          : state.callout.boxType === "success"
-            ? colors.cellBorderSorted
-            : colors.boxBorder;
-    const bgColor =
-      state.callout.boxType === "insight"
-        ? colors.cellBgActive
-        : state.callout.boxType === "success"
-          ? colors.cellBgSorted
-          : colors.boxBg;
-
-    const wrappedLines = wrapText(state.callout.text, 72);
-    const boxHeight = Math.max(48, wrappedLines.length * 24 + 20);
-
-    specs.push({
-      type: "rectangle",
-      id: stableId("callout-box"),
-      x: 100,
-      y,
-      width: 740,
-      height: boxHeight,
-      strokeColor: boxColor,
-      backgroundColor: bgColor,
-      strokeWidth: 1.5,
-    });
-    specs.push({
-      type: "text",
-      id: stableId("callout-text"),
-      x: 115,
-      y: y + 12,
-      text: wrappedLines.join("\n"),
-      fontSize: 15,
-      strokeColor: colors.textPrimary,
-    });
-    y += boxHeight + 24;
-  }
-
-  /* ── Key Insight Card ── */
-  if (state.insightCard) {
-    const wrappedInsight = wrapText(state.insightCard.text, 72);
-    const cardHeight = Math.max(56, 32 + wrappedInsight.length * 22 + 16);
-
-    specs.push({
-      type: "rectangle",
-      id: stableId("insight-card-box"),
-      x: 100,
-      y,
-      width: 740,
-      height: cardHeight,
-      strokeColor: colors.cellBorderActive,
-      backgroundColor: colors.cellBgActive,
-      strokeWidth: 2,
-    });
-    specs.push({
-      type: "text",
-      id: stableId("insight-card-title"),
-      x: 115,
-      y: y + 10,
-      text: `★ KEY INSIGHT: ${state.insightCard.title}`,
-      fontSize: 13,
-      strokeColor: colors.accent,
-    });
-    specs.push({
-      type: "text",
-      id: stableId("insight-card-text"),
-      x: 115,
-      y: y + 32,
-      text: wrappedInsight.join("\n"),
-      fontSize: 14,
-      strokeColor: colors.textPrimary,
-    });
-    y += cardHeight + 24;
-  }
 
   /* ── Side-by-Side Comparison Board ── */
   if (state.comparisonBoard) {
@@ -650,8 +571,8 @@ export function buildScene(state: CanvasState, theme: "light" | "dark" = "light"
         id: stableId(`arr-cell-${i}`),
         x,
         y: cellY,
-        width: 72,
-        height: 60,
+        width: 76,
+        height: 62,
         strokeColor: dimmed
           ? colors.cellBorderDimmed
           : active
@@ -672,8 +593,8 @@ export function buildScene(state: CanvasState, theme: "light" | "dark" = "light"
       specs.push({
         type: "text",
         id: stableId(`arr-val-${i}`),
-        x: x + 25,
-        y: cellY + 19,
+        x: x + 26,
+        y: cellY + 20,
         text: String(v),
         fontSize: 20,
         strokeColor: dimmed ? colors.textDimmed : colors.textPrimary,
@@ -682,41 +603,43 @@ export function buildScene(state: CanvasState, theme: "light" | "dark" = "light"
       specs.push({
         type: "text",
         id: stableId(`arr-idx-${i}`),
-        x: x + 29,
-        y: cellY + 66,
+        x: x + 31,
+        y: cellY + 68,
         text: String(i),
         fontSize: 14,
         strokeColor: colors.indexText,
       });
 
-      /* Pointers above array cells */
-      Object.entries(state.array!.pointers).forEach(([name, idx]) => {
-        if (idx === i) {
-          specs.push({
-            type: "text",
-            id: stableId(`ptr-${name}-${i}`),
-            x: x + 18,
-            y: pointerY,
-            text: `↓ ${name}`,
-            fontSize: 15,
-            strokeColor: colors.pointer,
-          });
-        }
-      });
+      /* Pointers above array cells (grouped to prevent overlapping text) */
+      const ptrsAtI = Object.entries(state.array!.pointers)
+        .filter(([_, idx]) => idx === i)
+        .map(([pName]) => pName);
+
+      if (ptrsAtI.length > 0) {
+        specs.push({
+          type: "text",
+          id: stableId(`ptr-${i}`),
+          x: x + (ptrsAtI.length > 1 ? 8 : 18),
+          y: pointerY,
+          text: `↓ ${ptrsAtI.join(", ")}`,
+          fontSize: ptrsAtI.length > 2 ? 13 : 15,
+          strokeColor: colors.pointer,
+        });
+      }
     });
 
     /* ── Sliding Window Bracket ── */
     if (state.slidingWindow) {
       const { startIndex, endIndex, label, conditionOrSum } = state.slidingWindow;
       const winX = 100 + startIndex * 90;
-      const winWidth = Math.max(72, (endIndex - startIndex + 1) * 90 - 18);
+      const winWidth = Math.max(76, (endIndex - startIndex + 1) * 90 - 14);
       specs.push({
         type: "rectangle",
         id: stableId("sliding-window-box"),
         x: winX - 6,
         y: cellY - 6,
         width: winWidth + 12,
-        height: 72,
+        height: 74,
         strokeColor: colors.accent,
         backgroundColor: "transparent",
         strokeWidth: 2.5,
@@ -725,7 +648,7 @@ export function buildScene(state: CanvasState, theme: "light" | "dark" = "light"
         type: "text",
         id: stableId("sliding-window-label"),
         x: winX + 8,
-        y: cellY + 90,
+        y: cellY + 95,
         text: `WINDOW: [${startIndex}..${endIndex}] ${conditionOrSum ? `(${conditionOrSum})` : ""}`,
         fontSize: 14,
         strokeColor: colors.accent,
@@ -743,7 +666,7 @@ export function buildScene(state: CanvasState, theme: "light" | "dark" = "light"
       }
     }
 
-    y = cellY + 115;
+    y = cellY + 125;
   }
 
   /* ── Stack ── */
@@ -1002,55 +925,6 @@ export function buildScene(state: CanvasState, theme: "light" | "dark" = "light"
     y += state.hashTable.buckets.length * 48 + 40;
   }
 
-  /* ── Variables ── */
-  const vars = Object.entries(state.variables);
-  if (vars.length > 0) {
-    const perRow = 4;
-    const numRows = Math.ceil(vars.length / perRow);
-    vars.forEach(([name, value], i) => {
-      const col = i % perRow;
-      const row = Math.floor(i / perRow);
-      const varX = 100 + col * 180;
-      const varY = y + row * 65;
-
-      specs.push({
-        type: "rectangle",
-        id: stableId(`var-bg-${name}`),
-        x: varX,
-        y: varY,
-        width: 165,
-        height: 52,
-        strokeColor: colors.varBorder,
-        backgroundColor: colors.varBg,
-        strokeWidth: 1,
-      });
-      specs.push({
-        type: "text",
-        id: stableId(`var-text-${name}`),
-        x: varX + 14,
-        y: varY + 16,
-        text: `${name} = ${value}`,
-        fontSize: 16,
-        strokeColor: colors.varText,
-      });
-    });
-    y += numRows * 65 + 24;
-  }
-
-  /* ── Bounds (Binary Search) ── */
-  if (state.bounds) {
-    specs.push({
-      type: "text",
-      id: stableId("bounds"),
-      x: 100,
-      y,
-      text: `low = ${state.bounds.low}    mid = ${state.bounds.mid}    high = ${state.bounds.high}`,
-      fontSize: 17,
-      strokeColor: colors.compare,
-    });
-    y += 40;
-  }
-
   /* ── Linked List ── */
   if (state.linkedList) {
     specs.push({
@@ -1101,37 +975,44 @@ export function buildScene(state: CanvasState, theme: "light" | "dark" = "light"
       }
     });
 
-    /* ── Linked list pointers ── */
-    Object.entries(state.linkedList.pointers).forEach(([ptrName, targetId]) => {
-      if (targetId === null) {
-        const x = 100 + order.length * 120;
-        specs.push({
-          type: "text",
-          id: stableId(`llptr-${ptrName}-null`),
-          x,
-          y: y + 86,
-          text: `${ptrName} → null`,
-          fontSize: 14,
-          strokeColor: colors.pointer,
-        });
-        return;
-      }
-      const targetNode = state.linkedList!.nodes.find(
-        (n) => n.id === targetId
-      );
-      if (!targetNode) return;
-      const displayIdx = order.indexOf(targetNode.value);
-      if (displayIdx === -1) return;
-      const x = 100 + displayIdx * 120;
+    /* ── Linked list pointers (grouped to avoid overlapping text) ── */
+    const nullPtrs = Object.entries(state.linkedList.pointers)
+      .filter(([_, targetId]) => targetId === null)
+      .map(([pName]) => pName);
+
+    if (nullPtrs.length > 0) {
+      const x = 100 + order.length * 120;
       specs.push({
         type: "text",
-        id: stableId(`llptr-${ptrName}`),
-        x: x + 10,
+        id: stableId("llptr-null"),
+        x,
         y: y + 86,
-        text: `↑ ${ptrName}`,
+        text: `${nullPtrs.join(", ")} → null`,
         fontSize: 14,
         strokeColor: colors.pointer,
       });
+    }
+
+    state.linkedList.nodes.forEach((node) => {
+      const ptrsAtNode = Object.entries(state.linkedList!.pointers)
+        .filter(([_, targetId]) => targetId === node.id)
+        .map(([pName]) => pName);
+
+      if (ptrsAtNode.length > 0) {
+        const displayIdx = order.indexOf(node.value);
+        if (displayIdx !== -1) {
+          const x = 100 + displayIdx * 120;
+          specs.push({
+            type: "text",
+            id: stableId(`llptr-${node.id}`),
+            x: x + 10,
+            y: y + 86,
+            text: `↑ ${ptrsAtNode.join(", ")}`,
+            fontSize: 14,
+            strokeColor: colors.pointer,
+          });
+        }
+      }
     });
 
     y += 140;
@@ -1198,19 +1079,172 @@ export function buildScene(state: CanvasState, theme: "light" | "dark" = "light"
     y = offsetY + 320;
   }
 
-  /* ── Compare Text ── */
+  /* ── Current Operation & Decision Card ── */
   if (state.compareText) {
     const lines = wrapText(state.compareText, 70);
+    const cardHeight = Math.max(52, 28 + lines.length * 22 + 8);
+
+    specs.push({
+      type: "rectangle",
+      id: stableId("op-card-bg"),
+      x: 100,
+      y,
+      width: 740,
+      height: cardHeight,
+      strokeColor: colors.compare,
+      backgroundColor: isDark ? "#231E17" : "#FFFDF5",
+      strokeWidth: 1.5,
+    });
+
+    specs.push({
+      type: "text",
+      id: stableId("op-card-badge"),
+      x: 115,
+      y: y + 8,
+      text: "▶ OPERATION & DECISION",
+      fontSize: 12,
+      strokeColor: colors.compare,
+    });
+
     specs.push({
       type: "text",
       id: stableId("compare"),
+      x: 115,
+      y: y + 26,
+      text: lines.join("\n"),
+      fontSize: 15,
+      strokeColor: colors.textPrimary,
+    });
+    y += cardHeight + 20;
+  }
+
+  /* ── Variables ── */
+  const vars = Object.entries(state.variables);
+  if (vars.length > 0) {
+    const perRow = 4;
+    const numRows = Math.ceil(vars.length / perRow);
+    vars.forEach(([name, value], i) => {
+      const col = i % perRow;
+      const row = Math.floor(i / perRow);
+      const varX = 100 + col * 180;
+      const varY = y + row * 65;
+
+      specs.push({
+        type: "rectangle",
+        id: stableId(`var-bg-${name}`),
+        x: varX,
+        y: varY,
+        width: 165,
+        height: 52,
+        strokeColor: colors.varBorder,
+        backgroundColor: colors.varBg,
+        strokeWidth: 1,
+      });
+      specs.push({
+        type: "text",
+        id: stableId(`var-text-${name}`),
+        x: varX + 14,
+        y: varY + 16,
+        text: `${name} = ${value}`,
+        fontSize: 16,
+        strokeColor: colors.varText,
+      });
+    });
+    y += numRows * 65 + 24;
+  }
+
+  /* ── Bounds (Binary Search) ── */
+  if (state.bounds) {
+    specs.push({
+      type: "text",
+      id: stableId("bounds"),
       x: 100,
       y,
-      text: lines.join("\n"),
+      text: `low = ${state.bounds.low}    mid = ${state.bounds.mid}    high = ${state.bounds.high}`,
       fontSize: 17,
       strokeColor: colors.compare,
     });
-    y += Math.max(36, lines.length * 24 + 16);
+    y += 40;
+  }
+
+  /* ── Callout Box ── */
+  if (state.callout) {
+    const boxColor =
+      state.callout.boxType === "insight"
+        ? colors.cellBorderActive
+        : state.callout.boxType === "warning"
+          ? colors.compare
+          : state.callout.boxType === "success"
+            ? colors.cellBorderSorted
+            : colors.boxBorder;
+    const bgColor =
+      state.callout.boxType === "insight"
+        ? colors.cellBgActive
+        : state.callout.boxType === "success"
+          ? colors.cellBgSorted
+          : colors.boxBg;
+
+    const wrappedLines = wrapText(state.callout.text, 72);
+    const boxHeight = Math.max(48, wrappedLines.length * 24 + 20);
+
+    specs.push({
+      type: "rectangle",
+      id: stableId("callout-box"),
+      x: 100,
+      y,
+      width: 740,
+      height: boxHeight,
+      strokeColor: boxColor,
+      backgroundColor: bgColor,
+      strokeWidth: 1.5,
+    });
+    specs.push({
+      type: "text",
+      id: stableId("callout-text"),
+      x: 115,
+      y: y + 12,
+      text: wrappedLines.join("\n"),
+      fontSize: 15,
+      strokeColor: colors.textPrimary,
+    });
+    y += boxHeight + 24;
+  }
+
+  /* ── Key Insight Card ── */
+  if (state.insightCard) {
+    const wrappedInsight = wrapText(state.insightCard.text, 72);
+    const cardHeight = Math.max(56, 32 + wrappedInsight.length * 22 + 16);
+
+    specs.push({
+      type: "rectangle",
+      id: stableId("insight-card-box"),
+      x: 100,
+      y,
+      width: 740,
+      height: cardHeight,
+      strokeColor: colors.cellBorderActive,
+      backgroundColor: colors.cellBgActive,
+      strokeWidth: 2,
+    });
+    specs.push({
+      type: "text",
+      id: stableId("insight-card-title"),
+      x: 115,
+      y: y + 10,
+      text: `★ KEY INSIGHT: ${state.insightCard.title}`,
+      fontSize: 13,
+      strokeColor: colors.accent,
+    });
+    specs.push({
+      type: "text",
+      id: stableId("insight-card-text"),
+      x: 115,
+      y: y + 32,
+      text: wrappedInsight.join("\n"),
+      fontSize: 14,
+      strokeColor: colors.textPrimary,
+    });
+    y += cardHeight + 24;
   }
 
   /* ── Message ── */

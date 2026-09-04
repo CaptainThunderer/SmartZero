@@ -212,6 +212,9 @@ export function buildBinarySearchLesson(
       { action: "reset_scene" },
       { action: "create_array", id: "arr1", values },
       { action: "create_variable", name: "target", value: target },
+      { action: "create_pointer", pointer: "low", targetIndex: low },
+      { action: "create_pointer", pointer: "high", targetIndex: high },
+      { action: "create_pointer", pointer: "mid", targetIndex: Math.floor((low + high) / 2) },
       {
         action: "set_bounds",
         low,
@@ -230,11 +233,14 @@ export function buildBinarySearchLesson(
     const value = values[mid];
 
     const stepActions: LessonStep["actions"] = [
+      { action: "create_pointer", pointer: "low", targetIndex: low },
+      { action: "create_pointer", pointer: "mid", targetIndex: mid },
+      { action: "create_pointer", pointer: "high", targetIndex: high },
       { action: "set_bounds", low, mid, high },
       { action: "highlight_element", indices: [mid] },
       {
         action: "compare",
-        text: `arr[${mid}] = ${value}, target = ${target}`,
+        text: `Compare: arr[${mid}] (${value}) vs Target (${target})`,
       },
     ];
     if (dimmedSoFar.length > 0) {
@@ -250,6 +256,14 @@ export function buildBinarySearchLesson(
     if (value === target) {
       steps.push({
         actions: [
+          { action: "set_sorted_region", startIndex: mid, endIndex: mid },
+          { action: "highlight_element", indices: [mid] },
+          { action: "create_pointer", pointer: "target", targetIndex: mid },
+          {
+            action: "show_insight_card",
+            title: "Target Found",
+            text: `Target ${target} located at index ${mid} with value ${value}!`,
+          },
           {
             action: "show_message",
             text: `Found ${target} at index ${mid}!`,
@@ -311,15 +325,25 @@ export function buildBinarySearchLesson(
       high = mid - 1;
     }
 
+    const nextMid = low <= high ? Math.floor((low + high) / 2) : low;
     steps.push({
       actions: [
+        { action: "create_pointer", pointer: "low", targetIndex: low },
+        { action: "create_pointer", pointer: "mid", targetIndex: nextMid },
+        { action: "create_pointer", pointer: "high", targetIndex: high },
         {
           action: "set_bounds",
           low,
-          mid: low <= high ? Math.floor((low + high) / 2) : low,
+          mid: nextMid,
           high,
         },
         { action: "dim_elements", indices: [...dimmedSoFar] },
+        {
+          action: "compare",
+          text: eliminateLeft
+            ? `Discard left half [0..${mid}]. Move low to ${low}. Active range: [${low}..${high}]`
+            : `Discard right half [${mid}..${values.length - 1}]. Move high to ${high}. Active range: [${low}..${high}]`,
+        },
       ],
       codeLine: eliminateLeft ? "moveLow" : "moveHigh",
       explanation: eliminateLeft
@@ -735,7 +759,7 @@ import {
   buildRadixSortLesson,
   buildBucketSortLesson,
 } from "./sorting";
-import { buildBFSGraphLesson, buildDFSGraphLesson } from "./graph";
+import { buildBFSGraphLesson, buildDFSGraphLesson, buildDijkstraGraphLesson } from "./graph";
 import {
   buildStackLesson,
   buildQueueLesson,
@@ -788,6 +812,7 @@ export function lessonFromId(id: string, customValues?: number[]): Lesson | null
 
   if (id === "graph-bfs") return buildBFSGraphLesson();
   if (id === "graph-dfs") return buildDFSGraphLesson();
+  if (id === "dijkstra") return buildDijkstraGraphLesson();
 
   if (id === "stack-ops") return buildStackLesson();
   if (id === "queue-ops") return buildQueueLesson();
@@ -824,6 +849,7 @@ export const SUPPORTED_LESSONS = [
   { id: "bucket-sort", title: "Bucket Sort" },
   { id: "graph-bfs", title: "Graph BFS" },
   { id: "graph-dfs", title: "Graph DFS" },
+  { id: "dijkstra", title: "Dijkstra's Shortest Path" },
   { id: "stack-ops", title: "Stack Operations" },
   { id: "queue-ops", title: "Queue Operations" },
   { id: "hash-table-ops", title: "Hash Table" },

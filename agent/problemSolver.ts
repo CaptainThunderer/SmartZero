@@ -83,7 +83,7 @@ export function parseProblemStatement(query: string): ParsedProblemInfo | null {
   // 0. Greater Average (A + B) / 2 > C
   const isGreaterAvg =
     /\bgreater\s+average\b/i.test(lower) ||
-    (/\b(?:average|avg)\b/i.test(lower) && /\b(?:greater|strictly\s+greater|exceeds?|more\s+than|>)\b/i.test(lower) && /\b(?:third|c\b|\(?a\s*\+\s*b\)?\s*\/\s*2|first\s+two)/i.test(lower)) ||
+    (/\b(?:average|avg)\b/i.test(lower) && /\b(?:greater|strictly\s+greater|exceeds?|more\s+than|>)\b/i.test(lower) && /\b(?:third|c\b|\(?a\s*\+\s*b\)?\s*\/\s*2|first\s+two|threshold|dishes|scores|than\s+\d+)/i.test(lower)) ||
     (/\b(?:(?:average|avg)(?:\s+of|\s*\()(?:\s*a\s*(?:and|,)\s*b|two\s+numbers|first\s+two)|(?:\(?a\s*\+\s*b\)?)\s*\/\s*2)\b/i.test(lower) && /\b(?:greater|strictly\s+greater|>\s*c)/i.test(lower)) ||
     /\bavg\s*\(\s*a\s*,\s*b\s*\)\s*>\s*c\b/i.test(lower);
 
@@ -102,6 +102,56 @@ export function parseProblemStatement(query: string): ParsedProblemInfo | null {
         A: varsAssigned.A ?? nums[0],
         B: varsAssigned.B ?? nums[1],
         C: varsAssigned.C ?? nums[2],
+      },
+    };
+  }
+
+  // 0.05 Decrement OR Increment (CodeChef DECINC / Conditional Divisibility)
+  const isDecOrInc =
+    /\b(?:decrement\s*(?:or|and|\/)\s*increment|increment\s*(?:or|and|\/)\s*decrement)\b/i.test(lower) ||
+    (/\b(?:increment|decrement)\b/i.test(lower) && /\bdivisible\s+by\b/i.test(lower) && /\b(?:otherwise|else)\b/i.test(lower)) ||
+    /\b(?:decinc|increment\s+(?:its\s+value\s+)?by\s+1\s+if\s+.*divisible\s+by\s+4\s+otherwise\s+decrement)\b/i.test(lower);
+
+  if (isDecOrInc) {
+    let divisor = 4;
+    const divMatch = lower.match(/divisible\s+by\s+(\d+)/);
+    if (divMatch) divisor = parseInt(divMatch[1], 10);
+
+    let incBy = 1;
+    const incMatch = lower.match(/increment(?:ing)?(?:\s+its\s+value)?\s+by\s+(\d+)/);
+    if (incMatch) incBy = parseInt(incMatch[1], 10);
+
+    let decBy = 1;
+    const decMatch = lower.match(/decrement(?:ing)?(?:\s+its\s+value)?\s+by\s+(\d+)/);
+    if (decMatch) decBy = parseInt(decMatch[1], 10);
+
+    let n = 8;
+    if (typeof varsAssigned.N === "number") {
+      n = varsAssigned.N;
+    } else {
+      const explicitN = lower.match(/(?:n\s*[:=]\s*|number\s+n\s*=\s*|sample\s+(?:input\s+)?|input\s*[:=]\s*)(-?\d+)/);
+      if (explicitN) {
+        n = parseInt(explicitN[1], 10);
+      } else {
+        const candidates = (extracted || []).filter((x) => x !== incBy && x !== decBy && x !== divisor);
+        if (candidates.length > 0) {
+          n = candidates[0];
+        }
+      }
+    }
+
+    return {
+      problemType: "decrement-or-increment",
+      storyContext:
+        storyContext ||
+        `Obtain a number N and increment its value by ${incBy} if divisible by ${divisor}, otherwise decrement its value by ${decBy}.`,
+      numbers: [n, divisor, incBy, decBy],
+      target: n,
+      variables: {
+        N: n,
+        divisor,
+        incBy,
+        decBy,
       },
     };
   }
@@ -582,7 +632,7 @@ export function parseProblemStatement(query: string): ParsedProblemInfo | null {
 
   // 30.2 Generic Arithmetic & Mathematical Comparisons
   if (
-    /\b(?:average|mean|median|mode|sum\s+of\s+digits|product\s+of\s+digits|divisible\s+by|remainder|modulus)\b/i.test(lower) ||
+    /\b(?:average|mean|median|mode|sum\s+of\s+(?:the\s+)?digits|product\s+of\s+(?:the\s+)?digits)\b/i.test(lower) ||
     (/\b(?:calculate|compute|evaluate)\b/i.test(lower) && /\d+\s*[-+*/^%=><]\s*-?\d+/.test(q))
   ) {
     const nums = extracted && extracted.length > 0 ? extracted : [10, 20, 30];
@@ -694,6 +744,8 @@ export function solveDSAProblem(
       return solveGCDLCM(query, parsed);
     case "armstrong-number":
       return solveArmstrongNumber(query, parsed);
+    case "decrement-or-increment":
+      return solveDecrementOrIncrement(query, parsed);
     case "percentage-change":
     case "shop-bill":
     case "generic-arithmetic-comparison":
@@ -1076,6 +1128,175 @@ if __name__ == "__main__":
         "We iterate through the list of N elements once. Each lookup and insertion into the hash map takes O(1) amortized time.",
     },
     finalAnswer: `Indices [${answerIndices.join(", ")}] corresponding to values ${nums[answerIndices[0]]} and ${nums[answerIndices[1]]}.`,
+    learnerQuestion: {
+      prompt: "Why does the hash map approach solve Two Sum in O(n) instead of O(n²)?",
+      choices: [
+        { id: "a", text: "Looking up target - nums[i] in a hash map takes O(1) average time" },
+        { id: "b", text: "It sorts the array in O(n) time first" },
+        { id: "c", text: "It checks only the first and last elements" },
+        { id: "d", text: "It eliminates negative numbers automatically" },
+      ],
+      correctId: "a",
+      hints: [
+        "A nested loop compares every pair (O(n²)).",
+        "A hash map lets us check whether the needed complement was already seen in O(1).",
+      ],
+      misconceptions: {
+        b: { code: "SORTING_MISCONCEPTION", feedback: "Comparison sorting takes O(n log n), and standard Two Sum hash map does NOT sort." },
+      },
+    },
+    visualSteps: (() => {
+      const vSteps: ProblemVisualStep[] = [];
+      const seenMap = new Map<number, number>();
+      let foundPair: [number, number] | null = null;
+
+      // Step 0: Initialization
+      vSteps.push({
+        stepNumber: 0,
+        title: "Initialize Two Sum (One-Pass Hash Map)",
+        actions: [
+          { action: "reset_scene" },
+          {
+            action: "set_board_header",
+            title: "Two Sum: Complement Lookup",
+            subtitle: `Array: [${nums.join(", ")}] • Target = ${target} • Time: O(n)`,
+            badge: "HASH MAP",
+          },
+          { action: "create_array", id: "twosum_arr", values: [...nums] },
+          { action: "create_pointer", pointer: "i", targetIndex: 0 },
+          { action: "highlight_element", indices: [0] },
+          { action: "create_variable", name: "target", value: target },
+          { action: "create_variable", name: "i", value: 0 },
+          { action: "create_variable", name: "seen", value: "{}" },
+          {
+            action: "compare",
+            text: `Step 1 (i=0): Value = ${nums[0]}\n• Complement needed: ${target} - ${nums[0]} = ${target - nums[0]}\n• Map is empty → ${target - nums[0]} not seen yet.`,
+          },
+          {
+            action: "show_callout",
+            text: `Goal: Find two numbers that sum to ${target}. We maintain a hash map of seen numbers to find complements in O(1).`,
+            boxType: "info",
+          },
+        ],
+        codeLine: "init",
+        narrative: {
+          currentStep: "Hash Map Initialization",
+          why: "We use a hash table so each complement lookup takes O(1) expected time.",
+          whatChanged: `Array loaded with target=${target}. Pointer i at index 0.`,
+          whatToNotice: "Map starts empty; we record each number's index as we visit it.",
+          keyInsight: "For each x, we only need to know if (target - x) was seen earlier.",
+          nextStep: "Inspect index 0, compute complement, and update map.",
+        },
+      });
+
+      for (let i = 0; i < nums.length; i++) {
+        const val = nums[i];
+        const comp = target - val;
+        const hasComp = seenMap.has(comp);
+
+        if (hasComp) {
+          const compIdx = seenMap.get(comp)!;
+          foundPair = [compIdx, i];
+          vSteps.push({
+            stepNumber: vSteps.length,
+            title: `Step ${i + 1}: Found Complement ${comp}!`,
+            actions: [
+              { action: "move_pointer", pointer: "i", targetIndex: i },
+              { action: "create_pointer", pointer: "match", targetIndex: compIdx },
+              { action: "highlight_element", indices: [compIdx, i] },
+              { action: "set_sorted_region", startIndex: Math.min(compIdx, i), endIndex: Math.max(compIdx, i) },
+              { action: "update_variable", name: "i", value: i },
+              { action: "update_variable", name: "found", value: `[${compIdx}, ${i}]` },
+              {
+                action: "compare",
+                text: `🎉 SOLUTION FOUND!\n• nums[${compIdx}] (${comp}) + nums[${i}] (${val}) = ${target}\n• Indices: [${compIdx}, ${i}]`,
+              },
+              {
+                action: "show_callout",
+                text: `Pair found! nums[${compIdx}] (${comp}) + nums[${i}] (${val}) = ${target}. Total complexity O(n).`,
+                boxType: "success",
+              },
+            ],
+            codeLine: "found",
+            narrative: {
+              currentStep: "Complement Found",
+              why: `Complement ${comp} was stored in hash map when index ${compIdx} was visited.`,
+              whatChanged: `Found matching pair at indices [${compIdx}, ${i}].`,
+              whatToNotice: `Values ${comp} and ${val} add up exactly to ${target}.`,
+              keyInsight: "One pass is sufficient because the second number looks backward at the first.",
+              nextStep: "Algorithm terminates with solution.",
+            },
+          });
+          break;
+        } else {
+          seenMap.set(val, i);
+          const mapDisplay = Array.from(seenMap.entries()).map(([k, v]) => `${k}→idx${v}`).join(", ");
+          vSteps.push({
+            stepNumber: vSteps.length,
+            title: `Step ${i + 1}: Inspect index ${i} (${val})`,
+            actions: [
+              { action: "move_pointer", pointer: "i", targetIndex: i },
+              { action: "highlight_element", indices: [i] },
+              { action: "update_variable", name: "i", value: i },
+              { action: "update_variable", name: "seen", value: `{${mapDisplay}}` },
+              {
+                action: "compare",
+                text: `Step ${i + 1} (i=${i}, val=${val}):\n• Complement needed: ${target} - ${val} = ${comp}\n• Lookup in map: ${comp} NOT seen yet\n• Store: seen[${val}] = ${i}`,
+              },
+              {
+                action: "show_callout",
+                text: `Complement ${comp} is not yet in map. Store ${val} -> index ${i} and proceed.`,
+                boxType: "info",
+              },
+            ],
+            codeLine: "store",
+            narrative: {
+              currentStep: `Inspect Index ${i}`,
+              why: `We need ${comp} to form target ${target}, but it hasn't appeared yet.`,
+              whatChanged: `Added ${val} (index ${i}) to hash map.`,
+              whatToNotice: `Hash map now contains: {${mapDisplay}}.`,
+              keyInsight: "Storing each visited element allows future elements to find it in O(1).",
+              nextStep: i === nums.length - 1 ? "End of array." : `Move to index ${i + 1}.`,
+            },
+          });
+        }
+      }
+
+      // Final summary step
+      if (foundPair) {
+        vSteps.push({
+          stepNumber: vSteps.length,
+          title: "Two Sum Complete",
+          actions: [
+            { action: "highlight_element", indices: [foundPair[0], foundPair[1]] },
+            {
+              action: "dim_elements",
+              indices: nums.map((_, idx) => idx).filter((idx) => idx !== foundPair![0] && idx !== foundPair![1]),
+            },
+            {
+              action: "compare",
+              text: `Finished! Solution indices: [${foundPair[0]}, ${foundPair[1]}]\nValues: nums[${foundPair[0]}] (${nums[foundPair[0]]}) + nums[${foundPair[1]}] (${nums[foundPair[1]]}) = ${target}`,
+            },
+            {
+              action: "show_callout",
+              text: `Two Sum complete: indices [${foundPair[0]}, ${foundPair[1]}] sum to ${target}. Time: O(n), Space: O(n).`,
+              boxType: "insight",
+            },
+          ],
+          codeLine: "return",
+          narrative: {
+            currentStep: "Result Confirmation",
+            why: "All criteria satisfied with minimum time complexity.",
+            whatChanged: "Result confirmed and non-solution elements dimmed.",
+            whatToNotice: "Optimal O(n) single-pass execution.",
+            keyInsight: "Trading O(n) space for O(n) runtime eliminates O(n²) brute force.",
+            nextStep: "Inspect code implementations.",
+          },
+        });
+      }
+
+      return vSteps;
+    })(),
   };
 
   return ProblemSolutionPlanSchema.parse(plan);
@@ -1157,6 +1378,176 @@ function solveMaxSubarray(
       activeVariables: { index: i, value: x, currentSum, bestSum },
       explanation: `currentSum = max(${x}, currentSum + ${x})`,
     })),
+    learnerQuestion: {
+      prompt: "Why does Kadane's algorithm discard the running sum when currentSum < 0?",
+      choices: [
+        { id: "a", text: "A negative prefix only reduces the sum of any future subarray starting after it" },
+        { id: "b", text: "Negative numbers are disallowed in maximum subarray problems" },
+        { id: "c", text: "The array must be sorted in ascending order first" },
+        { id: "d", text: "To prevent integer overflow in the scalar accumulator" },
+      ],
+      correctId: "a",
+      hints: [
+        "If the accumulated sum is -3 and next number is 4, adding gives 1, but starting fresh at 4 gives 4.",
+        "A negative prefix is strictly worse than starting fresh with 0 accumulated sum.",
+      ],
+      misconceptions: {
+        b: { code: "NEGATIVE_NUMBER_MISCONCEPTION", feedback: "Negative elements ARE permitted! Kadane's algorithm is specifically designed to handle mixed signs." },
+        c: { code: "SORTING_VIOLATION", feedback: "Sorting alters array element positions, destroying contiguity." },
+      },
+    },
+    visualSteps: (() => {
+      const vSteps: ProblemVisualStep[] = [];
+      let runningCur = nums[0];
+      let runningBest = nums[0];
+      let runningStart = 0;
+      let bestStart = 0;
+      let bestEnd = 0;
+
+      // Step 0: Base case / initialization
+      vSteps.push({
+        stepNumber: 0,
+        title: "Initialize Kadane's Algorithm",
+        actions: [
+          { action: "reset_scene" },
+          {
+            action: "set_board_header",
+            title: "Maximum Subarray (Kadane's Algorithm)",
+            subtitle: `Array: [${nums.join(", ")}] • Time: O(n) • Space: O(1)`,
+            badge: "DYNAMIC PROGRAMMING",
+          },
+          { action: "create_array", id: "kadane_arr", values: [...nums] },
+          { action: "create_pointer", pointer: "i", targetIndex: 0 },
+          { action: "highlight_element", indices: [0] },
+          { action: "create_variable", name: "currentSum", value: nums[0] },
+          { action: "create_variable", name: "bestSum", value: nums[0] },
+          { action: "create_variable", name: "i", value: 0 },
+          {
+            action: "set_sliding_window",
+            startIndex: 0,
+            endIndex: 0,
+            label: "Current Subarray",
+            conditionOrSum: `Sum = ${nums[0]}`,
+          },
+          {
+            action: "compare",
+            text: `Step 1 (i=0): Start with first element nums[0] = ${nums[0]}\ncurrentSum = ${nums[0]}, bestSum = ${nums[0]}`,
+          },
+        ],
+        codeLine: "init",
+        narrative: {
+          currentStep: "Base Case Initialization",
+          why: "A single-element subarray is the minimal non-empty subarray. Both running sum and global best start here.",
+          whatChanged: `currentSum = ${nums[0]}, bestSum = ${nums[0]} at index 0.`,
+          whatToNotice: `Starting subarray contains [${nums[0]}].`,
+          keyInsight: "At every step, decide: start fresh at nums[i], or extend the previous accumulated subarray.",
+          nextStep: "Iterate through the array and evaluate candidate decisions.",
+        },
+      });
+
+      // Steps 1 to N-1
+      for (let i = 1; i < nums.length; i++) {
+        const val = nums[i];
+        const extend = runningCur + val;
+        const startFresh = val;
+        const droppedPrefix = startFresh > extend; // i.e. runningCur < 0
+        const prevCur = runningCur;
+
+        runningCur = Math.max(startFresh, extend);
+        if (droppedPrefix) {
+          runningStart = i;
+        }
+
+        const newBest = runningCur > runningBest;
+        if (newBest) {
+          runningBest = runningCur;
+          bestStart = runningStart;
+          bestEnd = i;
+        }
+
+        const stepActions: DSLAction[] = [
+          { action: "move_pointer", pointer: "i", targetIndex: i },
+          { action: "highlight_element", indices: [i] },
+          { action: "update_variable", name: "i", value: i },
+          { action: "update_variable", name: "currentSum", value: runningCur },
+          { action: "update_variable", name: "bestSum", value: runningBest },
+          {
+            action: "set_sliding_window",
+            startIndex: runningStart,
+            endIndex: i,
+            label: droppedPrefix ? "New Subarray Started" : "Extended Subarray",
+            conditionOrSum: `Sum = ${runningCur}`,
+          },
+          {
+            action: "compare",
+            text: `Step ${i + 1} (i=${i}, val=${val}): max(${val}, ${prevCur} + ${val}) = ${runningCur}\n• Candidate A (Start fresh): ${startFresh}\n• Candidate B (Extend): ${extend}\n→ ${droppedPrefix ? `Dropped negative prefix [0..${i - 1}]! Start fresh at [${i}]` : `Extend previous subarray [${runningStart}..${i}]`}${newBest ? " ★ New Global Best!" : ""}`,
+          },
+        ];
+
+        if (runningStart > 0) {
+          stepActions.push({
+            action: "dim_elements",
+            indices: Array.from({ length: runningStart }, (_, k) => k),
+          });
+        }
+
+        vSteps.push({
+          stepNumber: vSteps.length,
+          title: `Step ${i + 1}: Inspect index ${i} (${val})`,
+          actions: stepActions,
+          codeLine: "loopcheck",
+          narrative: {
+            currentStep: droppedPrefix ? "Discard Negative Prefix" : "Extend Subarray",
+            why: droppedPrefix
+              ? `Previous accumulated sum (${prevCur}) was negative; adding it to ${val} would only decrease it.`
+              : `Previous accumulated sum (${prevCur}) is non-negative; adding ${val} yields a beneficial or optimal extension.`,
+            whatChanged: `Pointer i moved to ${i}. currentSum = ${runningCur}, bestSum = ${runningBest}.`,
+            whatToNotice: droppedPrefix
+              ? `Prefix [0..${i - 1}] is dimmed/discarded. Active window resets to index ${i}.`
+              : `Active window expanded to indices [${runningStart}..${i}].`,
+            keyInsight: "Optimal substructure: only keep past accumulations if they contribute positively.",
+            nextStep: i === nums.length - 1 ? "Scan complete; return global maximum subarray." : `Advance to index ${i + 1}.`,
+          },
+        });
+      }
+
+      // Final Step: Highlight winning subarray
+      const bestSlice = nums.slice(bestStart, bestEnd + 1);
+      const discardedIndices = nums.map((_, idx) => idx).filter(idx => idx < bestStart || idx > bestEnd);
+
+      vSteps.push({
+        stepNumber: vSteps.length,
+        title: "Maximum Subarray Found",
+        actions: [
+          { action: "clear_sliding_window" },
+          { action: "set_sorted_region", startIndex: bestStart, endIndex: bestEnd },
+          { action: "highlight_element", indices: Array.from({ length: bestEnd - bestStart + 1 }, (_, k) => bestStart + k) },
+          { action: "dim_elements", indices: discardedIndices },
+          { action: "update_variable", name: "bestSum", value: runningBest },
+          { action: "create_variable", name: "bestSubarray", value: `[${bestSlice.join(", ")}]` },
+          {
+            action: "show_insight_card",
+            title: "Maximum Contiguous Subarray Found",
+            text: `Optimal slice: [${bestSlice.join(", ")}] at indices [${bestStart}..${bestEnd}] with Maximum Sum = ${runningBest}. Solved in O(n) time and O(1) space.`,
+          },
+          {
+            action: "compare",
+            text: `RESULT: Maximum Subarray = [${bestSlice.join(", ")}] (Sum = ${runningBest})`,
+          },
+        ],
+        codeLine: "return",
+        narrative: {
+          currentStep: "Algorithm Complete",
+          why: "Full single-pass scan completed. Kadane's invariant guarantees runningBest is the global maximum.",
+          whatChanged: `Highlighted optimal subarray [${bestSlice.join(", ")}] in green across indices [${bestStart}..${bestEnd}].`,
+          whatToNotice: `The maximum contiguous sum is ${runningBest}.`,
+          keyInsight: "Kadane's algorithm reduces an O(n³) brute-force subarray search to O(n) linear time.",
+          nextStep: "Inspect runnable implementations in JavaScript, C++, and Python.",
+        },
+      });
+
+      return vSteps;
+    })(),
     implementations: {
       javascript: `/**
  * Maximum Subarray (Kadane's Algorithm)
@@ -2297,6 +2688,258 @@ if __name__ == "__main__":
       rationale: "Each comparison divides the search space in half.",
     },
     finalAnswer: foundIndex !== -1 ? `Target ${target} found at index ${foundIndex}.` : `Target ${target} not present in array.`,
+    learnerQuestion: {
+      prompt: "Why can Binary Search eliminate half of the remaining elements at each step?",
+      choices: [
+        { id: "a", text: "Because the array is sorted, comparing target to nums[mid] proves target cannot be in one of the halves" },
+        { id: "b", text: "Because elements are powers of two" },
+        { id: "c", text: "Because hash collision is impossible on sorted arrays" },
+        { id: "d", text: "Because it switches between linear scan and jump search" },
+      ],
+      correctId: "a",
+      hints: [
+        "If arr[mid] < target, then all elements to the left of mid are also <= arr[mid] < target.",
+        "Sorted order guarantees monotonicity.",
+      ],
+      misconceptions: {
+        b: { code: "ARITHMETIC_CONFUSION", feedback: "Array elements do not need to be powers of two; sorted ordering is the only requirement." },
+      },
+    },
+    visualSteps: (() => {
+      const vSteps: ProblemVisualStep[] = [];
+      let l = 0;
+      let r = nums.length - 1;
+      let foundMid = -1;
+
+      // Step 0: Init
+      vSteps.push({
+        stepNumber: 0,
+        title: "Initialize Binary Search",
+        actions: [
+          { action: "reset_scene" },
+          {
+            action: "set_board_header",
+            title: "Binary Search: Halving Search Space",
+            subtitle: `Sorted Array: [${nums.join(", ")}] • Target = ${target} • Time: O(log n)`,
+            badge: "DIVIDE & CONQUER",
+          },
+          { action: "create_array", id: "bs_arr", values: [...nums] },
+          { action: "create_pointer", pointer: "low", targetIndex: 0 },
+          { action: "create_pointer", pointer: "high", targetIndex: nums.length - 1 },
+          { action: "create_variable", name: "low", value: 0 },
+          { action: "create_variable", name: "high", value: nums.length - 1 },
+          { action: "create_variable", name: "target", value: target },
+          {
+            action: "compare",
+            text: `Search range [0..${nums.length - 1}]. Target = ${target}.\nFormula: mid = low + floor((high - low) / 2)`,
+          },
+          {
+            action: "show_callout",
+            text: `Array is sorted. We will compare target ${target} to the midpoint to discard half the search space at each step.`,
+            boxType: "info",
+          },
+        ],
+        codeLine: "init",
+        narrative: {
+          currentStep: "Range Initialization",
+          why: "Initial search space covers the entire sorted array [0..N-1].",
+          whatChanged: `Pointers set: low=0, high=${nums.length - 1}. Target=${target}.`,
+          whatToNotice: "Elements are sorted in ascending order.",
+          keyInsight: "Monotonicity allows discarding half of all remaining candidates with a single comparison.",
+          nextStep: "Compute mid and compare nums[mid] to target.",
+        },
+      });
+
+      let iteration = 1;
+      while (l <= r) {
+        const m = l + Math.floor((r - l) / 2);
+        const midVal = nums[m];
+
+        const eliminatedIndices: number[] = [];
+        for (let k = 0; k < l; k++) eliminatedIndices.push(k);
+        for (let k = r + 1; k < nums.length; k++) eliminatedIndices.push(k);
+
+        if (midVal === target) {
+          foundMid = m;
+          const actions: DSLAction[] = [
+            { action: "move_pointer", pointer: "low", targetIndex: l },
+            { action: "move_pointer", pointer: "high", targetIndex: r },
+            { action: "create_pointer", pointer: "mid", targetIndex: m },
+            { action: "highlight_element", indices: [m] },
+            { action: "set_sorted_region", startIndex: m, endIndex: m },
+            { action: "update_variable", name: "mid", value: m },
+            { action: "update_variable", name: "nums[mid]", value: midVal },
+            {
+              action: "compare",
+              text: `🎯 MATCH FOUND!\n• nums[mid=${m}] = ${midVal} === Target (${target})\n• Return index ${m}`,
+            },
+            {
+              action: "show_callout",
+              text: `Found target ${target} at index ${m}! Search concluded in O(log n) comparisons.`,
+              boxType: "success",
+            },
+          ];
+          if (eliminatedIndices.length > 0) {
+            actions.push({ action: "dim_elements", indices: eliminatedIndices });
+          }
+          vSteps.push({
+            stepNumber: vSteps.length,
+            title: `Step ${iteration}: Target Found at mid=${m}`,
+            actions,
+            codeLine: "found",
+            narrative: {
+              currentStep: "Target Located",
+              why: `nums[${m}] equals target ${target}.`,
+              whatChanged: `Target found at index ${m}.`,
+              whatToNotice: "Midpoint matches target exactly.",
+              keyInsight: "Binary search finds the target in at most log2(n) steps.",
+              nextStep: "Return index and complete.",
+            },
+          });
+          break;
+        } else if (midVal < target) {
+          const oldL = l;
+          const actions: DSLAction[] = [
+            { action: "move_pointer", pointer: "low", targetIndex: l },
+            { action: "move_pointer", pointer: "high", targetIndex: r },
+            { action: "create_pointer", pointer: "mid", targetIndex: m },
+            { action: "highlight_element", indices: [m] },
+            { action: "update_variable", name: "low", value: l },
+            { action: "update_variable", name: "high", value: r },
+            { action: "update_variable", name: "mid", value: m },
+            { action: "update_variable", name: "nums[mid]", value: midVal },
+            {
+              action: "compare",
+              text: `Step ${iteration}: mid=${m}, nums[${m}]=${midVal}\n• ${midVal} < Target (${target})\n• Target cannot be in left half [${oldL}..${m}]\n• Discard left half → low = ${m + 1}`,
+            },
+            {
+              action: "show_callout",
+              text: `nums[${m}] = ${midVal} < ${target}. Since array is sorted, discard left half [${oldL}..${m}]. Set low = ${m + 1}.`,
+              boxType: "warning",
+            },
+          ];
+          if (eliminatedIndices.length > 0) {
+            actions.push({ action: "dim_elements", indices: eliminatedIndices });
+          }
+          vSteps.push({
+            stepNumber: vSteps.length,
+            title: `Step ${iteration}: nums[mid=${m}] = ${midVal} < ${target} (Go Right)`,
+            actions,
+            codeLine: "go_right",
+            narrative: {
+              currentStep: "Discard Left Half",
+              why: `Since nums[${m}] < ${target} and array is sorted, all elements at <= ${m} are < ${target}.`,
+              whatChanged: `Search range narrowed to [${m + 1}..${r}].`,
+              whatToNotice: `Eliminating ${m - oldL + 1} elements.`,
+              keyInsight: "Eliminates half the candidate elements in a single comparison.",
+              nextStep: `Search remaining elements in [${m + 1}..${r}].`,
+            },
+          });
+          l = m + 1;
+        } else {
+          const oldR = r;
+          const actions: DSLAction[] = [
+            { action: "move_pointer", pointer: "low", targetIndex: l },
+            { action: "move_pointer", pointer: "high", targetIndex: r },
+            { action: "create_pointer", pointer: "mid", targetIndex: m },
+            { action: "highlight_element", indices: [m] },
+            { action: "update_variable", name: "low", value: l },
+            { action: "update_variable", name: "high", value: r },
+            { action: "update_variable", name: "mid", value: m },
+            { action: "update_variable", name: "nums[mid]", value: midVal },
+            {
+              action: "compare",
+              text: `Step ${iteration}: mid=${m}, nums[${m}]=${midVal}\n• ${midVal} > Target (${target})\n• Target cannot be in right half [${m}..${oldR}]\n• Discard right half → high = ${m - 1}`,
+            },
+            {
+              action: "show_callout",
+              text: `nums[${m}] = ${midVal} > ${target}. Since array is sorted, discard right half [${m}..${oldR}]. Set high = ${m - 1}.`,
+              boxType: "warning",
+            },
+          ];
+          if (eliminatedIndices.length > 0) {
+            actions.push({ action: "dim_elements", indices: eliminatedIndices });
+          }
+          vSteps.push({
+            stepNumber: vSteps.length,
+            title: `Step ${iteration}: nums[mid=${m}] = ${midVal} > ${target} (Go Left)`,
+            actions,
+            codeLine: "go_left",
+            narrative: {
+              currentStep: "Discard Right Half",
+              why: `Since nums[${m}] > ${target} and array is sorted, all elements at >= ${m} are > ${target}.`,
+              whatChanged: `Search range narrowed to [${l}..${m - 1}].`,
+              whatToNotice: `Eliminating ${oldR - m + 1} elements.`,
+              keyInsight: "Halving search space guarantees logarithmic O(log n) total steps.",
+              nextStep: `Search remaining elements in [${l}..${m - 1}].`,
+            },
+          });
+          r = m - 1;
+        }
+        iteration++;
+      }
+
+      if (foundMid !== -1) {
+        vSteps.push({
+          stepNumber: vSteps.length,
+          title: `Binary Search Succeeded: Index ${foundMid}`,
+          actions: [
+            { action: "highlight_element", indices: [foundMid] },
+            { action: "set_sorted_region", startIndex: foundMid, endIndex: foundMid },
+            {
+              action: "dim_elements",
+              indices: nums.map((_, idx) => idx).filter((idx) => idx !== foundMid),
+            },
+            {
+              action: "compare",
+              text: `Finished! Target ${target} located at index ${foundMid}.\nValue: nums[${foundMid}] = ${target}.\nComplexity: O(log n) time, O(1) space.`,
+            },
+            {
+              action: "show_callout",
+              text: `Binary search complete! Target ${target} found at index ${foundMid}.`,
+              boxType: "insight",
+            },
+          ],
+          codeLine: "return",
+          narrative: {
+            currentStep: "Algorithm Complete",
+            why: "Target found and validated.",
+            whatChanged: "Target highlighted; non-matching elements dimmed.",
+            whatToNotice: `Index ${foundMid} contains target ${target}.`,
+            keyInsight: "Binary search achieves logarithmic performance by halving candidates every comparison.",
+            nextStep: "Inspect code implementation and complexity analysis.",
+          },
+        });
+      } else {
+        vSteps.push({
+          stepNumber: vSteps.length,
+          title: "Target Not Found (low > high)",
+          actions: [
+            { action: "dim_elements", indices: nums.map((_, idx) => idx) },
+            {
+              action: "compare",
+              text: `Search range exhausted (low > high).\nTarget ${target} is not in array.\nReturn -1.`,
+            },
+            {
+              action: "show_callout",
+              text: `Binary search concluded: target ${target} is not present in the array. Return -1.`,
+              boxType: "insight",
+            },
+          ],
+          codeLine: "not_found",
+          narrative: {
+            currentStep: "Search Exhausted",
+            why: "low exceeded high without finding target.",
+            whatChanged: "Search completed with result -1.",
+            whatToNotice: "All possible candidate positions were eliminated.",
+            keyInsight: "If low > high, target definitely does not exist.",
+            nextStep: "Inspect code implementation.",
+          },
+        });
+      }
+
+      return vSteps;
+    })(),
   };
 
   return ProblemSolutionPlanSchema.parse(plan);
@@ -2323,16 +2966,352 @@ function solveRotatedSearch(query: string, parsed: ParsedProblemInfo): ProblemSo
    11. Reverse Linked List
    ═══════════════════════════════════════════════════════════ */
 function solveReverseLinkedList(query: string, parsed: ParsedProblemInfo): ProblemSolutionPlan {
-  const nums = parsed.numbers;
-  return buildGenericPlan(
-    query,
-    `Reverse linked list ${nums.join(" -> ")} -> null`,
-    "linked-lists",
-    "Three-Pointer In-Place Reversal",
-    ["Prev/Curr/Next Pointers"],
-    `Iterate with prev, curr, nextTemp pointers. Point curr.next to prev, then advance prev and curr.`,
-    `${nums.slice().reverse().join(" -> ")} -> null`
-  );
+  const nums = parsed.numbers.length >= 2 ? parsed.numbers : [1, 2, 3, 4];
+  const reversedNums = [...nums].reverse();
+
+  const vSteps: ProblemVisualStep[] = [];
+
+  // Step 0: Init
+  vSteps.push({
+    stepNumber: 0,
+    title: "Initialize Reversal (prev = null, curr = head)",
+    actions: [
+      { action: "reset_scene" },
+      {
+        action: "set_board_header",
+        title: "Reverse Linked List (Iterative In-Place)",
+        subtitle: `List: ${nums.join(" → ")} → null • Time: O(n) • Space: O(1)`,
+        badge: "LINKED LIST",
+      },
+      { action: "create_linked_list", values: [...nums] },
+      { action: "move_ll_pointer", pointer: "prev", targetId: null },
+      { action: "move_ll_pointer", pointer: "curr", targetId: "n0" },
+      { action: "create_variable", name: "prev", value: "null" },
+      { action: "create_variable", name: "curr", value: `node(${nums[0]})` },
+      { action: "create_variable", name: "next", value: nums.length > 1 ? `node(${nums[1]})` : "null" },
+      {
+        action: "compare",
+        text: `Initialize 3 Pointers:\n• prev = null\n• curr = node(${nums[0]}) (head)\n• next = curr.next (${nums.length > 1 ? `node(${nums[1]})` : "null"})`,
+      },
+      {
+        action: "show_callout",
+        text: "In-place iterative reversal uses 3 pointers: save curr.next into nextTemp, redirect curr.next = prev, then advance prev and curr.",
+        boxType: "info",
+      },
+    ],
+    codeLine: "init",
+    narrative: {
+      currentStep: "Pointer Setup",
+      why: "prev starts at null because the old head will become the new tail (pointing to null).",
+      whatChanged: `prev = null, curr points to node ${nums[0]}.`,
+      whatToNotice: "All links initially point left-to-right.",
+      keyInsight: "Never redirect curr.next without saving the reference to the original next node first.",
+      nextStep: "Save next pointer, reverse curr.next, and advance.",
+    },
+  });
+
+  for (let i = 0; i < nums.length; i++) {
+    const currVal = nums[i];
+    const nextNodeId = i + 1 < nums.length ? `n${i + 1}` : null;
+    const nextVal = i + 1 < nums.length ? nums[i + 1] : null;
+    const prevNodeId = i > 0 ? `n${i - 1}` : null;
+    const prevVal = i > 0 ? nums[i - 1] : null;
+
+    // Substep A: Save next & redirect link
+    vSteps.push({
+      stepNumber: vSteps.length,
+      title: `Step ${i + 1}A: Reverse node ${currVal}'s pointer`,
+      actions: [
+        { action: "move_ll_pointer", pointer: "curr", targetId: `n${i}` },
+        { action: "move_ll_pointer", pointer: "next", targetId: nextNodeId },
+        {
+          action: "relink",
+          order: nums.slice(0, i + 1).reverse().concat(nums.slice(i + 1)),
+          reversedUpTo: i,
+        },
+        { action: "update_variable", name: "prev", value: prevVal !== null ? `node(${prevVal})` : "null" },
+        { action: "update_variable", name: "curr", value: `node(${currVal})` },
+        { action: "update_variable", name: "next", value: nextVal !== null ? `node(${nextVal})` : "null" },
+        {
+          action: "compare",
+          text: `Reverse Link for node ${currVal}:\n1. next = curr.next (${nextVal !== null ? `node(${nextVal})` : "null"})\n2. curr.next = prev (${prevVal !== null ? `node(${prevVal})` : "null"})\n→ Node ${currVal} now points backward to ${prevVal !== null ? `node(${prevVal})` : "null"}!`,
+        },
+        {
+          action: "show_callout",
+          text: `Reversed pointer for node ${currVal}. It now points to ${prevVal !== null ? `node(${prevVal})` : "null"}.`,
+          boxType: "success",
+        },
+      ],
+      codeLine: "relink",
+      narrative: {
+        currentStep: `Reverse Node ${currVal}`,
+        why: "Reversing each individual pointer step-by-step turns the entire chain around.",
+        whatChanged: `Node ${currVal} now points backward to ${prevVal !== null ? `node ${prevVal}` : "null"}.`,
+        whatToNotice: "Link direction flipped for this node.",
+        keyInsight: "The link reversal happens in O(1) time without allocating any new nodes.",
+        nextStep: "Advance prev and curr pointers.",
+      },
+    });
+
+    // Substep B: Advance pointers
+    vSteps.push({
+      stepNumber: vSteps.length,
+      title: `Step ${i + 1}B: Advance pointers`,
+      actions: [
+        { action: "move_ll_pointer", pointer: "prev", targetId: `n${i}` },
+        { action: "move_ll_pointer", pointer: "curr", targetId: nextNodeId },
+        { action: "update_variable", name: "prev", value: `node(${currVal})` },
+        { action: "update_variable", name: "curr", value: nextVal !== null ? `node(${nextVal})` : "null" },
+        {
+          action: "compare",
+          text: `Advance Pointers:\n• prev = curr (node ${currVal})\n• curr = next (${nextVal !== null ? `node(${nextVal})` : "null"})`,
+        },
+      ],
+      codeLine: "advance",
+      narrative: {
+        currentStep: "Advance Pointers",
+        why: "Readying the pointers for the next node in the sequence.",
+        whatChanged: `prev moves to node ${currVal}; curr moves to ${nextVal !== null ? `node ${nextVal}` : "null"}.`,
+        whatToNotice: "prev now trails curr by exactly one node.",
+        keyInsight: "Maintaining the invariant: nodes up to prev are fully reversed.",
+        nextStep: i === nums.length - 1 ? "Reversal complete. Return prev as new head." : `Reverse node ${nums[i + 1]}.`,
+      },
+    });
+  }
+
+  // Final step
+  vSteps.push({
+    stepNumber: vSteps.length,
+    title: `Reversal Complete: New Head = ${nums[nums.length - 1]}`,
+    actions: [
+      { action: "move_ll_pointer", pointer: "prev", targetId: `n${nums.length - 1}` },
+      { action: "move_ll_pointer", pointer: "curr", targetId: null },
+      { action: "create_variable", name: "new_head", value: `node(${nums[nums.length - 1]})` },
+      {
+        action: "compare",
+        text: `🎉 REVERSAL FINISHED!\n• curr is null (end of original list)\n• Return prev as new head: node(${nums[nums.length - 1]})\n• Reversed list: ${reversedNums.join(" → ")} → null`,
+      },
+      {
+        action: "show_callout",
+        text: `List completely reversed! New head is node ${nums[nums.length - 1]}. Time: O(n), Space: O(1).`,
+        boxType: "insight",
+      },
+    ],
+    codeLine: "return",
+    narrative: {
+      currentStep: "Algorithm Complete",
+      why: "curr is null, meaning all nodes have been visited and reversed.",
+      whatChanged: `List order completely inverted: ${reversedNums.join(" → ")} → null.`,
+      whatToNotice: "prev points to the new head of the reversed list.",
+      keyInsight: "In-place reversal achieved in single linear scan with zero heap allocations.",
+      nextStep: "Inspect code implementations.",
+    },
+  });
+
+  const plan: ProblemSolutionPlan = {
+    problemStatement: query,
+    normalizedProblem: `Reverse linked list ${nums.join(" → ")} → null in-place`,
+    storyContext: parsed.storyContext,
+    objective: "Reverse the direction of pointers in a singly linked list so head becomes tail and tail becomes head.",
+    inputs: [`Linked list: ${nums.join(" → ")} → null`],
+    outputs: `${reversedNums.join(" → ")} → null`,
+    constraints: ["0 <= Node.val <= 5000", "List length <= 5000", "O(1) extra space required"],
+    examples: [
+      {
+        input: `head = [${nums.join(", ")}]`,
+        output: `[${reversedNums.join(", ")}]`,
+        explanation: "Each node's next pointer is redirected to its preceding node.",
+      },
+    ],
+    edgeCases: ["Empty list (head is null)", "Single node list", "Two node list"],
+    topic: "Linked Lists",
+    category: "linked-lists",
+    dataStructures: ["Singly Linked List", "Pointers"],
+    patterns: ["Three-Pointer In-Place Reversal", "Iterative Traversal"],
+    candidateApproaches: [
+      {
+        name: "Iterative Three-Pointer (Optimal)",
+        description: "Maintain prev, curr, and next pointers, reversing each node's link in-place in O(n) time and O(1) space.",
+        timeComplexity: "O(n)",
+        spaceComplexity: "O(1)",
+        recommended: true,
+      },
+      {
+        name: "Recursive Reversal",
+        description: "Recurse to the tail and reverse links on call stack unwinding.",
+        timeComplexity: "O(n)",
+        spaceComplexity: "O(n)",
+        tradeoffs: "O(n) auxiliary call stack space risk stack overflow on large lists.",
+      },
+    ],
+    selectedApproach: {
+      name: "Iterative Three-Pointer",
+      timeComplexity: "O(n)",
+      spaceComplexity: "O(1)",
+      whySelected: "Optimal linear time with constant extra memory.",
+    },
+    reasoning: "By saving curr.next before breaking the link, we safely redirect curr.next to prev and slide all pointers forward one step.",
+    correctnessExplanation: "At the start of each iteration, all nodes strictly before curr have been reversed, and curr still retains access to the unreversed remainder via next.",
+    dryRun: nums.map((val, idx) => ({
+      step: idx + 1,
+      stateDescription: `Reverse node ${val}`,
+      activeVariables: {
+        prev: idx > 0 ? nums[idx - 1] : "null",
+        curr: val,
+        next: idx + 1 < nums.length ? nums[idx + 1] : "null",
+      },
+      explanation: `Set node(${val}).next = ${idx > 0 ? `node(${nums[idx - 1]})` : "null"}. Advance pointers.`,
+    })),
+    implementations: {
+      javascript: `/**
+ * Reverse Linked List (Iterative)
+ * Complete runnable Node.js implementation
+ */
+class ListNode {
+  constructor(val = 0, next = null) {
+    this.val = val;
+    this.next = next;
+  }
+}
+
+function reverseList(head) {
+  let prev = null;
+  let curr = head;
+  while (curr !== null) {
+    const nextTemp = curr.next;
+    curr.next = prev;
+    prev = curr;
+    curr = nextTemp;
+  }
+  return prev;
+}
+
+function main() {
+  const vals = [${nums.join(", ")}];
+  let head = null, tail = null;
+  for (const v of vals) {
+    const node = new ListNode(v);
+    if (!head) head = tail = node;
+    else { tail.next = node; tail = node; }
+  }
+  let rev = reverseList(head);
+  const out = [];
+  while (rev) { out.push(rev.val); rev = rev.next; }
+  console.log("Reversed:", out.join(" -> ") + " -> null");
+}
+
+main();`,
+      cpp: `/**
+ * Reverse Linked List (Iterative)
+ * Complete runnable C++ implementation
+ */
+#include <iostream>
+#include <vector>
+using namespace std;
+
+struct ListNode {
+    int val;
+    ListNode *next;
+    ListNode(int x) : val(x), next(nullptr) {}
+};
+
+ListNode* reverseList(ListNode* head) {
+    ListNode* prev = nullptr;
+    ListNode* curr = head;
+    while (curr != nullptr) {
+        ListNode* nextTemp = curr->next;
+        curr->next = prev;
+        prev = curr;
+        curr = nextTemp;
+    }
+    return prev;
+}
+
+int main() {
+    vector<int> vals = {${nums.join(", ")}};
+    ListNode* head = nullptr;
+    ListNode* tail = nullptr;
+    for (int v : vals) {
+        ListNode* node = new ListNode(v);
+        if (!head) head = tail = node;
+        else { tail->next = node; tail = node; }
+    }
+    ListNode* rev = reverseList(head);
+    while (rev) {
+        cout << rev->val << " -> ";
+        rev = rev->next;
+    }
+    cout << "null\\n";
+    return 0;
+}`,
+      python: `"""
+Reverse Linked List (Iterative)
+Complete runnable Python implementation
+"""
+from typing import Optional
+
+class ListNode:
+    def __init__(self, val=0, next=None):
+        self.val = val
+        self.next = next
+
+def reverse_list(head: Optional[ListNode]) -> Optional[ListNode]:
+    prev = None
+    curr = head
+    while curr:
+        next_temp = curr.next
+        curr.next = prev
+        prev = curr
+        curr = next_temp
+    return prev
+
+def main():
+    vals = [${nums.join(", ")}]
+    head = None
+    tail = None
+    for v in vals:
+        node = ListNode(v)
+        if not head:
+            head = tail = node
+        else:
+            tail.next = node
+            tail = node
+    rev = reverse_list(head)
+    out = []
+    while rev:
+        out.append(str(rev.val))
+        rev = rev.next
+    print(" -> ".join(out) + " -> null")
+
+if __name__ == "__main__":
+    main()`,
+    },
+    complexity: {
+      time: "O(n)",
+      space: "O(1)",
+      rationale: "Traverses each node once and modifies next pointers in-place without auxiliary memory.",
+    },
+    finalAnswer: `Reversed list: ${reversedNums.join(" → ")} → null with new head ${reversedNums[0]}.`,
+    learnerQuestion: {
+      prompt: "Why must we store curr.next in a temporary variable before executing curr.next = prev?",
+      choices: [
+        { id: "a", text: "Because overwriting curr.next destroys the only reference to the remainder of the list" },
+        { id: "b", text: "To avoid integer overflow in the next pointer address" },
+        { id: "c", text: "To prevent cycle detection algorithms from triggering prematurely" },
+        { id: "d", text: "Because linked lists must be cloned in heap memory" },
+      ],
+      correctId: "a",
+      hints: [
+        "If you do curr.next = prev first, how will you reach the next node to continue traversing?",
+      ],
+      misconceptions: {
+        b: { code: "POINTER_ARITHMETIC", feedback: "Pointers do not overflow; it is simply about losing the forward reference." },
+      },
+    },
+    visualSteps: vSteps,
+  };
+
+  return ProblemSolutionPlanSchema.parse(plan);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2439,15 +3418,298 @@ function solveTreeTraversal(query: string, parsed: ParsedProblemInfo): ProblemSo
    18. BST Search
    ═══════════════════════════════════════════════════════════ */
 function solveBSTSearch(query: string, parsed: ParsedProblemInfo): ProblemSolutionPlan {
-  return buildGenericPlan(
-    query,
-    "Search for a target value in a Binary Search Tree (BST)",
-    "trees",
-    "BST Invariant Traversal",
-    ["BST Search"],
-    "Compare target with root. If equal return true; if less search left subtree; if greater search right subtree.",
-    "Target node reference or true"
+  const target = parsed.target ?? 40;
+  const treeNodes = [
+    { id: "t50", value: 50, x: 300, y: 70, visible: true },
+    { id: "t30", value: 30, x: 180, y: 160, visible: true },
+    { id: "t70", value: 70, x: 420, y: 160, visible: true },
+    { id: "t20", value: 20, x: 120, y: 250, visible: true },
+    { id: "t40", value: 40, x: 240, y: 250, visible: true },
+    { id: "t60", value: 60, x: 360, y: 250, visible: true },
+    { id: "t80", value: 80, x: 480, y: 250, visible: true },
+  ];
+  const treeEdges: [string, string][] = [
+    ["t50", "t30"],
+    ["t50", "t70"],
+    ["t30", "t20"],
+    ["t30", "t40"],
+    ["t70", "t60"],
+    ["t70", "t80"],
+  ];
+
+  const vSteps: ProblemVisualStep[] = [
+    {
+      stepNumber: 0,
+      title: "Initialize BST Search",
+      actions: [
+        { action: "reset_scene" },
+        {
+          action: "set_board_header",
+          title: "Binary Search Tree (BST) Search",
+          subtitle: `Target = ${target} • Invariant: Left < Root < Right • Time: O(h)`,
+          badge: "BST SEARCH",
+        },
+        { action: "create_tree", nodes: treeNodes, edges: treeEdges },
+        { action: "create_variable", name: "target", value: target },
+        { action: "create_variable", name: "currNode", value: 50 },
+        {
+          action: "compare",
+          text: `Searching for target ${target} in BST.\nBST Invariant: Left subtree < Current < Right subtree.\nStart comparison at Root (50).`,
+        },
+        {
+          action: "show_callout",
+          text: `At each node: if target == node.val, found! If target < node.val, go left. If target > node.val, go right.`,
+          boxType: "info",
+        },
+      ],
+      codeLine: "init",
+      narrative: {
+        currentStep: "Root Initialization",
+        why: "Tree search starts from the root node.",
+        whatChanged: "Rendered BST and loaded target.",
+        whatToNotice: "BST ordering is valid at every subtree.",
+        keyInsight: "Each comparison eliminates half the remaining subtrees.",
+        nextStep: "Compare target with root node 50.",
+      },
+    },
+    {
+      stepNumber: 1,
+      title: "Step 1: Compare target with Root (50)",
+      actions: [
+        { action: "highlight_tree_node", id: "t50" },
+        { action: "update_variable", name: "currNode", value: 50 },
+        {
+          action: "compare",
+          text: `Target (${target}) vs Node (50):\n• ${target} < 50\n• Discard right subtree (70, 60, 80)\n• Branch LEFT to node 30`,
+        },
+        {
+          action: "show_callout",
+          text: `${target} < 50: Target must be in the left subtree. Branch left to node 30.`,
+          boxType: "warning",
+        },
+      ],
+      codeLine: "compare_left",
+      narrative: {
+        currentStep: "Branch Left from Root",
+        why: `${target} is less than 50.`,
+        whatChanged: "Traversed to left child 30.",
+        whatToNotice: "All nodes >= 50 are safely ignored.",
+        keyInsight: "BST pruning eliminates entire right branch.",
+        nextStep: "Inspect node 30.",
+      },
+    },
+    {
+      stepNumber: 2,
+      title: "Step 2: Compare target with Node (30)",
+      actions: [
+        { action: "highlight_tree_node", id: "t30" },
+        { action: "update_variable", name: "currNode", value: 30 },
+        {
+          action: "compare",
+          text: `Target (${target}) vs Node (30):\n• ${target} > 30\n• Discard left subtree (20)\n• Branch RIGHT to node 40`,
+        },
+        {
+          action: "show_callout",
+          text: `${target} > 30: Target must be in the right subtree of 30. Branch right to node 40.`,
+          boxType: "warning",
+        },
+      ],
+      codeLine: "compare_right",
+      narrative: {
+        currentStep: "Branch Right from 30",
+        why: `${target} is greater than 30.`,
+        whatChanged: "Traversed to right child 40.",
+        whatToNotice: "Left child 20 eliminated.",
+        keyInsight: "Subtree search continues strictly guided by comparison.",
+        nextStep: "Inspect node 40.",
+      },
+    },
+    {
+      stepNumber: 3,
+      title: "Step 3: Compare target with Node (40) — TARGET FOUND!",
+      actions: [
+        { action: "highlight_tree_node", id: "t40" },
+        { action: "update_variable", name: "currNode", value: "40 (FOUND)" },
+        {
+          action: "compare",
+          text: `🎉 TARGET MATCH FOUND!\n• Node (40) === Target (${target})\n• Search Succeeded in 3 comparisons!\n• Return Node(40)`,
+        },
+        {
+          action: "show_callout",
+          text: `Found target ${target} at node t40! Total comparisons: 3 (depth 2). Time: O(h).`,
+          boxType: "success",
+        },
+      ],
+      codeLine: "found",
+      narrative: {
+        currentStep: "Target Found",
+        why: `Node value matches target ${target}.`,
+        whatChanged: "Node 40 highlighted and return value confirmed.",
+        whatToNotice: "Search path: 50 → 30 → 40.",
+        keyInsight: "In a balanced BST, height h = O(log n), making search logarithmic.",
+        nextStep: "Search complete.",
+      },
+    },
+  ];
+
+  const plan: ProblemSolutionPlan = {
+    problemStatement: query,
+    normalizedProblem: `Search for target ${target} in Binary Search Tree`,
+    storyContext: parsed.storyContext,
+    objective: `Traverse BST using the ordering invariant to find node with value ${target}.`,
+    inputs: [`BST with values: [50, 30, 70, 20, 40, 60, 80]`, `Target: ${target}`],
+    outputs: `Node with value ${target} (or true)`,
+    constraints: ["Node values unique in BST", "Tree height h <= 10^5", "O(h) time expected"],
+    examples: [
+      {
+        input: `root = [50, 30, 70, 20, 40, 60, 80], val = ${target}`,
+        output: `Node(${target})`,
+        explanation: `Comparing at 50 (go left), 30 (go right), 40 (match).`,
+      },
+    ],
+    edgeCases: ["Target not in BST", "Target is root node", "Empty tree"],
+    topic: "Binary Search Tree",
+    category: "trees",
+    dataStructures: ["Binary Search Tree"],
+    patterns: ["BST Invariant Traversal", "Divide and Conquer"],
+    candidateApproaches: [
+      {
+        name: "BST Traversal (Optimal)",
+        description: "Compare target with current node and branch left if smaller, right if larger.",
+        timeComplexity: "O(h)",
+        spaceComplexity: "O(1) iterative",
+        recommended: true,
+      },
+    ],
+    selectedApproach: {
+      name: "BST Invariant Search",
+      timeComplexity: "O(h)",
+      spaceComplexity: "O(1)",
+      whySelected: "Leverages BST ordering to eliminate one subtree at each step.",
+    },
+    reasoning: "Because left subtree < node < right subtree, comparing target with node immediately tells which branch to follow.",
+    correctnessExplanation: "At each node, the target cannot exist in the discarded subtree due to the BST ordering invariant.",
+    dryRun: [
+      { step: 1, stateDescription: "Visit 50", activeVariables: { curr: 50, target }, explanation: `${target} < 50 -> go left` },
+      { step: 2, stateDescription: "Visit 30", activeVariables: { curr: 30, target }, explanation: `${target} > 30 -> go right` },
+      { step: 3, stateDescription: "Visit 40", activeVariables: { curr: 40, target }, explanation: `${target} == 40 -> found` },
+    ],
+    implementations: {
+      javascript: `/**
+ * BST Search
+ * Complete runnable Node.js implementation
+ */
+class TreeNode {
+  constructor(val = 0, left = null, right = null) {
+    this.val = val;
+    this.left = left;
+    this.right = right;
+  }
+}
+
+function searchBST(root, val) {
+  let curr = root;
+  while (curr !== null) {
+    if (curr.val === val) return curr;
+    curr = val < curr.val ? curr.left : curr.right;
+  }
+  return null;
+}
+
+function main() {
+  const root = new TreeNode(50,
+    new TreeNode(30, new TreeNode(20), new TreeNode(40)),
+    new TreeNode(70, new TreeNode(60), new TreeNode(80))
   );
+  const found = searchBST(root, ${target});
+  console.log("Found node:", found ? found.val : "null");
+}
+
+main();`,
+      cpp: `/**
+ * BST Search
+ * Complete runnable C++ implementation
+ */
+#include <iostream>
+using namespace std;
+
+struct TreeNode {
+    int val;
+    TreeNode *left, *right;
+    TreeNode(int x, TreeNode* l = nullptr, TreeNode* r = nullptr) : val(x), left(l), right(r) {}
+};
+
+TreeNode* searchBST(TreeNode* root, int val) {
+    TreeNode* curr = root;
+    while (curr) {
+        if (curr->val == val) return curr;
+        curr = (val < curr->val) ? curr->left : curr->right;
+    }
+    return nullptr;
+}
+
+int main() {
+    TreeNode* root = new TreeNode(50,
+        new TreeNode(30, new TreeNode(20), new TreeNode(40)),
+        new TreeNode(70, new TreeNode(60), new TreeNode(80)));
+    TreeNode* res = searchBST(root, ${target});
+    cout << "Found node: " << (res ? to_string(res->val) : "null") << "\\n";
+    return 0;
+}`,
+      python: `"""
+BST Search
+Complete runnable Python implementation
+"""
+from typing import Optional
+
+class TreeNode:
+    def __init__(self, val=0, left=None, right=None):
+        self.val = val
+        self.left = left
+        self.right = right
+
+def search_bst(root: Optional[TreeNode], val: int) -> Optional[TreeNode]:
+    curr = root
+    while curr:
+        if curr.val == val:
+            return curr
+        curr = curr.left if val < curr.val else curr.right
+    return None
+
+def main():
+    root = TreeNode(50,
+        TreeNode(30, TreeNode(20), TreeNode(40)),
+        TreeNode(70, TreeNode(60), TreeNode(80)))
+    res = search_bst(root, ${target})
+    print("Found node:", res.val if res else "None")
+
+if __name__ == "__main__":
+    main()`,
+    },
+    complexity: {
+      time: "O(h)",
+      space: "O(1)",
+      rationale: "At most h comparisons where h is tree height. For balanced BST h = O(log n); skewed BST h = O(n).",
+    },
+    finalAnswer: `Node with value ${target} located via path 50 → 30 → 40.`,
+    learnerQuestion: {
+      prompt: "What is the worst-case time complexity of searching in an unbalanced BST?",
+      choices: [
+        { id: "a", text: "O(n) when the tree degenerates into a linked list" },
+        { id: "b", text: "O(1) because root holds median" },
+        { id: "c", text: "O(log n) regardless of tree shape" },
+        { id: "d", text: "O(n log n) due to tree rotation" },
+      ],
+      correctId: "a",
+      hints: ["If elements are inserted in sorted order, the BST becomes a straight chain of n nodes."],
+      misconceptions: {
+        c: { code: "TREE_HEIGHT_CONFUSION", feedback: "O(log n) only holds for balanced trees (AVL/Red-Black). Unbalanced BST can degenerate to O(n)." },
+      },
+    },
+    visualSteps: vSteps,
+  };
+
+  return ProblemSolutionPlanSchema.parse(plan);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2469,15 +3731,342 @@ function solveNumberOfIslands(query: string, parsed: ParsedProblemInfo): Problem
    20. BFS Shortest Path
    ═══════════════════════════════════════════════════════════ */
 function solveBFSShortestPath(query: string, parsed: ParsedProblemInfo): ProblemSolutionPlan {
-  return buildGenericPlan(
-    query,
-    "Find shortest path in an unweighted graph between two vertices",
-    "graphs",
-    "Breadth-First Search (BFS) Level-Order",
-    ["BFS Queue", "Shortest Path in Unweighted Graph"],
-    "Because all edges have unit weight 1, the first time BFS reaches target node is guaranteed to be the shortest path.",
-    "Minimum number of edges"
-  );
+  const graphNodes = [
+    { id: "0", label: "0", x: 120, y: 180 },
+    { id: "1", label: "1", x: 260, y: 90 },
+    { id: "2", label: "2", x: 260, y: 270 },
+    { id: "3", label: "3", x: 420, y: 180 },
+    { id: "4", label: "4", x: 560, y: 180 },
+  ];
+  const graphEdges = [
+    { from: "0", to: "1" },
+    { from: "0", to: "2" },
+    { from: "1", to: "3" },
+    { from: "2", to: "3" },
+    { from: "3", to: "4" },
+  ];
+
+  const vSteps: ProblemVisualStep[] = [
+    {
+      stepNumber: 0,
+      title: "Initialize BFS Shortest Path",
+      actions: [
+        { action: "reset_scene" },
+        {
+          action: "set_board_header",
+          title: "BFS Shortest Path (Unweighted Graph)",
+          subtitle: "Source: 0 • Target: 4 • Time: O(V + E) • Space: O(V)",
+          badge: "GRAPH BREADTH-FIRST SEARCH",
+        },
+        { action: "create_graph", nodes: graphNodes, edges: graphEdges },
+        { action: "create_variable", name: "queue", value: "[0]" },
+        { action: "create_variable", name: "visited", value: "{0}" },
+        { action: "create_variable", name: "dist_0", value: 0 },
+        {
+          action: "compare",
+          text: "Initialize BFS:\n• Enqueue Source Node 0 with distance 0\n• Visited Set = {0}\n• Queue = [0]",
+        },
+        {
+          action: "show_callout",
+          text: "In an unweighted graph, BFS explores nodes in strictly non-decreasing order of distance, guaranteeing shortest path upon first discovery.",
+          boxType: "info",
+        },
+      ],
+      codeLine: "init",
+      narrative: {
+        currentStep: "Queue Initialization",
+        why: "Source node starts at distance 0 and is the first element in FIFO queue.",
+        whatChanged: "Node 0 enqueued with dist=0.",
+        whatToNotice: "FIFO queue preserves level-order expansion.",
+        keyInsight: "Unweighted shortest paths are solved in optimal O(V + E) by BFS.",
+        nextStep: "Dequeue node 0 and explore neighbors.",
+      },
+    },
+    {
+      stepNumber: 1,
+      title: "Step 1: Explore Neighbors of Node 0 (dist=1)",
+      actions: [
+        { action: "visit_graph_node", id: "0" },
+        { action: "highlight_edge", from: "0", to: "1" },
+        { action: "highlight_edge", from: "0", to: "2" },
+        { action: "update_variable", name: "queue", value: "[1, 2]" },
+        { action: "update_variable", name: "visited", value: "{0, 1, 2}" },
+        { action: "create_variable", name: "dist_1", value: 1 },
+        { action: "create_variable", name: "dist_2", value: 1 },
+        {
+          action: "compare",
+          text: "Dequeue Node 0 (dist=0):\n• Explore neighbor 1: dist[1] = 0 + 1 = 1 → Enqueue 1\n• Explore neighbor 2: dist[2] = 0 + 1 = 1 → Enqueue 2\n• Queue = [1, 2]",
+        },
+      ],
+      codeLine: "explore",
+      narrative: {
+        currentStep: "Level 1 Exploration",
+        why: "Nodes 1 and 2 are 1 edge away from source.",
+        whatChanged: "dist[1] = 1, dist[2] = 1. Nodes 1 and 2 enqueued.",
+        whatToNotice: "Level 1 complete.",
+        keyInsight: "Marking visited upon enqueue prevents duplicate queue entries.",
+        nextStep: "Dequeue node 1 next.",
+      },
+    },
+    {
+      stepNumber: 2,
+      title: "Step 2: Dequeue Node 1 -> Explore Node 3 (dist=2)",
+      actions: [
+        { action: "visit_graph_node", id: "1" },
+        { action: "highlight_edge", from: "1", to: "3" },
+        { action: "update_variable", name: "queue", value: "[2, 3]" },
+        { action: "update_variable", name: "visited", value: "{0, 1, 2, 3}" },
+        { action: "create_variable", name: "dist_3", value: 2 },
+        {
+          action: "compare",
+          text: "Dequeue Node 1 (dist=1):\n• Explore neighbor 3: dist[3] = 1 + 1 = 2 → Enqueue 3\n• Queue = [2, 3]",
+        },
+      ],
+      codeLine: "explore",
+      narrative: {
+        currentStep: "Level 2 Exploration",
+        why: "Node 3 reached from node 1 with distance 2.",
+        whatChanged: "Node 3 added to queue with dist[3] = 2.",
+        whatToNotice: "Node 3 is queued behind node 2.",
+        keyInsight: "FIFO queue guarantees all distance 1 nodes are processed before distance 2 nodes.",
+        nextStep: "Dequeue node 2.",
+      },
+    },
+    {
+      stepNumber: 3,
+      title: "Step 3: Dequeue Node 2 -> Neighbor 3 already visited",
+      actions: [
+        { action: "visit_graph_node", id: "2" },
+        { action: "update_variable", name: "queue", value: "[3]" },
+        {
+          action: "compare",
+          text: "Dequeue Node 2 (dist=1):\n• Neighbor 3 is already visited in set {0, 1, 2, 3}\n• Skip duplicate enqueue!\n• Queue = [3]",
+        },
+      ],
+      codeLine: "skip",
+      narrative: {
+        currentStep: "Skip Visited Node",
+        why: "Node 3 was already reached via shorter/equal path from node 1.",
+        whatChanged: "Queue updated to [3].",
+        whatToNotice: "Avoids cycling and redundant work.",
+        keyInsight: "Visited check is vital for keeping BFS runtime bounded to O(V + E).",
+        nextStep: "Dequeue node 3.",
+      },
+    },
+    {
+      stepNumber: 4,
+      title: "Step 4: Reach Target Node 4! (dist=3)",
+      actions: [
+        { action: "visit_graph_node", id: "3" },
+        { action: "visit_graph_node", id: "4" },
+        { action: "highlight_edge", from: "3", to: "4" },
+        { action: "create_variable", name: "dist_4", value: 3 },
+        { action: "create_variable", name: "shortest_path", value: "0 → 1 → 3 → 4 (length 3)" },
+        {
+          action: "compare",
+          text: "🎉 TARGET NODE 4 REACHED!\n• Neighbor 4 reached from node 3\n• Shortest distance = dist[3] + 1 = 3 edges\n• Path: 0 → 1 → 3 → 4\n• BFS terminates immediately!",
+        },
+        {
+          action: "show_callout",
+          text: "Shortest path to node 4 found: 0 → 1 → 3 → 4 (3 edges). First time reaching target in BFS is guaranteed minimal!",
+          boxType: "success",
+        },
+      ],
+      codeLine: "found",
+      narrative: {
+        currentStep: "Target Reached",
+        why: "Target node 4 encountered.",
+        whatChanged: "Shortest path 0 → 1 → 3 → 4 confirmed.",
+        whatToNotice: "Path length is 3 edges.",
+        keyInsight: "BFS guarantees shortest path in unweighted graphs.",
+        nextStep: "Inspect complexity and code implementations.",
+      },
+    },
+  ];
+
+  const plan: ProblemSolutionPlan = {
+    problemStatement: query,
+    normalizedProblem: "Find shortest path from node 0 to node 4 in unweighted graph",
+    storyContext: parsed.storyContext,
+    objective: "Determine the minimum number of edges needed to traverse from source vertex 0 to target vertex 4.",
+    inputs: ["Graph with 5 vertices: 0, 1, 2, 3, 4", "Edges: (0,1), (0,2), (1,3), (2,3), (3,4)", "Source: 0, Target: 4"],
+    outputs: "3 edges (path: 0 → 1 → 3 → 4)",
+    constraints: ["Unweighted graph", "V, E <= 10^5", "O(V + E) time"],
+    examples: [
+      {
+        input: "src = 0, dst = 4, edges = [[0,1],[0,2],[1,3],[2,3],[3,4]]",
+        output: "3",
+        explanation: "Path 0 -> 1 -> 3 -> 4 takes 3 edges.",
+      },
+    ],
+    edgeCases: ["Source equals target (dist 0)", "Target unreachable from source (-1)", "Disconnected graph"],
+    topic: "Graph Traversal (BFS)",
+    category: "graphs",
+    dataStructures: ["Graph (Adjacency List)", "FIFO Queue", "Visited Set"],
+    patterns: ["Breadth-First Search", "Level-Order Traversal"],
+    candidateApproaches: [
+      {
+        name: "Breadth-First Search (Optimal)",
+        description: "Explore all nodes at depth d before moving to depth d+1 using a FIFO queue.",
+        timeComplexity: "O(V + E)",
+        spaceComplexity: "O(V)",
+        recommended: true,
+      },
+      {
+        name: "Depth-First Search",
+        description: "Explore deep into paths first, requiring checking all paths to find the shortest.",
+        timeComplexity: "O(V + E)",
+        spaceComplexity: "O(V)",
+        tradeoffs: "Does NOT guarantee shortest path on first arrival in cyclic graphs.",
+      },
+    ],
+    selectedApproach: {
+      name: "Breadth-First Search (BFS)",
+      timeComplexity: "O(V + E)",
+      spaceComplexity: "O(V)",
+      whySelected: "Guarantees shortest path in unweighted graph upon first arrival at target node.",
+    },
+    reasoning: "Because edge weights are uniform (all 1), level-by-level queue expansion ensures every node is reached via the minimal number of edges.",
+    correctnessExplanation: "Queue elements have non-decreasing distances from the source. The first time target is popped or seen, no shorter path can exist.",
+    dryRun: [
+      { step: 1, stateDescription: "Enqueue source 0", activeVariables: { queue: "[0]", visited: "{0}" }, explanation: "dist[0] = 0" },
+      { step: 2, stateDescription: "Pop 0, push 1 and 2", activeVariables: { queue: "[1, 2]", visited: "{0, 1, 2}" }, explanation: "dist[1] = 1, dist[2] = 1" },
+      { step: 3, stateDescription: "Pop 1, push 3", activeVariables: { queue: "[2, 3]", visited: "{0, 1, 2, 3}" }, explanation: "dist[3] = 2" },
+      { step: 4, stateDescription: "Pop 2, skip 3", activeVariables: { queue: "[3]" }, explanation: "3 already visited" },
+      { step: 5, stateDescription: "Pop 3, push 4 (Target!)", activeVariables: { queue: "[4]" }, explanation: "dist[4] = 3. Target reached!" },
+    ],
+    implementations: {
+      javascript: `/**
+ * BFS Shortest Path (Unweighted Graph)
+ * Complete runnable Node.js implementation
+ */
+function shortestPathBFS(n, edges, src, dst) {
+  const adj = Array.from({ length: n }, () => []);
+  for (const [u, v] of edges) {
+    adj[u].push(v);
+    adj[v].push(u);
+  }
+
+  const dist = new Array(n).fill(-1);
+  const queue = [src];
+  dist[src] = 0;
+
+  while (queue.length > 0) {
+    const u = queue.shift();
+    if (u === dst) return dist[u];
+
+    for (const v of adj[u]) {
+      if (dist[v] === -1) {
+        dist[v] = dist[u] + 1;
+        queue.push(v);
+      }
+    }
+  }
+  return -1;
+}
+
+function main() {
+  const edges = [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4]];
+  console.log("Shortest path length:", shortestPathBFS(5, edges, 0, 4));
+}
+
+main();`,
+      cpp: `/**
+ * BFS Shortest Path (Unweighted Graph)
+ * Complete runnable C++ implementation
+ */
+#include <iostream>
+#include <vector>
+#include <queue>
+using namespace std;
+
+int shortestPathBFS(int n, const vector<pair<int, int>>& edges, int src, int dst) {
+    vector<vector<int>> adj(n);
+    for (auto& e : edges) {
+        adj[e.first].push_back(e.second);
+        adj[e.second].push_back(e.first);
+    }
+    vector<int> dist(n, -1);
+    queue<int> q;
+    dist[src] = 0;
+    q.push(src);
+
+    while (!q.empty()) {
+        int u = q.front(); q.pop();
+        if (u == dst) return dist[u];
+        for (int v : adj[u]) {
+            if (dist[v] == -1) {
+                dist[v] = dist[u] + 1;
+                q.push(v);
+            }
+        }
+    }
+    return -1;
+}
+
+int main() {
+    vector<pair<int, int>> edges = {{0,1},{0,2},{1,3},{2,3},{3,4}};
+    cout << "Shortest path length: " << shortestPathBFS(5, edges, 0, 4) << "\\n";
+    return 0;
+}`,
+      python: `"""
+BFS Shortest Path (Unweighted Graph)
+Complete runnable Python implementation
+"""
+from collections import deque
+from typing import List, Tuple
+
+def shortest_path_bfs(n: int, edges: List[Tuple[int, int]], src: int, dst: int) -> int:
+    adj = [[] for _ in range(n)]
+    for u, v in edges:
+        adj[u].append(v)
+        adj[v].append(u)
+
+    dist = [-1] * n
+    dist[src] = 0
+    q = deque([src])
+
+    while q:
+        u = q.popleft()
+        if u == dst:
+            return dist[u]
+        for v in adj[u]:
+            if dist[v] == -1:
+                dist[v] = dist[u] + 1
+                q.append(v)
+    return -1
+
+def main():
+    edges = [(0, 1), (0, 2), (1, 3), (2, 3), (3, 4)]
+    print("Shortest path length:", shortest_path_bfs(5, edges, 0, 4))
+
+if __name__ == "__main__":
+    main()`,
+    },
+    complexity: {
+      time: "O(V + E)",
+      space: "O(V)",
+      rationale: "Each vertex is enqueued at most once and each edge is traversed at most twice (once in each direction).",
+    },
+    finalAnswer: "Shortest path from 0 to 4 is 3 edges: 0 → 1 → 3 → 4.",
+    learnerQuestion: {
+      prompt: "Why is BFS guaranteed to find the shortest path in unweighted graphs?",
+      choices: [
+        { id: "a", text: "FIFO queue explores all vertices at distance d before any vertex at distance d+1" },
+        { id: "b", text: "BFS sorts the edge list before traversal" },
+        { id: "c", text: "BFS uses Dijkstra's priority queue under the hood" },
+        { id: "d", text: "BFS backtracks whenever a cycle is detected" },
+      ],
+      correctId: "a",
+      hints: ["Think about the order in which vertices enter and leave a FIFO queue."],
+      misconceptions: {
+        b: { code: "SORTING_MISCONCEPTION", feedback: "BFS does not sort edges; the FIFO property alone maintains distance ordering." },
+      },
+    },
+    visualSteps: vSteps,
+  };
+
+  return ProblemSolutionPlanSchema.parse(plan);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2499,15 +4088,390 @@ function solveDFSConnectedComponents(query: string, parsed: ParsedProblemInfo): 
    22. Dijkstra Shortest Path
    ═══════════════════════════════════════════════════════════ */
 function solveDijkstra(query: string, parsed: ParsedProblemInfo): ProblemSolutionPlan {
-  return buildGenericPlan(
-    query,
-    "Find shortest paths in weighted graph with non-negative edge weights",
-    "shortest-paths",
-    "Dijkstra's Algorithm with Min-Priority Queue",
-    ["Greedy Choice", "Edge Relaxation"],
-    "Maintain distance array and min-heap. Always extract unvisited vertex with minimum tentative distance and relax edges.",
-    "Array of shortest distances from source"
-  );
+  const graphNodes = [
+    { id: "A", label: "A (Src)", x: 100, y: 160 },
+    { id: "B", label: "B", x: 270, y: 80 },
+    { id: "C", label: "C", x: 270, y: 240 },
+    { id: "D", label: "D (Dst)", x: 470, y: 80 },
+    { id: "E", label: "E", x: 470, y: 240 },
+  ];
+  const graphEdges = [
+    { from: "A", to: "B", weight: 4 },
+    { from: "A", to: "C", weight: 2 },
+    { from: "C", to: "B", weight: 1 },
+    { from: "C", to: "E", weight: 4 },
+    { from: "B", to: "D", weight: 5 },
+    { from: "E", to: "D", weight: 1 },
+  ];
+
+  const vSteps: ProblemVisualStep[] = [
+    {
+      stepNumber: 0,
+      title: "Initialize Dijkstra's Algorithm",
+      actions: [
+        { action: "reset_scene" },
+        {
+          action: "set_board_header",
+          title: "Dijkstra's Shortest Path (Weighted Graph)",
+          subtitle: "Source: A • Non-negative weights • Time: O((V + E) log V)",
+          badge: "GREEDY / SHORTEST PATHS",
+        },
+        { action: "create_graph", nodes: graphNodes, edges: graphEdges },
+        { action: "create_variable", name: "dist_A", value: 0 },
+        { action: "create_variable", name: "dist_B", value: "∞" },
+        { action: "create_variable", name: "dist_C", value: "∞" },
+        { action: "create_variable", name: "dist_D", value: "∞" },
+        { action: "create_variable", name: "dist_E", value: "∞" },
+        {
+          action: "compare",
+          text: "Initialize Distances from Source A:\n• dist[A] = 0\n• dist[B..E] = ∞\n• Priority Queue = [(0, A)]",
+        },
+        {
+          action: "show_callout",
+          text: "Dijkstra uses greedy choice: always pick the unvisited vertex with the minimum tentative distance and relax its outgoing edges.",
+          boxType: "info",
+        },
+      ],
+      codeLine: "init",
+      narrative: {
+        currentStep: "Tentative Distance Setup",
+        why: "Tentative distance to source is 0; all other vertices start at infinity.",
+        whatChanged: "dist[A]=0; all others=∞.",
+        whatToNotice: "All edge weights are non-negative, enabling greedy choice.",
+        keyInsight: "Once a vertex with minimum tentative distance is extracted, its distance is finalized.",
+        nextStep: "Extract vertex A and relax its outgoing edges.",
+      },
+    },
+    {
+      stepNumber: 1,
+      title: "Step 1: Extract A (0) -> Relax Outgoing Edges",
+      actions: [
+        { action: "visit_graph_node", id: "A" },
+        { action: "highlight_edge", from: "A", to: "C" },
+        { action: "highlight_edge", from: "A", to: "B" },
+        { action: "update_variable", name: "dist_C", value: 2 },
+        { action: "update_variable", name: "dist_B", value: 4 },
+        {
+          action: "compare",
+          text: "Extract A (min dist 0). Relax outgoing edges:\n• Edge A → C (wt 2): 0 + 2 = 2 < ∞ → dist[C] = 2\n• Edge A → B (wt 4): 0 + 4 = 4 < ∞ → dist[B] = 4\n• Priority Queue: [(2, C), (4, B)]",
+        },
+      ],
+      codeLine: "relax_A",
+      narrative: {
+        currentStep: "Relax from Source A",
+        why: "Direct paths from A establish initial finite bounds.",
+        whatChanged: "dist[C] = 2, dist[B] = 4.",
+        whatToNotice: "C is closer than B (2 < 4).",
+        keyInsight: "Vertex with smallest tentative distance is extracted next.",
+        nextStep: "Extract vertex C.",
+      },
+    },
+    {
+      stepNumber: 2,
+      title: "Step 2: Extract C (2) -> Relax C->B and C->E",
+      actions: [
+        { action: "visit_graph_node", id: "C" },
+        { action: "highlight_edge", from: "C", to: "B" },
+        { action: "highlight_edge", from: "C", to: "E" },
+        { action: "update_variable", name: "dist_B", value: 3 },
+        { action: "update_variable", name: "dist_E", value: 6 },
+        {
+          action: "compare",
+          text: "Extract C (min dist 2). Relax outgoing edges:\n• Edge C → B (wt 1): dist[C] + 1 = 2 + 1 = 3 < dist[B] (4) → SHORTER PATH TO B FOUND! dist[B] = 3\n• Edge C → E (wt 4): dist[C] + 4 = 2 + 4 = 6 < ∞ → dist[E] = 6\n• Priority Queue: [(3, B), (6, E)]",
+        },
+        {
+          action: "show_callout",
+          text: "Edge relaxation improved dist[B] from 4 to 3 via intermediate node C!",
+          boxType: "warning",
+        },
+      ],
+      codeLine: "relax_C",
+      narrative: {
+        currentStep: "Shorter Path via C Discovered",
+        why: "Path A → C → B has total weight 3, which is less than direct edge A → B (weight 4).",
+        whatChanged: "dist[B] decreased from 4 to 3; dist[E] set to 6.",
+        whatToNotice: "B's tentative distance improved dynamically.",
+        keyInsight: "Edge relaxation checks if going through the current vertex provides a shortcut.",
+        nextStep: "Extract B next (dist 3 < dist 6).",
+      },
+    },
+    {
+      stepNumber: 3,
+      title: "Step 3: Extract B (3) -> Relax B->D (wt 5)",
+      actions: [
+        { action: "visit_graph_node", id: "B" },
+        { action: "highlight_edge", from: "B", to: "D" },
+        { action: "update_variable", name: "dist_D", value: 8 },
+        {
+          action: "compare",
+          text: "Extract B (min dist 3). Relax outgoing edge:\n• Edge B → D (wt 5): dist[B] + 5 = 3 + 5 = 8 < ∞ → dist[D] = 8\n• Priority Queue: [(6, E), (8, D)]",
+        },
+      ],
+      codeLine: "relax_B",
+      narrative: {
+        currentStep: "Relax Edge B → D",
+        why: "First path to target D found via B with total weight 8.",
+        whatChanged: "dist[D] updated to 8.",
+        whatToNotice: "Target D reached, but tentative distance is not yet final.",
+        keyInsight: "Target cannot be finalized until it is the minimum element extracted from queue.",
+        nextStep: "Extract vertex E next (dist 6 < dist 8).",
+      },
+    },
+    {
+      stepNumber: 4,
+      title: "Step 4: Extract E (6) -> Relax E->D (wt 1)",
+      actions: [
+        { action: "visit_graph_node", id: "E" },
+        { action: "highlight_edge", from: "E", to: "D" },
+        { action: "update_variable", name: "dist_D", value: 7 },
+        {
+          action: "compare",
+          text: "Extract E (min dist 6). Relax outgoing edge:\n• Edge E → D (wt 1): dist[E] + 1 = 6 + 1 = 7 < dist[D] (8) → SHORTER PATH TO D FOUND! dist[D] = 7\n• Priority Queue: [(7, D)]",
+        },
+        {
+          action: "show_callout",
+          text: "SHORTER PATH TO DESTINATION! dist[D] improved from 8 down to 7 via path A → C → E → D.",
+          boxType: "success",
+        },
+      ],
+      codeLine: "relax_E",
+      narrative: {
+        currentStep: "Optimal Path to Destination Discovered",
+        why: "Path A → C → E → D has cost 2 + 4 + 1 = 7, beating path A → C → B → D of cost 8.",
+        whatChanged: "dist[D] reduced from 8 to 7!",
+        whatToNotice: "Relaxation proves why terminating early on first encounter would have been wrong.",
+        keyInsight: "Only when a vertex is extracted from the min-heap is its shortest distance permanently locked.",
+        nextStep: "Extract destination D.",
+      },
+    },
+    {
+      stepNumber: 5,
+      title: "Step 5: Extract D (7) — Shortest Path Finalized!",
+      actions: [
+        { action: "visit_graph_node", id: "D" },
+        { action: "create_variable", name: "shortest_path", value: "A → C → E → D (cost 7)" },
+        {
+          action: "compare",
+          text: "🎉 DESTINATION D EXTRACTED!\n• Shortest distance from A to D is 7\n• Optimal path: A → C → E → D (weights: 2 + 4 + 1 = 7)\n• Algorithm terminates.",
+        },
+        {
+          action: "show_callout",
+          text: "Shortest path to D finalized! Path: A → C → E → D with total weight 7. Time: O((V + E) log V).",
+          boxType: "insight",
+        },
+      ],
+      codeLine: "done",
+      narrative: {
+        currentStep: "Dijkstra Complete",
+        why: "Destination vertex D extracted as min element from priority queue.",
+        whatChanged: "Optimal path locked.",
+        whatToNotice: "All tentative distances finalized correctly.",
+        keyInsight: "Non-negative edge weights ensure extracted vertices are never relaxed to a smaller distance.",
+        nextStep: "Inspect code implementation and complexity.",
+      },
+    },
+  ];
+
+  const plan: ProblemSolutionPlan = {
+    problemStatement: query,
+    normalizedProblem: "Find shortest paths from source vertex A using Dijkstra's algorithm",
+    storyContext: parsed.storyContext,
+    objective: "Compute minimum weight paths from source to all other vertices in a directed graph with non-negative edge weights.",
+    inputs: ["Graph with vertices: A, B, C, D, E", "Weighted edges: (A,B,4), (A,C,2), (C,B,1), (C,E,4), (B,D,5), (E,D,1)", "Source: A, Destination: D"],
+    outputs: "Shortest distance to D is 7 (Path: A → C → E → D)",
+    constraints: ["All edge weights >= 0", "No negative weight cycles", "O((V + E) log V) time with min-heap"],
+    examples: [
+      {
+        input: "src = 'A', dst = 'D'",
+        output: "7",
+        explanation: "Path A -> C -> E -> D has weight 2 + 4 + 1 = 7.",
+      },
+    ],
+    edgeCases: ["Unreachable target vertex (dist = ∞)", "Graph with parallel edges", "Zero-weight edges"],
+    topic: "Shortest Paths (Dijkstra)",
+    category: "shortest-paths",
+    dataStructures: ["Weighted Graph", "Min-Priority Queue (Heap)", "Distance Array"],
+    patterns: ["Greedy Choice", "Edge Relaxation"],
+    candidateApproaches: [
+      {
+        name: "Dijkstra with Min-Heap (Optimal)",
+        description: "Maintain tentative distances and iteratively relax edges from unvisited vertex with minimum tentative distance.",
+        timeComplexity: "O((V + E) log V)",
+        spaceComplexity: "O(V)",
+        recommended: true,
+      },
+      {
+        name: "Bellman-Ford",
+        description: "Relax all edges |V| - 1 times.",
+        timeComplexity: "O(V * E)",
+        spaceComplexity: "O(V)",
+        tradeoffs: "Needed if negative edge weights exist, but slower than Dijkstra on non-negative graphs.",
+      },
+    ],
+    selectedApproach: {
+      name: "Dijkstra's Algorithm",
+      timeComplexity: "O((V + E) log V)",
+      spaceComplexity: "O(V)",
+      whySelected: "Optimal time complexity for graphs with strictly non-negative edge weights.",
+    },
+    reasoning: "The greedy choice property guarantees that once a vertex is extracted from the min-priority queue, its tentative distance is the absolute shortest possible distance.",
+    correctnessExplanation: "Since all edge weights are non-negative, any alternative path to the current minimum vertex would have to go through another unvisited vertex with an equal or greater distance, making it strictly no better.",
+    dryRun: [
+      { step: 1, stateDescription: "Extract A (0)", activeVariables: { dist_C: 2, dist_B: 4 }, explanation: "Relax A->C (2), A->B (4)" },
+      { step: 2, stateDescription: "Extract C (2)", activeVariables: { dist_B: 3, dist_E: 6 }, explanation: "Relax C->B (3 < 4!), C->E (6)" },
+      { step: 3, stateDescription: "Extract B (3)", activeVariables: { dist_D: 8 }, explanation: "Relax B->D (8)" },
+      { step: 4, stateDescription: "Extract E (6)", activeVariables: { dist_D: 7 }, explanation: "Relax E->D (7 < 8!)" },
+      { step: 5, stateDescription: "Extract D (7)", activeVariables: { final_dist_D: 7 }, explanation: "Destination D finalized at cost 7" },
+    ],
+    implementations: {
+      javascript: `/**
+ * Dijkstra's Algorithm
+ * Complete runnable Node.js implementation
+ */
+function dijkstra(n, edges, src) {
+  const adj = Array.from({ length: n }, () => []);
+  for (const [u, v, w] of edges) {
+    adj[u].push({ to: v, weight: w });
+  }
+
+  const dist = new Array(n).fill(Infinity);
+  dist[src] = 0;
+  const pq = [{ node: src, d: 0 }];
+
+  while (pq.length > 0) {
+    pq.sort((a, b) => a.d - b.d);
+    const { node: u, d } = pq.shift();
+
+    if (d > dist[u]) continue;
+
+    for (const { to: v, weight: w } of adj[u]) {
+      if (dist[u] + w < dist[v]) {
+        dist[v] = dist[u] + w;
+        pq.push({ node: v, d: dist[v] });
+      }
+    }
+  }
+  return dist;
+}
+
+function main() {
+  // A:0, B:1, C:2, D:3, E:4
+  const edges = [
+    [0, 1, 4], [0, 2, 2], [2, 1, 1],
+    [2, 4, 4], [1, 3, 5], [4, 3, 1]
+  ];
+  const dist = dijkstra(5, edges, 0);
+  console.log("Distances from A (0):", dist);
+  console.log("Shortest distance to D (3):", dist[3]);
+}
+
+main();`,
+      cpp: `/**
+ * Dijkstra's Algorithm
+ * Complete runnable C++ implementation
+ */
+#include <iostream>
+#include <vector>
+#include <queue>
+using namespace std;
+
+const int INF = 1e9;
+
+vector<int> dijkstra(int n, const vector<vector<pair<int, int>>>& adj, int src) {
+    vector<int> dist(n, INF);
+    priority_queue<pair<int, int>, vector<pair<int, int>>, greater<pair<int, int>>> pq;
+
+    dist[src] = 0;
+    pq.push({0, src});
+
+    while (!pq.empty()) {
+        auto [d, u] = pq.top(); pq.pop();
+        if (d > dist[u]) continue;
+
+        for (auto [v, w] : adj[u]) {
+            if (dist[u] + w < dist[v]) {
+                dist[v] = dist[u] + w;
+                pq.push({dist[v], v});
+            }
+        }
+    }
+    return dist;
+}
+
+int main() {
+    int n = 5;
+    vector<vector<pair<int, int>>> adj(n);
+    adj[0].push_back({1, 4}); adj[0].push_back({2, 2});
+    adj[2].push_back({1, 1}); adj[2].push_back({4, 4});
+    adj[1].push_back({3, 5}); adj[4].push_back({3, 1});
+
+    vector<int> dist = dijkstra(n, adj, 0);
+    cout << "Shortest distance to D: " << dist[3] << "\\n";
+    return 0;
+}`,
+      python: `"""
+Dijkstra's Algorithm
+Complete runnable Python implementation
+"""
+import heapq
+from typing import List, Tuple
+
+def dijkstra(n: int, edges: List[Tuple[int, int, int]], src: int) -> List[int]:
+    adj = [[] for _ in range(n)]
+    for u, v, w in edges:
+        adj[u].append((v, w))
+
+    dist = [float('inf')] * n
+    dist[src] = 0
+    pq = [(0, src)]
+
+    while pq:
+        d, u = heapq.heappop(pq)
+        if d > dist[u]:
+            continue
+
+        for v, w in adj[u]:
+            if dist[u] + w < dist[v]:
+                dist[v] = dist[u] + w
+                heapq.heappush(pq, (dist[v], v))
+
+    return dist
+
+def main():
+    edges = [
+        (0, 1, 4), (0, 2, 2), (2, 1, 1),
+        (2, 4, 4), (1, 3, 5), (4, 3, 1)
+    ]
+    dist = dijkstra(5, edges, 0)
+    print("Shortest distance to D:", dist[3])
+
+if __name__ == "__main__":
+    main()`,
+    },
+    complexity: {
+      time: "O((V + E) log V)",
+      space: "O(V)",
+      rationale: "Binary heap operations take O(log V). Each vertex is extracted once and each edge is relaxed once.",
+    },
+    finalAnswer: "Shortest distance from A to D is 7 (Path: A → C → E → D).",
+    learnerQuestion: {
+      prompt: "Why can Dijkstra's algorithm fail if the graph contains negative edge weights?",
+      choices: [
+        { id: "a", text: "A finalized vertex might be reached later via a path with smaller total weight, violating the greedy assumption" },
+        { id: "b", text: "Min-heaps cannot store negative numbers" },
+        { id: "c", text: "Adjacency lists only store positive capacities" },
+        { id: "d", text: "Negative edges turn directed graphs into undirected graphs" },
+      ],
+      correctId: "a",
+      hints: ["Dijkstra locks in the shortest distance once a node is popped, assuming future paths can only grow longer."],
+      misconceptions: {
+        b: { code: "HEAP_MISCONCEPTION", feedback: "Heaps handle negative numbers without issue; the mathematical assumption of monotonic path growth breaks." },
+      },
+    },
+    visualSteps: vSteps,
+  };
+
+  return ProblemSolutionPlanSchema.parse(plan);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -2918,6 +4882,311 @@ if __name__ == "__main__":
         b: { code: "UNCERTAIN", feedback: "Both expressions evaluate in O(1) time." },
         c: { code: "INCORRECT_COMPARISON", feedback: "Multiplication by 2 does not sort the numbers." },
         d: { code: "UNCERTAIN", feedback: "Negative numbers are strictly preserved by multiplying by positive 2." },
+      },
+    },
+  };
+
+  return ProblemSolutionPlanSchema.parse(plan);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   31.5 Decrement or Increment (CodeChef DECINC)
+   ═══════════════════════════════════════════════════════════ */
+function solveDecrementOrIncrement(
+  query: string,
+  parsed: ParsedProblemInfo
+): ProblemSolutionPlan {
+  const n = parsed.variables?.N ?? parsed.numbers[0] ?? 8;
+  const divisor = parsed.variables?.divisor ?? parsed.numbers[1] ?? 4;
+  const incBy = parsed.variables?.incBy ?? parsed.numbers[2] ?? 1;
+  const decBy = parsed.variables?.decBy ?? parsed.numbers[3] ?? 1;
+
+  const remainder = n % divisor;
+  const isDivisible = remainder === 0;
+  const result = isDivisible ? n + incBy : n - decBy;
+  const finalAnswer = String(result);
+
+  const visualSteps: ProblemVisualStep[] = [
+    {
+      stepNumber: 0,
+      title: "Initialize Input and Divisibility Condition",
+      actions: [
+        { action: "reset_scene" },
+        {
+          action: "set_board_header",
+          title: "Decrement or Increment",
+          subtitle: `Conditional Evaluation: N = ${n}, Divisor = ${divisor}`,
+          badge: "CONDITIONAL LOGIC",
+        },
+        { action: "create_variable", name: "N", value: n },
+        { action: "create_variable", name: "divisor", value: divisor },
+        {
+          action: "show_callout",
+          text: `Rule: If N % ${divisor} == 0, increment N by ${incBy} (N + ${incBy}). Otherwise, decrement N by ${decBy} (N - ${decBy}).`,
+          boxType: "info",
+        },
+      ],
+      codeLine: "init",
+      narrative: {
+        currentStep: "Problem Setup",
+        why: `Initialize scalar input N = ${n} and divisor = ${divisor}.`,
+        whatChanged: "Scene reset; variables N and divisor loaded on canvas.",
+        whatToNotice: "Scalar arithmetic operation; no iteration or array pointers required.",
+        keyInsight: "Direct conditional evaluation executes in O(1) time.",
+        nextStep: `Evaluate condition: (${n} % ${divisor} == 0).`,
+      },
+    },
+    {
+      stepNumber: 1,
+      title: "Check Modulo Remainder Condition",
+      actions: [
+        { action: "create_variable", name: "remainder", value: remainder },
+        {
+          action: "create_variable",
+          name: "isDivisible",
+          value: isDivisible ? "true" : "false",
+        },
+        {
+          action: "show_callout",
+          text: `Evaluate: ${n} % ${divisor} = ${remainder}. Condition (${n} % ${divisor} == 0) is ${
+            isDivisible ? "MET (True)" : "NOT MET (False)"
+          }. Branch: ${isDivisible ? `Increment (+${incBy})` : `Decrement (-${decBy})`}.`,
+          boxType: isDivisible ? "success" : "warning",
+        },
+      ],
+      codeLine: "condition",
+      narrative: {
+        currentStep: "Condition Evaluation",
+        why: "Determine whether the number N is evenly divisible by divisor.",
+        whatChanged: `Computed remainder ${remainder} and determined branch: ${
+          isDivisible ? "Increment" : "Decrement"
+        }.`,
+        whatToNotice: `Remainder is ${remainder} (condition is ${isDivisible}).`,
+        keyInsight: "A number is divisible by another if and only if the remainder of integer division is zero.",
+        nextStep: `Apply ${isDivisible ? `increment (+${incBy})` : `decrement (-${decBy})`} to N.`,
+      },
+    },
+    {
+      stepNumber: 2,
+      title: "Branch Execution & Final Result",
+      actions: [
+        { action: "create_variable", name: "result", value: result },
+        {
+          action: "show_insight_card",
+          title: "Final Result",
+          text: `Input N: ${n}\nRemainder: ${remainder}\nBranch: ${
+            isDivisible ? `Incremented (+${incBy})` : `Decremented (-${decBy})`
+          }\nResult: ${result}`,
+        },
+      ],
+      codeLine: "return",
+      narrative: {
+        currentStep: "Computation Complete",
+        why: `Computed final answer: ${result}.`,
+        whatChanged: `Result variable set to ${result}.`,
+        whatToNotice: `Output value is ${result}.`,
+        keyInsight: `Final answer is ${result} with O(1) time complexity and O(1) auxiliary space.`,
+        nextStep: "Review runnable code across JavaScript, Python, and C++.",
+      },
+    },
+  ];
+
+  const plan: ProblemSolutionPlan = {
+    problemStatement: query,
+    normalizedProblem: "Decrement or Increment",
+    storyContext:
+      parsed.storyContext ||
+      `Obtain a number N and increment its value by ${incBy} if divisible by ${divisor}, otherwise decrement by ${decBy}.`,
+    objective: `Increment N by ${incBy} if N is divisible by ${divisor}; otherwise decrement N by ${decBy}.`,
+    inputs: [`N = ${n}`, `divisor = ${divisor}`],
+    outputs: finalAnswer,
+    constraints: [
+      "0 <= N <= 10^9",
+      "divisor > 0",
+      "O(1) time complexity expected",
+      "O(1) auxiliary space",
+    ],
+    examples: [
+      {
+        input: "N = 8",
+        output: "9",
+        explanation: "8 is divisible by 4, so it is incremented by 1 to 9.",
+      },
+      {
+        input: "N = 5",
+        output: "4",
+        explanation: "5 is not divisible by 4, so it is decremented by 1 to 4.",
+      },
+      {
+        input: "N = 0",
+        output: "1",
+        explanation: "0 is divisible by 4 (0 % 4 == 0), so it is incremented by 1 to 1.",
+      },
+    ],
+    edgeCases: [
+      "N = 0: 0 is divisible by any non-zero divisor, resulting in 0 + 1 = 1",
+      "N is already a multiple of 4: increments value by 1",
+      "N is not a multiple of 4: decrements value by 1",
+      "N is negative: modulo behavior differs in C++ vs Python, so check (n % divisor == 0)",
+    ],
+    topic: "Conditional Branching & Modulo Arithmetic",
+    category: "arithmetic",
+    dataStructures: ["Scalar Variables"],
+    patterns: ["Branching (if/else)", "Modulo Arithmetic"],
+    candidateApproaches: [
+      {
+        name: "Modulo Condition (if/else)",
+        description: `Check if N % divisor == 0. If true, return N + ${incBy}; otherwise return N - ${decBy}.`,
+        timeComplexity: "O(1)",
+        spaceComplexity: "O(1)",
+        tradeoffs: "Direct single-instruction branch evaluation; minimal operations.",
+        recommended: true,
+      },
+      {
+        name: "Ternary Operator / Bitwise Mask",
+        description: `For divisor = 4 (power of 2), check (N & 3) == 0 ? N + ${incBy} : N - ${decBy}.`,
+        timeComplexity: "O(1)",
+        spaceComplexity: "O(1)",
+        tradeoffs: "Bitwise check works only when divisor is a power of 2.",
+        recommended: false,
+      },
+    ],
+    selectedApproach: {
+      name: "Modulo Condition (if/else)",
+      timeComplexity: "O(1)",
+      spaceComplexity: "O(1)",
+      whySelected: "Universal across all divisors and handles edge cases such as N = 0 cleanly and deterministically.",
+    },
+    reasoning: `An integer N is divisible by ${divisor} if N % ${divisor} === 0. The if/else branch evaluates this single condition in constant time.`,
+    correctnessExplanation: `The modulo operator '%' calculates the remainder of division of N by ${divisor}. When remainder == 0, N is an exact multiple of ${divisor}, so we take the increment branch; otherwise, we take the decrement branch. Both branches run in O(1) time and O(1) space.`,
+    visualSteps,
+    dryRun: [
+      {
+        step: 1,
+        stateDescription: "Read input N and divisor",
+        activeVariables: { N: n, divisor },
+        explanation: `Given N = ${n}, divisor = ${divisor}.`,
+      },
+      {
+        step: 2,
+        stateDescription: `Evaluate ${n} % ${divisor} == 0`,
+        activeVariables: { remainder, isDivisible },
+        explanation: `Remainder is ${remainder}. Condition is ${isDivisible}.`,
+      },
+      {
+        step: 3,
+        stateDescription: "Calculate result",
+        activeVariables: { result },
+        explanation: `Branch evaluated: result = ${result}.`,
+      },
+    ],
+    implementations: {
+      javascript: `/**
+ * Decrement or Increment (CodeChef DECINC)
+ * Time Complexity: O(1)
+ * Space Complexity: O(1)
+ */
+function solve(n, divisor = 4) {
+  if (n % divisor === 0) {
+    return n + 1;
+  } else {
+    return n - 1;
+  }
+}
+
+function main() {
+  const n = ${n};
+  const result = solve(n);
+  console.log("Input N:", n);
+  console.log("Result:", result);
+  return result;
+}
+
+main();`,
+      python: `"""
+Decrement or Increment (CodeChef DECINC)
+Time Complexity: O(1)
+Space Complexity: O(1)
+"""
+def solve(n: int, divisor: int = 4) -> int:
+    if n % divisor == 0:
+        return n + 1
+    else:
+        return n - 1
+
+def main():
+    n = ${n}
+    result = solve(n)
+    print(f"Input N: {n}")
+    print(f"Result: {result}")
+    return result
+
+if __name__ == "__main__":
+    main()`,
+      cpp: `/**
+ * Decrement or Increment (CodeChef DECINC)
+ * Time Complexity: O(1)
+ * Space Complexity: O(1)
+ */
+#include <iostream>
+
+int solve(int n, int divisor = 4) {
+    if (n % divisor == 0) {
+        return n + 1;
+    } else {
+        return n - 1;
+    }
+}
+
+int main() {
+    int n = ${n};
+    int result = solve(n);
+    std::cout << "Input N: " << n << std::endl;
+    std::cout << "Result: " << result << std::endl;
+    return 0;
+}`,
+    },
+    complexity: {
+      time: "O(1)",
+      space: "O(1)",
+      rationale: "Direct evaluation of a single modulo operation and arithmetic addition/subtraction executes in constant time with zero extra memory.",
+    },
+    finalAnswer,
+    learnerQuestion: {
+      prompt: `Given N = ${n} and divisor = ${divisor}, which branch of the conditional statement is executed?`,
+      choices: [
+        {
+          id: "a",
+          text: isDivisible
+            ? `The increment branch (N + 1) because ${n} % ${divisor} === 0.`
+            : `The decrement branch (N - 1) because ${n} % ${divisor} !== 0.`,
+        },
+        {
+          id: "b",
+          text: isDivisible
+            ? `The decrement branch (N - 1) because ${n} is not divisible.`
+            : `The increment branch (N + 1) because ${n} is divisible.`,
+        },
+        {
+          id: "c",
+          text: "Both branches run sequentially in a loop until N reaches zero.",
+        },
+        {
+          id: "d",
+          text: "Neither branch runs because the number cannot be represented as an integer.",
+        },
+      ],
+      correctId: "a",
+      hints: [
+        `Evaluate the remainder: ${n} % ${divisor} = ${remainder}.`,
+        isDivisible
+          ? "The remainder is 0, so the condition (n % divisor == 0) is true."
+          : "The remainder is non-zero, so the condition (n % divisor == 0) is false.",
+      ],
+      misconceptions: {
+        b: { code: "INCORRECT_CONDITION", feedback: `Check the remainder: ${n} % ${divisor} is ${remainder}.` },
+        c: { code: "LOOP_MISCONCEPTION", feedback: "An if/else statement executes exactly one branch once, without looping." },
+        d: { code: "TYPE_ERROR", feedback: "N is a standard integer within valid range." },
       },
     },
   };
@@ -4492,6 +6761,30 @@ function solveGenericArithmetic(
     },
     {
       stepNumber: 1,
+      title: "Evaluate Formula",
+      actions: [
+        {
+          action: "compare",
+          text: `Evaluate:\n${calculationDesc}\n→ Result: ${finalAnswer}`,
+        },
+        {
+          action: "show_callout",
+          text: `Executing formula: ${calculationDesc}`,
+          boxType: "warning",
+        },
+      ],
+      codeLine: "compute",
+      narrative: {
+        currentStep: "Evaluation",
+        why: "Execute mathematical operations.",
+        whatChanged: `Calculated ${calculationDesc}.`,
+        whatToNotice: "Direct single-step computation.",
+        keyInsight: "Deterministic arithmetic evaluation in constant time.",
+        nextStep: "Render final result.",
+      },
+    },
+    {
+      stepNumber: 2,
       title: "Final Result",
       actions: [
         {
@@ -4802,6 +7095,8 @@ export function normalizeToProblemSpec(query: string): ProblemSpec {
     knownTopic = parsed.problemType;
     if (parsed.problemType === "greater-average") {
       candidates = ["Floating-Point Division", "Integer Cross-Multiplication"];
+    } else if (parsed.problemType === "decrement-or-increment") {
+      candidates = ["Modulo Condition (if/else)", "Bitwise Mask"];
     } else if (parsed.problemType === "two-sum") {
       candidates = ["Brute Force O(N²)", "Hash Map O(N)", "Two Pointers O(N log N)"];
     } else if (parsed.problemType === "binary-search") {
