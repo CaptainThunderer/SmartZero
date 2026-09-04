@@ -5,7 +5,7 @@
 [![React](https://img.shields.io/badge/React-19.1.0-blue?style=flat&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7.0-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
 [![Excalidraw](https://img.shields.io/badge/Canvas-Excalidraw_0.18-purple)](https://excalidraw.com/)
-[![Tests](https://img.shields.io/badge/Tests-15_suites_%7C_1511%2B_passed-brightgreen)](#testing--verification-metrics)
+[![Tests](https://img.shields.io/badge/Tests-16_suites_%7C_1541%2B_passed-brightgreen)](#testing--verification-metrics)
 [![Build](https://img.shields.io/badge/Build-Passing-brightgreen)](#development-commands)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 
@@ -23,7 +23,8 @@ Instead, SmartZero operates as an **interactive, pedagogical peer**:
 1. **AI DSA Teacher**: Formulates structured teaching plans, diagnoses learner misconceptions, and adapts pacing to the student.
 2. **Interactive Semantic Canvas**: Uses Excalidraw as a high-fidelity algorithmic whiteboard driven strictly by a deterministic visual DSL.
 3. **Deterministic DSA Engine**: Drives discrete state transitions, variable dry-runs, and pointer movements with zero hallucination.
-4. **Synchronized 4-Way Surface**: At every step of playback, the **AI Explanation**, **Whiteboard Canvas**, **Code Line**, and **State Variables** represent the exact same computational step.
+4. **Featherless AI Voice Narration**: Output-only spoken teacher narration with deterministic playback synchronization.
+5. **Synchronized 5-Way Surface**: At every step of playback, the **AI Explanation**, **Spoken Teacher Narration**, **Whiteboard Canvas**, **Code Line**, and **State Variables** represent the exact same computational step.
 
 ```text
 User Question / Story Problem
@@ -86,7 +87,7 @@ SmartZero brings the fluid, intuitive visual workspace of modern design tools (l
 - **Multi-Language Synchronized Code**: Dynamic syntax-highlighted code viewer in JavaScript, Python, and C++ with active line tracking synchronized with canvas mutations.
 - **Teach Mode & Palette**: Structured curriculum palette allowing learners or educators to trigger canonical algorithm demonstrations across 22 DSA categories.
 - **Isolated Multi-Workspaces**: Tabbed workspace manager allowing users to maintain multiple concurrent DSA explorations with complete isolation of state, chat history, canvas, and notes.
-- **Integrated Markdown Notes**: Dedicated per-workspace scratchpad with live preview for taking notes during study sessions.
+- **Neural Voice Narration (Edge-TTS)**: Output-only teacher voice narration (`en-US-JennyNeural`) deterministically synchronized with visual playback. Step advances strictly upon the audio `ended` event.
 - **Dual AI Provider Architecture**: High-speed cloud model routing via Featherless AI (GLM-5.3-Flash for reasoning, Qwen3-32B for DSA code) paired with an offline deterministic fallback engine.
 
 ---
@@ -343,6 +344,8 @@ All environment variables are validated server-side. **No secret API keys are ev
 | `FEATHERLESS_MODEL` | Optional | `Qwen/Qwen3-32B` | Default model for code generation and general explanations. |
 | `FEATHERLESS_BASE_URL` | Optional | `https://api.featherless.ai/v1` | Base URL for OpenAI-compatible Featherless endpoint. |
 | `FEATHERLESS_REASONING_MODEL` | Optional | `zai-org/GLM-5.3-Flash` | Reasoning model for deep story problem normalization. |
+| `EDGE_TTS_VOICE` | Optional | `en-US-JennyNeural` | Microsoft Edge online neural voice for spoken teacher narration. |
+| `EDGE_TTS_RATE` | Optional | `-5%` | Speed adjustment for spoken teacher narration pacing. |
 | `SMARTZERO_ENABLE_LIVE_AI` | Optional | `true` | Set to `false` to force offline local deterministic mode. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Optional | `""` | Supabase project URL for optional workspace persistence. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`| Optional | `""` | Supabase anon public key for client-side queries. |
@@ -369,7 +372,7 @@ npm run lint
 # Execute strict TypeScript type validation (tsc --noEmit)
 npm run typecheck
 
-# Execute all 15 automated test suites sequentially with tsx
+# Execute all 16 automated test suites sequentially with tsx
 npm test
 ```
 
@@ -377,7 +380,7 @@ npm test
 
 ## API Routes
 
-SmartZero exposes 4 server-side API route handlers under `app/api/`:
+SmartZero exposes 5 server-side API route handlers under `app/api/`:
 
 | Endpoint | Method | Input Schema | Output Schema | Purpose |
 |:---|:---:|:---|:---|:---|
@@ -385,6 +388,7 @@ SmartZero exposes 4 server-side API route handlers under `app/api/`:
 | `/api/lesson` | `POST` | `{ lessonId: string, rawQuestion?: string, inputData?: number[] }` | `Lesson` | Generates a full deterministic lesson structure containing visual steps, code snippets, and questions. |
 | `/api/hint` | `POST` | `{ lessonId?: string, stepIndex?: number, questionPrompt?: string }` | `{ hint: string }` | Provides a targeted, non-spoiling pedagogical hint for the current active step. |
 | `/api/evaluate` | `POST` | `{ expectedId: string, choiceId: string }` | `{ correct: boolean }` | Validates a learner prediction choice and provides deterministic diagnostic feedback. |
+| `/api/narrate` | `POST` | `{ text: string, voice?: string, speed?: number }` | `audio/mpeg` | Synthesizes concise teacher voice narration via Edge-TTS (`en-US-JennyNeural`). |
 
 *For complete schemas, error codes, and request examples, see [API.md](API.md).*
 
@@ -395,7 +399,7 @@ SmartZero exposes 4 server-side API route handlers under `app/api/`:
 SmartZero features a stateful, tabbed **Workspace Management System** (`components/SmartZero.tsx` & `components/WorkspaceSwitcher.tsx`). Each workspace operates with complete isolation:
 
 - **Isolated State**: Each workspace tab maintains its own independent:
-  - Active topic ID and lesson runtime state (`stepIndex`, `isPlaying`, `speed`)
+  - Active topic ID and lesson runtime state (`stepIndex`, `isPlaying`, `speed`, `voiceMuted`)
   - Semantic Excalidraw canvas element tree
   - Code editor content, language selection, and active line highlights
   - Tutor chat conversation history
@@ -416,7 +420,7 @@ SmartZero features a stateful, tabbed **Workspace Management System** (`componen
 
 ## Testing & Verification Metrics
 
-SmartZero maintains a rigorous test suite spanning 15 specialized suites:
+SmartZero maintains a rigorous test suite spanning 16 specialized suites:
 
 ```text
 ══════════════════════════════════════════════════════════════════
@@ -437,8 +441,9 @@ SmartZero maintains a rigorous test suite spanning 15 specialized suites:
   ✅ tests/universal_benchmarks.test.ts    - 39 Industry Benchmark DSA Inquiries
   ✅ tests/exact_7_queries.test.ts         - Golden Acceptance Criteria Suite
   ✅ tests/cross_contamination.test.ts     - Zero State Leakage & Sequence Tokens
+  ✅ tests/narration.test.ts               - Featherless Audio Speech & Step Sync
 ══════════════════════════════════════════════════════════════════
-  RESULT: 15 / 15 Suites Passed | 1,511+ Assertions | 0 Failures
+  RESULT: 16 / 16 Suites Passed | 1,541+ Assertions | 0 Failures
   BUILD: Next.js 15.5.0 Production Build Passed (Code 0)
   TYPES: tsc --noEmit Passed (0 Errors)
   LINT: ESLint Passed (0 Warnings, 0 Errors)

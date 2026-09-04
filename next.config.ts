@@ -2,8 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Excalidraw uses client-only APIs
-  serverExternalPackages: ["@excalidraw/excalidraw"],
+  // Packages that must not be bundled by webpack on the server
+  serverExternalPackages: ["@excalidraw/excalidraw", "node-edge-tts", "ws"],
 };
 
 export default nextConfig;

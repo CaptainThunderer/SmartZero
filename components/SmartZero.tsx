@@ -32,6 +32,8 @@ import {
   TreePine,
   Undo2,
   Variable,
+  Volume2,
+  VolumeX,
   X,
   XCircle,
 } from "lucide-react";
@@ -41,6 +43,11 @@ import NotesPanel from "./NotesPanel";
 import { applyAction, initialCanvas, replay } from "../engine/core";
 import { lessonFromId, SUPPORTED_LESSONS } from "../engine/lessons";
 import { useWorkspaceStore, generateWorkspaceTitle } from "../stores/workspaceStore";
+import {
+  FeatherlessNarrationController,
+  getConciseStepNarration,
+  type VoiceStatus,
+} from "../lib/featherlessNarration";
 import { parseTeachCommand } from "../teach/commandParser";
 import { executeTeachCommand } from "../teach/commandExecutor";
 import {
@@ -126,6 +133,25 @@ export default function SmartZero() {
   const [aiBusy, setAiBusy] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestSeqRef = useRef<Record<string, number>>({});
+  const narrationControllerRef = useRef<FeatherlessNarrationController | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
+
+  /* ── Featherless Audio Controller Lifecycle ── */
+  useEffect(() => {
+    if (!narrationControllerRef.current) {
+      narrationControllerRef.current = new FeatherlessNarrationController();
+    }
+    return () => {
+      narrationControllerRef.current?.stop();
+      narrationControllerRef.current?.clearCache();
+    };
+  }, []);
+
+  /* ── Stop Narration on Workspace Switch ── */
+  useEffect(() => {
+    narrationControllerRef.current?.stop();
+    setVoiceStatus(activeWs.voiceMuted ? "muted" : "idle");
+  }, [activeWorkspaceId, activeWs.voiceMuted]);
 
   /* ── Teach Mode UI State (Palette Dialogs) ── */
   const [activeTeachDialog, setActiveTeachDialog] = useState<
@@ -265,7 +291,7 @@ export default function SmartZero() {
 
   const startLesson = useCallback(
     (l: Lesson, preamble?: string, wsId?: string) => {
-      const targetId = wsId || activeWorkspaceId;
+      const targetId = wsId || activeWs.id || useWorkspaceStore.getState().activeWorkspaceId;
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
@@ -311,11 +337,13 @@ export default function SmartZero() {
     const q = text.trim();
     if (!q) return;
     setInput("");
+    narrationControllerRef.current?.stop();
     const targetWsId = activeWorkspaceId;
     const currentSeq = (requestSeqRef.current[targetWsId] || 0) + 1;
     requestSeqRef.current[targetWsId] = currentSeq;
 
     updateWorkspace(targetWsId, (prev) => ({
+      playing: false,
       chat: [...prev.chat, { role: "user", text: q }],
     }));
     setAiBusy(true);
@@ -582,6 +610,7 @@ export default function SmartZero() {
      Playback Controls
      ══════════════════════════════════════════ */
   function next() {
+    narrationControllerRef.current?.stop();
     if (!lesson) return;
     if (phase === "waiting_for_learner") return;
     if (step >= total - 1) return;
@@ -598,6 +627,7 @@ export default function SmartZero() {
   }
 
   function prev() {
+    narrationControllerRef.current?.stop();
     if (!lesson || step <= 0) return;
     const prevStep = step - 1;
     updateActiveWorkspace({
@@ -612,6 +642,9 @@ export default function SmartZero() {
   }
 
   function restart() {
+    narrationControllerRef.current?.stop();
+    narrationControllerRef.current?.resetAvailability();
+    setVoiceStatus(activeWs.voiceMuted ? "muted" : "idle");
     if (!lesson) return;
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -631,31 +664,64 @@ export default function SmartZero() {
 
   function togglePlay() {
     if (playing) {
+      narrationControllerRef.current?.pause();
       updateActiveWorkspace({ playing: false });
+      setVoiceStatus(activeWs.voiceMuted ? "muted" : "idle");
     } else if (lesson && phase !== "waiting_for_learner" && phase !== "completed") {
+      narrationControllerRef.current?.resetAvailability();
+      setVoiceStatus(activeWs.voiceMuted ? "muted" : "idle");
       updateActiveWorkspace({ playing: true, phase: "teaching" });
     }
   }
 
-  /* ── Playback Timer ── */
+  function toggleVoiceMute() {
+    const nextMuted = !activeWs.voiceMuted;
+    updateActiveWorkspace({ voiceMuted: nextMuted });
+    if (nextMuted) {
+      narrationControllerRef.current?.stop();
+      setVoiceStatus("muted");
+    } else {
+      narrationControllerRef.current?.resetAvailability();
+      setVoiceStatus("idle");
+    }
+  }
+
+  /* ── Playback & Voice Narration Synchronization ── */
+  const voiceMuted = !!activeWs.voiceMuted;
+
   useEffect(() => {
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    if (!playing || !lesson) return;
 
-    timerRef.current = setTimeout(() => {
-      const nextStep = step + 1;
+    if (!playing || !lesson) {
+      narrationControllerRef.current?.stop();
+      setVoiceStatus(voiceMuted ? "muted" : "idle");
+      return;
+    }
+
+    const currentWsId = activeWorkspaceId;
+    const currentStepIndex = step;
+    const stepData = lesson.steps[currentStepIndex];
+
+    const advanceToNext = () => {
+      // Guard against cross-workspace mutations
+      if (useWorkspaceStore.getState().activeWorkspaceId !== currentWsId) return;
+
+      const nextStep = currentStepIndex + 1;
       if (nextStep >= total) {
         updateActiveWorkspace({
           playing: false,
           phase: "completed",
         });
+        setVoiceStatus(voiceMuted ? "muted" : "idle");
         return;
       }
+
       const nextStepData = lesson.steps[nextStep];
       const isPause = !!nextStepData?.pause;
+
       if (isPause) {
         updateActiveWorkspace({
           step: nextStep,
@@ -667,6 +733,7 @@ export default function SmartZero() {
           playing: false,
           canvasState: replay(lesson.steps, nextStep),
         });
+        setVoiceStatus(voiceMuted ? "muted" : "idle");
       } else {
         updateActiveWorkspace({
           step: nextStep,
@@ -679,15 +746,76 @@ export default function SmartZero() {
           canvasState: replay(lesson.steps, nextStep),
         });
       }
-    }, 1200 / speed);
+    };
+
+    if (stepData?.pause && phase === "waiting_for_learner") {
+      updateActiveWorkspace({ playing: false });
+      setVoiceStatus(voiceMuted ? "muted" : "idle");
+      return;
+    }
+
+    // Branch 1: Muted -> Deterministic Timer Progression
+    if (voiceMuted) {
+      setVoiceStatus("muted");
+      timerRef.current = setTimeout(() => {
+        advanceToNext();
+      }, 1200 / speed);
+
+      return () => {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+      };
+    }
+
+    // Branch 2: Voice Narration via Featherless.ai
+    const controller = narrationControllerRef.current;
+    const textToSpeak = getConciseStepNarration(stepData, currentStepIndex, total, lesson.title);
+    setVoiceStatus("generating");
+
+    controller?.playStepNarration({
+      text: textToSpeak,
+      speed,
+      onStart: () => {
+        if (useWorkspaceStore.getState().activeWorkspaceId === currentWsId) {
+          setVoiceStatus("speaking");
+        }
+      },
+      onEnded: () => {
+        if (useWorkspaceStore.getState().activeWorkspaceId === currentWsId) {
+          setVoiceStatus("idle");
+          advanceToNext();
+        }
+      },
+      onError: () => {
+        if (useWorkspaceStore.getState().activeWorkspaceId === currentWsId) {
+          setVoiceStatus("unavailable");
+          timerRef.current = setTimeout(() => {
+            advanceToNext();
+          }, 1200 / speed);
+        }
+      },
+    });
 
     return () => {
+      controller?.stop();
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [playing, step, lesson, speed, total, activeWorkspaceId, updateActiveWorkspace]);
+  }, [
+    playing,
+    step,
+    lesson,
+    speed,
+    total,
+    voiceMuted,
+    phase,
+    activeWorkspaceId,
+    updateActiveWorkspace,
+  ]);
 
   /* ══════════════════════════════════════════
      Mode Switching
@@ -702,6 +830,7 @@ export default function SmartZero() {
 
   function switchToTeach() {
     if (mode === "teach") return;
+    narrationControllerRef.current?.stop();
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
@@ -1363,6 +1492,38 @@ export default function SmartZero() {
                     title="Next step"
                   >
                     <ArrowRight size={14} />
+                  </button>
+
+                  {/* Narration Voice Mute/Unmute toggle */}
+                  <button
+                    onClick={toggleVoiceMute}
+                    disabled={!lesson}
+                    className={`p-1.5 rounded-lg border transition-colors disabled:opacity-40 flex items-center gap-1 text-[11px] font-medium ${
+                      activeWs.voiceMuted
+                        ? isDark
+                          ? "border-[#2A2D48] text-[#9498B3] hover:bg-[#252646]"
+                          : "border-[#DDDDE7] text-[#9498B3] hover:bg-[#F2F2EE]"
+                        : isDark
+                          ? "border-[#5B5FEF]/40 bg-[#5B5FEF]/10 text-[#A5B4FC] hover:bg-[#5B5FEF]/20"
+                          : "border-[#5B5FEF]/30 bg-[#EEF0FD] text-[#5B5FEF] hover:bg-[#E0E4FC]"
+                    }`}
+                    title={
+                      activeWs.voiceMuted
+                        ? "Unmute AI Voice Narration"
+                        : voiceStatus === "unavailable"
+                          ? "Voice unavailable (fallback timer active)"
+                          : "Mute AI Voice Narration"
+                    }
+                    aria-label={activeWs.voiceMuted ? "Unmute AI Voice" : "Mute AI Voice"}
+                  >
+                    {activeWs.voiceMuted ? (
+                      <VolumeX size={14} className="text-[#9498B3]" />
+                    ) : (
+                      <Volume2 size={14} className={voiceStatus === "speaking" ? "animate-pulse text-[#5B5FEF] dark:text-[#A5B4FC]" : ""} />
+                    )}
+                    {voiceStatus === "unavailable" && !activeWs.voiceMuted && (
+                      <span className="text-[10px] text-[#E5A83B] font-normal hidden sm:inline">Voice offline</span>
+                    )}
                   </button>
 
                   {/* Step indicator */}

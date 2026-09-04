@@ -167,4 +167,20 @@
 
 ---
 
+## 7. Voice Narration & Edge-TTS Diagnostics
+
+### Problem 1: Voice Narration request hangs or throws `bufferUtil.mask is not a function`
+- **Cause**: Next.js webpack bundler attempting to bundle `ws` (used by `node-edge-tts`) on the server.
+- **Fix**: Ensure `node-edge-tts` and `ws` are declared in `serverExternalPackages` inside `next.config.ts`:
+  ```typescript
+  serverExternalPackages: ["@excalidraw/excalidraw", "node-edge-tts", "ws"],
+  ```
+
+### Problem 2: Voice shows "Voice unavailable" badge during playback
+- **Cause**: Network connectivity issues to Microsoft Edge online TTS or server-side 12-second timeout exceeded.
+- **Behavior**: SmartZero automatically fails safely to deterministic timer-based playback (`1200 / speed` ms) without freezing the canvas or blocking lesson progression.
+- **Fix**: Verify Internet connectivity or restart the development server.
+
+---
+
 *For further technical details, refer to [ARCHITECTURE.md](ARCHITECTURE.md) or [API.md](API.md).*

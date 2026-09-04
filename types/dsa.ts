@@ -250,6 +250,7 @@ export type LessonStep = {
   codeLine: string;
   explanation: string;
   narrative?: StepExplanation;
+  narration?: string;
   pause?: boolean;
   question?: LessonQuestion;
 };
@@ -279,6 +280,7 @@ export type ProblemVisualStep = {
   actions: DSLAction[];
   codeLine?: string;
   narrative: StepExplanation;
+  narration?: string;
 };
 
 export type ProblemSolutionPlan = {
@@ -473,6 +475,9 @@ export type LearningWorkspace = {
 
   /* Language */
   language: SupportedLanguage;
+
+  /* Voice Narration */
+  voiceMuted?: boolean;
 
   /* Notes */
   notes: WorkspaceNote[];

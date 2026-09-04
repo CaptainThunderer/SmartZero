@@ -83,6 +83,13 @@ FEATHERLESS_BASE_URL=https://api.featherless.ai/v1
 FEATHERLESS_REASONING_MODEL=zai-org/GLM-5.3-Flash
 
 # ================================================================
+# Voice Narration: Microsoft Edge Neural TTS (node-edge-tts)
+# Zero API key required; online neural synthesis directly from Node.js
+# ================================================================
+EDGE_TTS_VOICE=en-US-JennyNeural
+EDGE_TTS_RATE=-5%
+
+# ================================================================
 # Optional: Supabase Workspace Persistence
 # ================================================================
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
@@ -96,21 +103,27 @@ SMARTZERO_ENABLE_LIVE_AI=true
 
 ---
 
-## 5. Featherless AI Setup
+## 5. Featherless AI & Voice Narration Setup
 
-SmartZero connects to [Featherless AI](https://featherless.ai/) for high-throughput model inference across top open-source models:
+SmartZero connects to [Featherless AI](https://featherless.ai/) for high-throughput model inference across top open-source text models, while voice narration is powered by Microsoft Edge online neural TTS (`node-edge-tts`):
 
-1. **Obtain an API Key**: Sign up at [https://featherless.ai](https://featherless.ai) and generate an API key from your dashboard.
-2. **Paste the Key**: Add `FEATHERLESS_API_KEY=fl-xxx` to `.env.local`.
-3. **Model Selection**:
+1. **Featherless AI (Reasoning & Code)**:
+   - **Obtain an API Key**: Sign up at [https://featherless.ai](https://featherless.ai) and generate an API key from your dashboard.
+   - **Paste the Key**: Add `FEATHERLESS_API_KEY=fl-xxx` to `.env.local`.
    - `FEATHERLESS_REASONING_MODEL`: `zai-org/GLM-5.3-Flash` (default) handles natural-language story normalization and complex pedagogical breakdowns.
    - `FEATHERLESS_MODEL`: `Qwen/Qwen3-32B` (default) handles multi-language code generation and algorithmic dry runs.
 
-### Offline & Demo Mode (Zero-Config Hackathon Reliability)
-If you do not have a Featherless API key:
-- Leave `FEATHERLESS_API_KEY=` blank, or set `SMARTZERO_ENABLE_LIVE_AI=false`.
-- SmartZero will **automatically activate its built-in deterministic provider**.
-- All 37 registered DSA topics, 29 canonical lessons, and 42 problem solvers will continue to function deterministically with zero external API calls.
+2. **Voice Narration (Edge-TTS Neural Voice)**:
+   - **Zero API Key Required**: Edge-TTS connects directly to Microsoft Edge online neural speech synthesis.
+   - `EDGE_TTS_VOICE`: `en-US-JennyNeural` (default female teacher voice) or any Edge neural voice.
+   - `EDGE_TTS_RATE`: `-5%` (default teacher cadence for optimal algorithmic explanations).
+   - **Server-Side Timeout Protection**: The `/api/narrate` route includes a strict 12-second server timeout to prevent hanging requests.
+
+### Offline, Audio Fallback, & Demo Mode (Zero-Config Hackathon Reliability)
+- If network conditions prevent audio synthesis or the timeout expires:
+  - SmartZero displays a subtle "Voice unavailable" indicator and **automatically continues playback via deterministic timer progression**.
+  - No browser `speechSynthesis` or external TTS providers are ever used.
+  - All 37 registered DSA topics, 29 canonical lessons, 42 problem solvers, and canvas interactions continue to function with 100% deterministic reliability.
 
 ---
 

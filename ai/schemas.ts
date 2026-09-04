@@ -213,3 +213,10 @@ export const LessonRequestSchema = z.object({
   rawQuestion: z.string(),
   inputData: z.array(z.number()).optional(),
 });
+
+export const NarrateRequestSchema = z.object({
+  text: z.string().min(1).max(1000),
+  voice: z.string().optional(),
+  speed: z.number().min(0.25).max(3.0).optional(),
+});
+export type NarrateRequest = z.infer<typeof NarrateRequestSchema>;

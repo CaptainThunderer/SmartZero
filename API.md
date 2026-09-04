@@ -6,11 +6,11 @@
 
 ## 1. Overview & Architecture
 
-SmartZero exposes four RESTful route handlers under `app/api/`. All endpoints:
+SmartZero exposes five RESTful route handlers under `app/api/`. All endpoints:
 - Run server-side in Node.js runtime.
 - Strictly validate request bodies using Zod schemas (`ai/schemas.ts`).
 - Securely access `FEATHERLESS_API_KEY` without exposing keys to the browser.
-- Automatically fall back to deterministic rule engines upon network timeout or API error.
+- Automatically fall back to deterministic rule engines or timer progression upon network timeout or API error.
 
 | Endpoint | Method | Input Contract | Response Contract | Typical Latency |
 |:---|:---:|:---|:---|:---:|
@@ -18,6 +18,7 @@ SmartZero exposes four RESTful route handlers under `app/api/`. All endpoints:
 | [`/api/lesson`](#2-post-apilesson) | `POST` | `LessonRequestSchema` | `Lesson` | ~200ms (Live) / ~2ms (Fallback) |
 | [`/api/hint`](#3-post-apihint) | `POST` | `HintRequestSchema` | `{ hint: string }` | ~350ms (Live) / ~2ms (Fallback) |
 | [`/api/evaluate`](#4-post-apievaluate) | `POST` | `EvaluateRequestSchema` | `{ correct: boolean }` | < 1ms (Deterministic) |
+| [`/api/narrate`](#5-post-apinarrate) | `POST` | `NarrateRequestSchema` | `audio/mpeg` (Binary stream) | ~300ms (Live) / Fallback |
 
 ---
 
@@ -258,6 +259,55 @@ Validates a learner's selected choice against the expected answer for an interac
   { "error": "expectedId and choiceId are required." }
   // OR
   { "error": "Invalid request body." }
+  ```
+
+---
+
+### 5. `POST /api/narrate`
+
+Synthesizes concise, teacher-like audio narration using Microsoft Edge online neural TTS (`node-edge-tts`). Runs on Node.js server runtime without requiring external API keys, streaming binary MP3 chunks directly to client `HTMLAudioElement`.
+
+- **File Path**: `app/api/narrate/route.ts`
+- **Authentication**: None required
+- **Runtime**: Node.js (`export const runtime = "nodejs"`)
+- **Response Format**: Binary audio stream (`audio/mpeg`)
+
+#### Request Schema (`NarrateRequestSchema`)
+```typescript
+{
+  text: string;     // 1 to 1000 characters (Required, stripped of markdown)
+  voice?: string;   // Optional voice ID (Defaults to process.env.EDGE_TTS_VOICE or "en-US-JennyNeural")
+  speed?: number;   // Optional playback rate between 0.25 and 3.0 (Defaults to 1.0)
+}
+```
+
+#### Example Request Payload
+```json
+{
+  "text": "Compare element at index 0 with element at index 1.",
+  "voice": "en-US-JennyNeural",
+  "speed": 1.0
+}
+```
+
+#### Success Response
+- **Status**: `200 OK`
+- **Content-Type**: `audio/mpeg`
+- **Cache-Control**: `public, max-age=3600, immutable`
+- **Body**: Binary MP3 audio buffer
+
+#### Error Responses
+- **`400 Bad Request`**:
+  ```json
+  { "error": "Invalid narration request parameters.", "code": "VALIDATION_ERROR" }
+  ```
+- **`503 Service Unavailable` (Timeout)**:
+  ```json
+  { "error": "Voice synthesis timed out (Edge-TTS service did not respond within timeout limit)", "code": "EDGE_TTS_TIMEOUT" }
+  ```
+- **`503 Service Unavailable` (Synthesis Error)**:
+  ```json
+  { "error": "Voice synthesis error", "code": "EDGE_TTS_ERROR", "details": "..." }
   ```
 
 ---

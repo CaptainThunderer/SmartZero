@@ -23,6 +23,7 @@ flowchart TD
         API_LES["/api/lesson"]
         API_HNT["/api/hint"]
         API_EVL["/api/evaluate"]
+        API_NAR["/api/narrate (Edge-TTS Neural Audio)"]
     end
 
     subgraph Agent [Agent & NLU Tier - agent/* & ai/*]
@@ -30,6 +31,11 @@ flowchart TD
         SOLVER[Problem Normalizer & 42 Solvers]
         ROUTER[Featherless Dynamic Model Router]
         FALLBACK[Deterministic Rule-Based Fallback]
+    end
+
+    subgraph Audio [Voice Narration Tier - lib/*]
+        NARR[NarrationController (Edge-TTS)]
+        CACHE[In-Memory Audio ObjectURL Cache]
     end
 
     subgraph Engine [Deterministic DSA Engine - engine/*]
@@ -49,6 +55,8 @@ flowchart TD
     API_HNT --> ROUTER
     API_EVL --> REG
     Engine --> REPLAY --> CANVAS & CODE
+    WS --> NARR --> API_NAR
+    NARR --> CACHE
 ```
 
 ---
@@ -247,6 +255,29 @@ SmartZero supports client-side and cloud persistence:
   - `chat_messages`: Stores contextual conversation turns per workspace.
   - `notes`: Markdown scratchpad content per workspace.
   - **Row Level Security (RLS)**: Enforces that users can only access their own workspaces based on authenticated user IDs.
+
+---
+
+## 11. Edge-TTS Audio Voice Narration Architecture
+
+SmartZero implements an **output-only AI teacher voice narration system** backed by Microsoft Edge online neural TTS (`node-edge-tts`) using `en-US-JennyNeural`.
+
+### Architectural Invariants
+1. **Zero Browser TTS**: Strictly NO usage of `window.speechSynthesis`, `SpeechSynthesisUtterance`, or third-party client TTS libraries.
+2. **Server-Side Node.js Execution & External Package Isolation**:
+   - `app/api/narrate/route.ts` runs on Node.js server runtime (`export const runtime = "nodejs"`).
+   - Configured with `serverExternalPackages: ["node-edge-tts", "ws"]` to ensure native WebSocket handling and zero webpack bundler interference.
+   - Built-in strict 12-second server timeout (`EDGE_TTS_TIMEOUT`) guarantees `/api/narrate` never hangs indefinitely.
+3. **Deterministic Audio-Driven Step Progression**:
+   - When Play is active and voice is unmuted, the canvas step advances **strictly upon the HTMLAudioElement `ended` event**.
+   - It does **not** advance when the API response arrives or when audio playback merely begins.
+   - The whiteboard canvas, Monaco code highlight, and AI Teacher explanation remain synchronized to the current step while the voice explains it.
+4. **Race-Condition & Token Protection**:
+   - `NarrationController` tracks a monotonic `generationToken`.
+   - Any manual step skip (`Next`, `Prev`), pause, reset, or workspace tab switch immediately invalidates active tokens, halts audio, and discards in-flight audio responses.
+5. **Mute / Unmute & Offline Fallback**:
+   - Muting immediately stops active audio and transitions playback to deterministic timer progression (`1200 / speed` ms) without making `/api/narrate` calls.
+   - If audio synthesis encounters a network failure or times out, the UI displays a subtle "Voice unavailable" badge and seamlessly continues playback via deterministic timers without freezing or crashing.
 
 ---
 

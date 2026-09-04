@@ -155,6 +155,27 @@ All communication between the client, API route handlers, and AI models is stric
 - **`DSATaskSchema`**: The master contract returned by `/api/interpret`. Contains normalized `intent`, `lessonId`, `topicId`, `problemPlan`, `customLesson`, and `codeSnippets`.
 - **`EvaluateRequestSchema`**: Validates prediction responses (`{ expectedId: string, choiceId: string }`).
 - **`HintRequestSchema`**: Contextual hint request containing active step indices and question prompts.
+- **`NarrateRequestSchema`**: Validates text-to-speech requests (`{ text: string, voice?: string, speed?: number }`).
+
+---
+
+## 8. Pedagogical Voice Narration Derivation (`lib/featherlessNarration.ts`)
+
+SmartZero makes a deliberate pedagogical distinction between **written instructional text** and **spoken voice narration**:
+- **Written text** in the AI Teacher and Monaco code viewer can be detailed, structured with markdown lists, code identifiers, and asymptotic Big-O equations.
+- **Spoken narration** must be concise (5–25 words), conversational, natural, and free of visual artifacts.
+
+### Spoken Text Normalization Pipeline
+1. **Markdown & Syntax Stripping**: Code ticks, asterisks, bracket references, and arrows are stripped.
+2. **Asymptotic Speech Replacement**: Equations like `O(N)` or `O(log N)` are rewritten as spoken English ("order of complexity").
+3. **5-Tier Derivation Precedence**:
+   - Priority 1: Authored `step.narration` if explicitly defined on the lesson step.
+   - Priority 2: Interactive checkpoint `step.question.prompt` when pausing for learner prediction.
+   - Priority 3: Structured pedagogical narrative `step.narrative.currentStep` or `step.narrative.why`.
+   - Priority 4: Semantic action inflection (e.g. "Compare element 10 and 20", "Swap elements at index 1 and 4").
+   - Priority 5: Concise first sentence of `step.explanation`.
+4. **Length Clamping**: Narration is strictly clamped to a maximum of 25 words to ensure high student engagement without delay.
+5. **No Visual Code/JSON Leakage**: Raw code blocks, ASTs, and Excalidraw element JSON are never passed to the audio synthesizer.
 
 ---
 
