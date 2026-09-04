@@ -96,7 +96,7 @@ Output ONLY a valid JSON object with keys:
 - difficulty: "Easy" | "Medium" | "Hard"
 - explanation: comprehensive pedagogical explanation or walkthrough.`,
         input,
-        "TEXT_PROBLEM_SOLVING"
+        "COMPLEX_REASONING"
       );
 
       const parsed = AIResponseSchema.parse(parseJson(raw));

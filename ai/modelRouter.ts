@@ -33,8 +33,17 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 const BASE_URL = process.env.FEATHERLESS_BASE_URL || "https://api.featherless.ai/v1";
 
+export const DEFAULT_REASONING_MODEL = process.env.FEATHERLESS_REASONING_MODEL || "zai-org/GLM-5.3-Flash";
+export const DEFAULT_STANDARD_MODEL = process.env.FEATHERLESS_MODEL || "Qwen/Qwen3-32B";
+
 // Fallback catalog in case network is offline or discovery fails
 const DEFAULT_KNOWN_MODELS: FeatherlessModelMetadata[] = [
+  {
+    id: "zai-org/GLM-5.3-Flash",
+    context_length: 32768,
+    features: { tool_use: true },
+    available_on_current_plan: true,
+  },
   {
     id: "Qwen/Qwen3-32B",
     context_length: 32768,
@@ -166,8 +175,10 @@ function calculateModelScore(model: FeatherlessModelMetadata, task: ModelTaskTyp
 
     case "DSA_REASONING":
     case "COMPLEX_REASONING":
+      if (model.id === DEFAULT_REASONING_MODEL) score += 900;
+      if (idLower.includes("glm-5.3") || idLower.includes("glm-5")) score += 800;
       if (idLower.includes("32b") || idLower.includes("70b") || idLower.includes("72b")) score += 500;
-      if (idLower.includes("qwen")) score += 300;
+      if (idLower.includes("qwen")) score += 400;
       if (idLower.includes("z1") || idLower.includes("r1") || idLower.includes("reason")) score += 400;
       if (model.context_length >= 32768) score += 100;
       break;
@@ -175,13 +186,22 @@ function calculateModelScore(model: FeatherlessModelMetadata, task: ModelTaskTyp
     case "LONG_CONTEXT":
       if (model.context_length >= 65536) score += 800;
       else if (model.context_length >= 32768) score += 400;
+      if (idLower.includes("glm-5.3")) score += 300;
       break;
 
     case "TEXT_PROBLEM_SOLVING":
+      if (model.id === DEFAULT_REASONING_MODEL) score += 850;
+      if (idLower.includes("glm-5.3") || idLower.includes("glm-5")) score += 750;
+      if (idLower.includes("32b")) score += 400;
+      else if (idLower.includes("14b") || idLower.includes("15b") || idLower.includes("9b")) score += 300;
+      if (idLower.includes("qwen")) score += 300;
+      break;
+
     case "GENERAL_EXPLANATION":
     case "COMPARISON":
     default:
       if (idLower.includes("32b")) score += 400;
+      if (idLower.includes("glm-5.3")) score += 350;
       else if (idLower.includes("14b") || idLower.includes("15b") || idLower.includes("9b")) score += 300;
       else if (idLower.includes("7b")) score += 200;
       if (idLower.includes("qwen")) score += 250;
@@ -197,25 +217,60 @@ function calculateModelScore(model: FeatherlessModelMetadata, task: ModelTaskTyp
 
 /**
  * Selects primary, secondary, and tertiary models for a task.
+ * Dynamically routes complex natural language reasoning to GLM-5.3-Flash
+ * and canonical DSA / code tasks to Qwen, with graceful fallback.
  */
 export async function selectModel(
   taskCategory: ModelTaskType = "TEXT_PROBLEM_SOLVING",
-  options?: { requireVision?: boolean }
+  options?: { requireVision?: boolean; preferReasoning?: boolean }
 ): Promise<ModelSelectionResult> {
   const effectiveCategory = options?.requireVision ? "VISION" : taskCategory;
   const models = await discoverModels();
   const ranked = rankModels(models, effectiveCategory);
 
-  const envPreferred = process.env.FEATHERLESS_MODEL;
-  let primary = ranked[0]?.id || "Qwen/Qwen3-32B";
+  const reasoningModelName = DEFAULT_REASONING_MODEL;
+  const standardModelName = DEFAULT_STANDARD_MODEL;
 
-  // If user specified an explicit env model that is available, respect it for non-vision
-  if (envPreferred && effectiveCategory !== "VISION" && ranked.some((m) => m.id === envPreferred)) {
-    primary = envPreferred;
+  const isReasoningTask =
+    options?.preferReasoning ||
+    effectiveCategory === "COMPLEX_REASONING" ||
+    effectiveCategory === "DSA_REASONING" ||
+    effectiveCategory === "TEXT_PROBLEM_SOLVING" ||
+    effectiveCategory === "CODE_DEBUGGING";
+
+  const reasoningCandidate = ranked.find(
+    (m) =>
+      (m.id === reasoningModelName || m.id.toLowerCase().includes("glm-5.3")) &&
+      m.available_on_current_plan !== false &&
+      !m.is_gated
+  );
+
+  const standardCandidate = ranked.find(
+    (m) =>
+      (m.id === standardModelName || m.id.toLowerCase().includes("qwen3-32b") || m.id.toLowerCase().includes("qwen")) &&
+      m.available_on_current_plan !== false &&
+      !m.is_gated
+  );
+
+  let primary: string;
+  let secondary: string;
+  let tertiary: string;
+
+  if (effectiveCategory === "VISION") {
+    primary = ranked.find((m) => Boolean(m.features?.image_input))?.id || "Qwen/Qwen2.5-VL-7B-Instruct";
+    secondary = ranked.find((m) => m.id !== primary)?.id || standardModelName;
+    tertiary = ranked.find((m) => m.id !== primary && m.id !== secondary)?.id || "allura-org/GLM4-9B-Neon-v2";
+  } else if (isReasoningTask && reasoningCandidate) {
+    // 1. Prefer GLM-5.3-Flash for ambiguous natural-language, story problems, normalization, complex reasoning
+    primary = reasoningCandidate.id;
+    secondary = standardCandidate ? standardCandidate.id : (ranked.find((m) => m.id !== primary)?.id || standardModelName);
+    tertiary = ranked.find((m) => m.id !== primary && m.id !== secondary)?.id || "allura-org/GLM4-9B-Neon-v2";
+  } else {
+    // 2. Prefer Qwen for canonical registered DSA lessons, code generation, and standard queries
+    primary = standardCandidate ? standardCandidate.id : (ranked[0]?.id || standardModelName);
+    secondary = reasoningCandidate ? reasoningCandidate.id : (ranked.find((m) => m.id !== primary)?.id || "allura-org/GLM4-9B-Neon-v2");
+    tertiary = ranked.find((m) => m.id !== primary && m.id !== secondary)?.id || "SteelStorage/AbL3In-15B";
   }
-
-  const secondary = ranked.find((m) => m.id !== primary)?.id || "allura-org/GLM4-9B-Neon-v2";
-  const tertiary = ranked.find((m) => m.id !== primary && m.id !== secondary)?.id || "SteelStorage/AbL3In-15B";
 
   const supportsVision = ranked.some((m) => m.id === primary && Boolean(m.features?.image_input));
 

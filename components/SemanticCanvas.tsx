@@ -12,8 +12,31 @@ function resetStableCounter() {
   stableCounter = 0;
 }
 
+/* ── Text wrapping utility for collision-free canvas layout ── */
+function wrapText(text: string, maxChars = 75): string[] {
+  if (!text) return [];
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    if (!currentLine) {
+      currentLine = word;
+    } else if ((currentLine + " " + word).length <= maxChars) {
+      currentLine += " " + word;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  return lines;
+}
+
 /* ── Convert CanvasState → Excalidraw element specs ── */
-function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
+export function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
   resetStableCounter();
   const specs: Record<string, unknown>[] = [];
   let y = 80;
@@ -55,38 +78,50 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
 
   /* ── Whiteboard Header ── */
   if (state.boardHeader) {
+    let rawTitle = state.boardHeader.title;
+    let rawSubtitle = state.boardHeader.subtitle;
+    if (rawTitle.length > 50) {
+      if (!rawSubtitle) rawSubtitle = rawTitle;
+      rawTitle = rawTitle.slice(0, 47) + "...";
+    }
+
     specs.push({
       type: "text",
       id: stableId("wb-title"),
       x: 100,
       y,
-      text: state.boardHeader.title.toUpperCase(),
-      fontSize: 24,
+      text: rawTitle.toUpperCase(),
+      fontSize: 22,
       strokeColor: colors.title,
     });
-    if (state.boardHeader.subtitle) {
+
+    if (rawSubtitle) {
+      const subLines = wrapText(rawSubtitle, 65);
       specs.push({
         type: "text",
         id: stableId("wb-subtitle"),
         x: 100,
-        y: y + 32,
-        text: state.boardHeader.subtitle,
-        fontSize: 15,
+        y: y + 30,
+        text: subLines.join("\n"),
+        fontSize: 14,
         strokeColor: colors.textSecondary,
       });
+      y += 36 + subLines.length * 20 + 16;
+    } else {
+      y += 48;
     }
+
     if (state.boardHeader.badge) {
       specs.push({
         type: "text",
         id: stableId("wb-badge"),
-        x: 620,
-        y: y + 4,
+        x: 640,
+        y: 80,
         text: `[ ${state.boardHeader.badge} ]`,
-        fontSize: 14,
+        fontSize: 13,
         strokeColor: colors.accent,
       });
     }
-    y += state.boardHeader.subtitle ? 70 : 45;
   }
 
   /* ── Callout Box ── */
@@ -106,13 +141,16 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
           ? colors.cellBgSorted
           : colors.boxBg;
 
+    const wrappedLines = wrapText(state.callout.text, 72);
+    const boxHeight = Math.max(48, wrappedLines.length * 24 + 20);
+
     specs.push({
       type: "rectangle",
       id: stableId("callout-box"),
       x: 100,
       y,
-      width: 720,
-      height: 44,
+      width: 740,
+      height: boxHeight,
       strokeColor: boxColor,
       backgroundColor: bgColor,
       strokeWidth: 1.5,
@@ -122,22 +160,25 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
       id: stableId("callout-text"),
       x: 115,
       y: y + 12,
-      text: state.callout.text,
+      text: wrappedLines.join("\n"),
       fontSize: 15,
       strokeColor: colors.textPrimary,
     });
-    y += 58;
+    y += boxHeight + 24;
   }
 
   /* ── Key Insight Card ── */
   if (state.insightCard) {
+    const wrappedInsight = wrapText(state.insightCard.text, 72);
+    const cardHeight = Math.max(56, 32 + wrappedInsight.length * 22 + 16);
+
     specs.push({
       type: "rectangle",
       id: stableId("insight-card-box"),
       x: 100,
       y,
-      width: 720,
-      height: 56,
+      width: 740,
+      height: cardHeight,
       strokeColor: colors.cellBorderActive,
       backgroundColor: colors.cellBgActive,
       strokeWidth: 2,
@@ -146,7 +187,7 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
       type: "text",
       id: stableId("insight-card-title"),
       x: 115,
-      y: y + 8,
+      y: y + 10,
       text: `★ KEY INSIGHT: ${state.insightCard.title}`,
       fontSize: 13,
       strokeColor: colors.accent,
@@ -155,12 +196,12 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
       type: "text",
       id: stableId("insight-card-text"),
       x: 115,
-      y: y + 28,
-      text: state.insightCard.text,
+      y: y + 32,
+      text: wrappedInsight.join("\n"),
       fontSize: 14,
       strokeColor: colors.textPrimary,
     });
-    y += 70;
+    y += cardHeight + 24;
   }
 
   /* ── Side-by-Side Comparison Board ── */
@@ -582,11 +623,16 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
 
   /* ── Array ── */
   if (state.array) {
+    const hasPointers = Object.keys(state.array.pointers).length > 0;
+    const titleY = y;
+    const pointerY = y + 36;
+    const cellY = hasPointers ? y + 66 : y + 38;
+
     specs.push({
       type: "text",
       id: stableId("arr-title"),
       x: 100,
-      y: y - 38,
+      y: titleY,
       text: "Array",
       fontSize: 22,
       strokeColor: colors.title,
@@ -603,7 +649,7 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
         type: "rectangle",
         id: stableId(`arr-cell-${i}`),
         x,
-        y,
+        y: cellY,
         width: 72,
         height: 60,
         strokeColor: dimmed
@@ -627,7 +673,7 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
         type: "text",
         id: stableId(`arr-val-${i}`),
         x: x + 25,
-        y: y + 19,
+        y: cellY + 19,
         text: String(v),
         fontSize: 20,
         strokeColor: dimmed ? colors.textDimmed : colors.textPrimary,
@@ -637,7 +683,7 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
         type: "text",
         id: stableId(`arr-idx-${i}`),
         x: x + 29,
-        y: y + 66,
+        y: cellY + 66,
         text: String(i),
         fontSize: 14,
         strokeColor: colors.indexText,
@@ -650,7 +696,7 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
             type: "text",
             id: stableId(`ptr-${name}-${i}`),
             x: x + 18,
-            y: y - 18,
+            y: pointerY,
             text: `↓ ${name}`,
             fontSize: 15,
             strokeColor: colors.pointer,
@@ -668,7 +714,7 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
         type: "rectangle",
         id: stableId("sliding-window-box"),
         x: winX - 6,
-        y: y - 6,
+        y: cellY - 6,
         width: winWidth + 12,
         height: 72,
         strokeColor: colors.accent,
@@ -679,7 +725,7 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
         type: "text",
         id: stableId("sliding-window-label"),
         x: winX + 8,
-        y: y + 90,
+        y: cellY + 90,
         text: `WINDOW: [${startIndex}..${endIndex}] ${conditionOrSum ? `(${conditionOrSum})` : ""}`,
         fontSize: 14,
         strokeColor: colors.accent,
@@ -689,7 +735,7 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
           type: "text",
           id: stableId("sliding-window-action"),
           x: winX + 8,
-          y: y - 36,
+          y: pointerY - 22,
           text: `▲ ${label}`,
           fontSize: 14,
           strokeColor: colors.pointer,
@@ -697,7 +743,7 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
       }
     }
 
-    y += 150;
+    y = cellY + 115;
   }
 
   /* ── Stack ── */
@@ -959,14 +1005,21 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
   /* ── Variables ── */
   const vars = Object.entries(state.variables);
   if (vars.length > 0) {
+    const perRow = 4;
+    const numRows = Math.ceil(vars.length / perRow);
     vars.forEach(([name, value], i) => {
+      const col = i % perRow;
+      const row = Math.floor(i / perRow);
+      const varX = 100 + col * 180;
+      const varY = y + row * 65;
+
       specs.push({
         type: "rectangle",
         id: stableId(`var-bg-${name}`),
-        x: 100 + i * 180,
-        y,
-        width: 155,
-        height: 55,
+        x: varX,
+        y: varY,
+        width: 165,
+        height: 52,
         strokeColor: colors.varBorder,
         backgroundColor: colors.varBg,
         strokeWidth: 1,
@@ -974,14 +1027,14 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
       specs.push({
         type: "text",
         id: stableId(`var-text-${name}`),
-        x: 115 + i * 180,
-        y: y + 17,
+        x: varX + 14,
+        y: varY + 16,
         text: `${name} = ${value}`,
-        fontSize: 17,
+        fontSize: 16,
         strokeColor: colors.varText,
       });
     });
-    y += 80;
+    y += numRows * 65 + 24;
   }
 
   /* ── Bounds (Binary Search) ── */
@@ -1147,30 +1200,32 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
 
   /* ── Compare Text ── */
   if (state.compareText) {
+    const lines = wrapText(state.compareText, 70);
     specs.push({
       type: "text",
       id: stableId("compare"),
       x: 100,
       y,
-      text: state.compareText,
-      fontSize: 18,
+      text: lines.join("\n"),
+      fontSize: 17,
       strokeColor: colors.compare,
     });
-    y += 40;
+    y += Math.max(36, lines.length * 24 + 16);
   }
 
   /* ── Message ── */
   if (state.message) {
+    const lines = wrapText(state.message, 70);
     specs.push({
       type: "text",
       id: stableId("message"),
       x: 100,
       y,
-      text: state.message,
-      fontSize: 19,
+      text: lines.join("\n"),
+      fontSize: 18,
       strokeColor: colors.message,
     });
-    y += 40;
+    y += Math.max(36, lines.length * 24 + 16);
   }
 
   /* ── Complexity ── */

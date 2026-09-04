@@ -2,6 +2,7 @@
 import { useEffect, useCallback, useRef, useState, useMemo } from "react";
 import {
   ArrowRight,
+  BookOpen,
   CheckCircle2,
   ChevronDown,
   Code2,
@@ -1229,8 +1230,6 @@ export default function SmartZero() {
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-2 text-[11px] text-[#9498B3]">
                   <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-                  <span className="font-semibold text-[#5B5FEF]">Teach Sandbox</span>
-                  <span>•</span>
                   <span>
                     {activeWs.teachState.array
                       ? `Array (${activeWs.teachState.array.values.length})`
@@ -1671,97 +1670,113 @@ export default function SmartZero() {
         {/* ── RIGHT SIDEBAR: SYNCHRONIZED CODE & STATE ── */}
         {!rightCollapsed ? (
           <aside
-            className={`w-80 shrink-0 border-l flex flex-col z-10 transition-colors duration-200 ${
+            className={`w-[380px] shrink-0 border-l flex flex-col z-10 transition-colors duration-200 ${
               isDark ? "border-[#27273D] bg-[#181824]" : "border-[#E7E7E2] bg-white"
             }`}
           >
+            {/* Header: CODE & STATE [Notes] [Collapse] */}
             <div
-              className={`h-10 border-b flex items-center justify-between px-3.5 shrink-0 ${
+              className={`h-11 border-b flex items-center justify-between px-3.5 shrink-0 ${
                 isDark ? "border-[#27273D]" : "border-[#E7E7E2]"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#5B5FEF]">
-                <Code2 size={15} />
+              <div className="flex items-center gap-1.5 text-[12px] font-bold text-[#5B5FEF]">
+                <Code2 size={16} />
                 <span>Code & State</span>
               </div>
-              <button
-                onClick={toggleRightSidebar}
-                title="Collapse Code Panel"
-                aria-label="Collapse Code Panel"
-                className={`p-1 rounded-lg transition-colors ${
-                  isDark ? "text-[#9498B3] hover:bg-[#252646]" : "text-[#9498B3] hover:bg-[#F2F2EE]"
-                }`}
-              >
-                <PanelRightClose size={15} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleNotes}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                    isDark
+                      ? "bg-[#252646] text-[#A5B4FC] hover:bg-[#313360]"
+                      : "bg-[#EEF0FD] text-[#5B5FEF] hover:bg-[#E0E4FC]"
+                  }`}
+                  title="Open workspace notes"
+                  aria-label="Open workspace notes"
+                >
+                  <FileText size={13} />
+                  <span>Notes{activeWs.notes.length > 0 ? ` (${activeWs.notes.length})` : ""}</span>
+                </button>
+                <button
+                  onClick={toggleRightSidebar}
+                  title="Collapse Code Panel"
+                  aria-label="Collapse Code Panel"
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    isDark ? "text-[#9498B3] hover:bg-[#252646]" : "text-[#9498B3] hover:bg-[#F2F2EE]"
+                  }`}
+                >
+                  <PanelRightClose size={16} />
+                </button>
+              </div>
             </div>
 
-            {/* Code panel body */}
-            <div className="flex-1 overflow-y-auto">
-              {lesson ? (
-                <>
-                  {/* Language switch */}
+            {/* UPPER SECTION: Synchronized Code Viewer (independent scroll container) */}
+            {lesson ? (
+              <div className="shrink-0 flex flex-col border-b border-inherit">
+                {/* Language switch */}
+                <div
+                  className={`px-3.5 py-2 border-b flex items-center justify-between shrink-0 ${
+                    isDark ? "border-[#27273D] bg-[#12121A]/60" : "border-[#F0F0EC] bg-[#FAFAF8]"
+                  }`}
+                >
+                  <span className="text-[10px] text-[#9498B3] font-bold uppercase tracking-wider">
+                    Language
+                  </span>
                   <div
-                    className={`px-3 py-2 border-b flex items-center justify-between ${
-                      isDark ? "border-[#27273D] bg-[#12121A]/50" : "border-[#F0F0EC] bg-[#FAFAF8]"
+                    className={`flex rounded-lg overflow-hidden border ${
+                      isDark ? "border-[#2A2D48]" : "border-[#DDDDE7]"
                     }`}
                   >
-                    <span className="text-[9px] text-[#9498B3] font-bold uppercase tracking-wider">
-                      Language
-                    </span>
-                    <div
-                      className={`flex rounded-lg overflow-hidden border ${
-                        isDark ? "border-[#2A2D48]" : "border-[#DDDDE7]"
+                    <button
+                      onClick={() => setLanguage("javascript")}
+                      className={`px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                        language === "javascript"
+                          ? isDark
+                            ? "bg-[#5B5FEF] text-white"
+                            : "bg-[#232946] text-white"
+                          : isDark
+                            ? "bg-[#181824] text-[#A0A6C2] hover:bg-[#252646]"
+                            : "bg-white text-[#6B6F8A] hover:bg-[#F2F2EE]"
                       }`}
                     >
-                      <button
-                        onClick={() => setLanguage("javascript")}
-                        className={`px-2 py-0.5 text-[9px] font-semibold transition-colors ${
-                          language === "javascript"
-                            ? isDark
-                              ? "bg-[#5B5FEF] text-white"
-                              : "bg-[#232946] text-white"
-                            : isDark
-                              ? "bg-[#181824] text-[#A0A6C2] hover:bg-[#252646]"
-                              : "bg-white text-[#6B6F8A] hover:bg-[#F2F2EE]"
-                        }`}
-                      >
-                        JS
-                      </button>
-                      <button
-                        onClick={() => setLanguage("cpp")}
-                        className={`px-2 py-0.5 text-[9px] font-semibold transition-colors ${
-                          language === "cpp"
-                            ? isDark
-                              ? "bg-[#5B5FEF] text-white"
-                              : "bg-[#232946] text-white"
-                            : isDark
-                              ? "bg-[#181824] text-[#A0A6C2] hover:bg-[#252646]"
-                              : "bg-white text-[#6B6F8A] hover:bg-[#F2F2EE]"
-                        }`}
-                      >
-                        C++
-                      </button>
-                      <button
-                        onClick={() => setLanguage("python")}
-                        className={`px-2 py-0.5 text-[9px] font-semibold transition-colors ${
-                          language === "python"
-                            ? isDark
-                              ? "bg-[#5B5FEF] text-white"
-                              : "bg-[#232946] text-white"
-                            : isDark
-                              ? "bg-[#181824] text-[#A0A6C2] hover:bg-[#252646]"
-                              : "bg-white text-[#6B6F8A] hover:bg-[#F2F2EE]"
-                        }`}
-                      >
-                        Python
-                      </button>
-                    </div>
+                      JS
+                    </button>
+                    <button
+                      onClick={() => setLanguage("cpp")}
+                      className={`px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                        language === "cpp"
+                          ? isDark
+                            ? "bg-[#5B5FEF] text-white"
+                            : "bg-[#232946] text-white"
+                          : isDark
+                            ? "bg-[#181824] text-[#A0A6C2] hover:bg-[#252646]"
+                            : "bg-white text-[#6B6F8A] hover:bg-[#F2F2EE]"
+                      }`}
+                    >
+                      C++
+                    </button>
+                    <button
+                      onClick={() => setLanguage("python")}
+                      className={`px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                        language === "python"
+                          ? isDark
+                            ? "bg-[#5B5FEF] text-white"
+                            : "bg-[#232946] text-white"
+                          : isDark
+                            ? "bg-[#181824] text-[#A0A6C2] hover:bg-[#252646]"
+                            : "bg-white text-[#6B6F8A] hover:bg-[#F2F2EE]"
+                      }`}
+                    >
+                      Python
+                    </button>
                   </div>
+                </div>
 
-                  {/* Synchronized Code Viewer */}
+                {/* Synchronized Code pre */}
+                <div className="max-h-[38vh] min-h-[140px] overflow-y-auto">
                   <pre
-                    className={`p-2.5 text-[13px] leading-[1.8] font-mono select-text ${
+                    className={`p-3 text-[13px] leading-[1.7] font-mono select-text ${
                       isDark ? "bg-[#12121A]" : "bg-white"
                     }`}
                   >
@@ -1790,182 +1805,188 @@ export default function SmartZero() {
                       );
                     })}
                   </pre>
+                </div>
 
-                  {/* Synchronized Variables Table */}
-                  {Object.keys(canvasState.variables).length > 0 && (
+                {/* Synchronized Variables / State Invariants */}
+                {Object.keys(canvasState.variables).length > 0 && (
+                  <div
+                    className={`px-3.5 py-2 border-t ${
+                      isDark ? "border-[#27273D] bg-[#181824]" : "border-[#F0F0EC] bg-[#FAFAF8]"
+                    }`}
+                  >
+                    <div className="text-[10px] uppercase tracking-wider text-[#9498B3] font-bold mb-1">
+                      State Invariants
+                    </div>
+                    <div className="space-y-1">
+                      {Object.entries(canvasState.variables).map(([name, val]) => (
+                        <div
+                          key={name}
+                          className="text-[12.5px] font-mono text-[#10B981] flex items-center justify-between"
+                        >
+                          <span className={isDark ? "text-[#C7C9D9]" : "text-[#4A4E68]"}>{name}</span>
+                          <span className="font-bold">{String(val)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-4 text-[13px] text-[#9498B3] text-center border-b border-inherit py-6">
+                {mode === "teach"
+                  ? "No synchronized lesson code."
+                  : "Load a lesson to see synchronized code and variable state."}
+              </div>
+            )}
+
+            {/* Display teach mode variables if present and no lesson */}
+            {!lesson && mode === "teach" && Object.keys(canvasState.variables).length > 0 && (
+              <div
+                className={`px-3.5 py-2 border-b shrink-0 ${
+                  isDark ? "border-[#27273D] bg-[#181824]" : "border-[#F0F0EC] bg-[#FAFAF8]"
+                }`}
+              >
+                <div className="text-[10px] uppercase tracking-wider text-[#9498B3] font-bold mb-1">
+                  Teach Variables
+                </div>
+                <div className="space-y-1">
+                  {Object.entries(canvasState.variables).map(([name, val]) => (
                     <div
-                      className={`px-3 py-2 border-t ${
-                        isDark ? "border-[#27273D] bg-[#181824]" : "border-[#F0F0EC] bg-[#FAFAF8]"
+                      key={name}
+                      className="text-[12.5px] font-mono text-[#10B981] flex items-center justify-between"
+                    >
+                      <span className={isDark ? "text-[#C7C9D9]" : "text-[#4A4E68]"}>{name}</span>
+                      <span className="font-bold">{String(val)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* LOWER SECTION: Structured Teaching Explanation / State Inspector (independent scroll) */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {lesson && current ? (
+                <>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-[#5B5FEF] font-bold">
+                      Current Step ({step + 1}/{total})
+                    </div>
+                    <div
+                      className={`text-[16px] font-bold mt-1 ${
+                        isDark ? "text-[#F1F5F9]" : "text-[#232946]"
                       }`}
                     >
-                      <div className="text-[9.5px] uppercase tracking-wider text-[#9498B3] font-bold mb-1">
-                        State Invariants
-                      </div>
-                      <div className="space-y-0.5">
-                        {Object.entries(canvasState.variables).map(([name, val]) => (
-                          <div
-                            key={name}
-                            className="text-[12px] font-mono text-[#10B981] flex items-center justify-between"
-                          >
-                            <span className={isDark ? "text-[#C7C9D9]" : "text-[#4A4E68]"}>{name}</span>
-                            <span className="font-bold">{String(val)}</span>
+                      {current.narrative?.currentStep || (current.codeLine ? `Phase: ${current.codeLine}` : "Step Execution")}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-[#9498B3] font-bold">
+                      Why
+                    </div>
+                    <div
+                      className={`text-[14px] leading-relaxed mt-1 ${
+                        isDark ? "text-[#C7C9D9]" : "text-[#4A4E68]"
+                      }`}
+                    >
+                      {current.narrative?.why || current.explanation}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-[#10B981] font-bold">
+                      What Changed
+                    </div>
+                    <div className="text-[13.5px] text-[#10B981] mt-1 leading-relaxed">
+                      {current.narrative?.whatChanged || (
+                        changesInCurrentStep.length > 0 ? (
+                          <div className="space-y-1">
+                            {changesInCurrentStep.map((c, ci) => (
+                              <div key={ci}>• {c}</div>
+                            ))}
                           </div>
-                        ))}
+                        ) : (
+                          "Pointer moved or state examined."
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-[#F59E0B] font-bold">
+                      What to Notice
+                    </div>
+                    <div
+                      className={`text-[13.5px] leading-relaxed mt-1 ${
+                        isDark ? "text-[#9498B3]" : "text-[#6B6F8A]"
+                      }`}
+                    >
+                      {current.narrative?.whatToNotice || (
+                        current.question
+                          ? "Interactive decision point: Analyze the state and select the correct algorithmic action."
+                          : current.codeLine === "found" || current.codeLine === "done" || current.codeLine === "return"
+                            ? "Algorithm completed: Review the final invariants and complexity guarantees."
+                            : "Notice how pointer movements and state transitions preserve deterministic bounds."
+                      )}
+                    </div>
+                  </div>
+
+                  {current.narrative?.keyInsight && (
+                    <div className="p-3.5 rounded-xl bg-[#5B5FEF]/10 border border-[#5B5FEF]/20">
+                      <div className="text-[10px] uppercase tracking-wider text-[#5B5FEF] font-bold">
+                        Key Insight
                       </div>
+                      <div className={`text-[13.5px] leading-relaxed mt-1 font-medium ${isDark ? "text-[#E0E7FF]" : "text-[#3730A3]"}`}>
+                        {current.narrative.keyInsight}
+                      </div>
+                    </div>
+                  )}
+
+                  {current.narrative?.nextStep && (
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider text-[#9498B3] font-bold">
+                        Next Step
+                      </div>
+                      <div className={`text-[13.5px] mt-1 ${isDark ? "text-[#9498B3]" : "text-[#6B6F8A]"}`}>
+                        {current.narrative.nextStep}
+                      </div>
+                    </div>
+                  )}
+
+                  {canvasState.complexity && (
+                    <div className="pt-2 flex gap-2">
+                      <span
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-semibold ${
+                          isDark ? "bg-[#252646] text-[#A5B4FC]" : "bg-[#F2F2EE] text-[#232946]"
+                        }`}
+                      >
+                        Time: {canvasState.complexity.time}
+                      </span>
+                      <span
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-semibold ${
+                          isDark ? "bg-[#252646] text-[#A5B4FC]" : "bg-[#F2F2EE] text-[#232946]"
+                        }`}
+                      >
+                        Space: {canvasState.complexity.space}
+                      </span>
                     </div>
                   )}
                 </>
               ) : (
-                <div className="p-4 text-[12px] text-[#9498B3] text-center mt-6">
-                  {mode === "teach"
-                    ? "No synchronized lesson code."
-                    : "Load a lesson to see synchronized code and variable state."}
-                </div>
-              )}
-
-              {/* Display teach mode variables if present */}
-              {!lesson && mode === "teach" && Object.keys(canvasState.variables).length > 0 && (
-                <div
-                  className={`px-3 py-2 border-t ${
-                    isDark ? "border-[#27273D] bg-[#181824]" : "border-[#F0F0EC] bg-[#FAFAF8]"
-                  }`}
-                >
-                  <div className="text-[9.5px] uppercase tracking-wider text-[#9498B3] font-bold mb-1">
-                    Teach Variables
-                  </div>
-                  <div className="space-y-0.5">
-                    {Object.entries(canvasState.variables).map(([name, val]) => (
-                      <div
-                        key={name}
-                        className="text-[12px] font-mono text-[#10B981] flex items-center justify-between"
-                      >
-                        <span className={isDark ? "text-[#C7C9D9]" : "text-[#4A4E68]"}>{name}</span>
-                        <span className="font-bold">{String(val)}</span>
-                      </div>
-                    ))}
+                <div className="h-full flex flex-col items-center justify-center text-[#9498B3] text-center p-4">
+                  <BookOpen size={28} className="mb-2 opacity-50 text-[#5B5FEF]" />
+                  <div className="text-[13px] font-semibold">Inspector Ready</div>
+                  <div className="text-[11.5px] mt-1 opacity-70">
+                    Step explanations and runtime insights will appear here when a lesson is active.
                   </div>
                 </div>
               )}
             </div>
-
-            {/* Structured Explanation Panel */}
-            {lesson && current && (
-              <div
-                className={`border-t p-3 space-y-2 max-h-[240px] overflow-y-auto ${
-                  isDark ? "border-[#27273D] bg-[#181824]" : "border-[#E7E7E2] bg-white"
-                }`}
-              >
-                <div>
-                  <div className="text-[8px] uppercase tracking-wider text-[#5B5FEF] font-bold">
-                    Current Step ({step + 1}/{total})
-                  </div>
-                  <div
-                    className={`text-[11.5px] font-bold mt-0.5 ${
-                      isDark ? "text-[#F1F5F9]" : "text-[#232946]"
-                    }`}
-                  >
-                    {current.narrative?.currentStep || (current.codeLine ? `Phase: ${current.codeLine}` : "Step Execution")}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-[8px] uppercase tracking-wider text-[#9498B3] font-bold">
-                    Why
-                  </div>
-                  <div
-                    className={`text-[10.5px] leading-relaxed mt-0.5 ${
-                      isDark ? "text-[#C7C9D9]" : "text-[#4A4E68]"
-                    }`}
-                  >
-                    {current.narrative?.why || current.explanation}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-[8px] uppercase tracking-wider text-[#10B981] font-bold">
-                    What Changed
-                  </div>
-                  <div className="text-[10px] text-[#10B981] mt-0.5 leading-snug">
-                    {current.narrative?.whatChanged || (
-                      changesInCurrentStep.length > 0 ? (
-                        <div className="space-y-0.5">
-                          {changesInCurrentStep.map((c, ci) => (
-                            <div key={ci}>• {c}</div>
-                          ))}
-                        </div>
-                      ) : (
-                        "Pointer moved or state examined."
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-[8px] uppercase tracking-wider text-[#F59E0B] font-bold">
-                    What to Notice
-                  </div>
-                  <div
-                    className={`text-[10px] leading-relaxed mt-0.5 ${
-                      isDark ? "text-[#9498B3]" : "text-[#6B6F8A]"
-                    }`}
-                  >
-                    {current.narrative?.whatToNotice || (
-                      current.question
-                        ? "Interactive decision point: Analyze the state and select the correct algorithmic action."
-                        : current.codeLine === "found" || current.codeLine === "done" || current.codeLine === "return"
-                          ? "Algorithm completed: Review the final invariants and complexity guarantees."
-                          : "Notice how pointer movements and state transitions preserve deterministic bounds."
-                    )}
-                  </div>
-                </div>
-
-                {current.narrative?.keyInsight && (
-                  <div className="p-2 rounded-lg bg-[#5B5FEF]/10 border border-[#5B5FEF]/20">
-                    <div className="text-[8px] uppercase tracking-wider text-[#5B5FEF] font-bold">
-                      Key Insight
-                    </div>
-                    <div className={`text-[10px] leading-snug mt-0.5 font-medium ${isDark ? "text-[#E0E7FF]" : "text-[#3730A3]"}`}>
-                      {current.narrative.keyInsight}
-                    </div>
-                  </div>
-                )}
-
-                {current.narrative?.nextStep && (
-                  <div>
-                    <div className="text-[8px] uppercase tracking-wider text-[#9498B3] font-bold">
-                      Next
-                    </div>
-                    <div className={`text-[10px] mt-0.5 ${isDark ? "text-[#9498B3]" : "text-[#6B6F8A]"}`}>
-                      {current.narrative.nextStep}
-                    </div>
-                  </div>
-                )}
-
-                {canvasState.complexity && (
-                  <div className="pt-1 flex gap-2">
-                    <span
-                      className={`px-2 py-0.5 rounded-lg text-[9px] font-mono font-semibold ${
-                        isDark ? "bg-[#252646] text-[#A5B4FC]" : "bg-[#F2F2EE] text-[#232946]"
-                      }`}
-                    >
-                      Time: {canvasState.complexity.time}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded-lg text-[9px] font-mono font-semibold ${
-                        isDark ? "bg-[#252646] text-[#A5B4FC]" : "bg-[#F2F2EE] text-[#232946]"
-                      }`}
-                    >
-                      Space: {canvasState.complexity.space}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
           </aside>
         ) : (
           /* Collapsed Code Rail */
           <div
-            className={`w-11 shrink-0 border-l flex flex-col items-center py-3 gap-4 ${
+            className={`w-11 shrink-0 border-l flex flex-col items-center py-3 gap-3 ${
               isDark ? "border-[#27273D] bg-[#181824]" : "border-[#E7E7E2] bg-white"
             }`}
           >
@@ -1979,9 +2000,24 @@ export default function SmartZero() {
             >
               <PanelRightOpen size={16} />
             </button>
+            <button
+              onClick={toggleNotes}
+              title="Open workspace notes"
+              aria-label="Open workspace notes"
+              className={`p-1.5 rounded-xl transition-colors relative ${
+                isDark ? "text-[#A5B4FC] hover:bg-[#252646]" : "text-[#5B5FEF] hover:bg-[#EEF0FD]"
+              }`}
+            >
+              <FileText size={16} />
+              {activeWs.notes.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-[#5B5FEF] text-white text-[9px] flex items-center justify-center font-bold">
+                  {activeWs.notes.length}
+                </span>
+              )}
+            </button>
             <div
               style={{ writingMode: "vertical-rl" }}
-              className="text-[10px] font-bold uppercase tracking-wider text-[#9498B3] select-none flex items-center gap-1.5"
+              className="text-[10px] font-bold uppercase tracking-wider text-[#9498B3] select-none flex items-center gap-1.5 mt-2"
             >
               <Code2 size={12} className="-rotate-90 text-[#5B5FEF]" />
               Code & State
@@ -2006,23 +2042,6 @@ export default function SmartZero() {
           <span>Interactive Canvas</span>
           <span>•</span>
           <span>Deterministic DSA Engine</span>
-        </div>
-
-        {/* Notes Button: Replaces the disabled V2 label in the exact same location */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleNotes}
-            className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[9.5px] font-semibold transition-colors ${
-              isDark
-                ? "bg-[#252646] text-[#A5B4FC] hover:bg-[#313360]"
-                : "bg-[#EEF0FD] text-[#5B5FEF] hover:bg-[#E0E4FC]"
-            }`}
-            title="Open workspace notes"
-            aria-label="Open workspace notes"
-          >
-            <FileText size={11} />
-            <span>Notes {activeWs.notes.length > 0 ? `(${activeWs.notes.length})` : ""}</span>
-          </button>
         </div>
       </footer>
 

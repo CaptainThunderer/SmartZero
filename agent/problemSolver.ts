@@ -1683,6 +1683,144 @@ if __name__ == "__main__":
       rationale: "Single scan through array updating values in place.",
     },
     finalAnswer: `Unique elements count is ${k}; unique prefix is [${nums.slice(0, k).join(", ")}].`,
+    learnerQuestion: {
+      prompt: "When nums[i] !== nums[k - 1], what is the correct in-place assignment?",
+      choices: [
+        { id: "a", text: "nums[k] = nums[i]; k++;" },
+        { id: "b", text: "i++; but leave k unchanged" },
+        { id: "c", text: "k--; decrement slow pointer" },
+        { id: "d", text: "Break the scan immediately" },
+      ],
+      correctId: "a",
+      hints: [
+        "Place the newly encountered unique element into index k and increment k.",
+      ],
+      misconceptions: {
+        b: { code: "LOOP_INVARIANT", feedback: "Leaving k unchanged loses the new unique value." },
+      },
+    },
+    visualSteps: (() => {
+      const rawNums = parsed.numbers.length > 0 ? parsed.numbers : [1, 1, 2, 2, 3, 4, 4];
+      const curNums = [...rawNums];
+      let runningK = 1;
+      const vSteps: ProblemVisualStep[] = [
+        {
+          stepNumber: 0,
+          title: "Initialize Two Pointers",
+          actions: [
+            { action: "reset_scene" },
+            {
+              action: "set_board_header",
+              title: "Remove Duplicates: In-Place",
+              subtitle: `Array: [${rawNums.join(", ")}]`,
+              badge: "TWO POINTERS",
+            },
+            { action: "create_array", id: "nums", values: [...rawNums] },
+            { action: "create_pointer", pointer: "k", targetIndex: 1 },
+            { action: "create_pointer", pointer: "i", targetIndex: 1 },
+            { action: "create_variable", name: "k (unique)", value: 1 },
+            {
+              action: "show_callout",
+              text: "Two-pointer strategy: slow pointer k tracks next unique slot; fast pointer i scans elements.",
+              boxType: "info",
+            },
+          ],
+          codeLine: "init",
+          narrative: {
+            currentStep: "Pointer Initialization",
+            why: "Array is sorted, so duplicates are contiguous. First element is always unique.",
+            whatChanged: "Pointers k=1 (slow) and i=1 (fast) initialized.",
+            whatToNotice: "Prefix nums[0..k-1] holds all unique elements found so far.",
+            keyInsight: "Compare nums[i] with nums[k-1] to detect duplicates in O(1).",
+            nextStep: "Scan pointer i across the array.",
+          },
+        },
+      ];
+
+      for (let i = 1; i < rawNums.length; i++) {
+        const isDup = rawNums[i] === curNums[runningK - 1];
+        if (isDup) {
+          vSteps.push({
+            stepNumber: vSteps.length,
+            title: `Skip Duplicate: ${rawNums[i]}`,
+            actions: [
+              { action: "create_array", id: "nums", values: [...curNums] },
+              { action: "highlight_element", indices: [i, runningK - 1] },
+              { action: "create_pointer", pointer: "i", targetIndex: i },
+              { action: "create_pointer", pointer: "k", targetIndex: runningK },
+              {
+                action: "show_callout",
+                text: `Duplicate: nums[${i}] (${rawNums[i]}) equals nums[${runningK - 1}]. Skip pointer i.`,
+                boxType: "warning",
+              },
+            ],
+            codeLine: "scan",
+            narrative: {
+              currentStep: "Duplicate Found",
+              why: `Value ${rawNums[i]} already present in unique prefix.`,
+              whatChanged: `Pointer i advances to index ${i}; k remains at ${runningK}.`,
+              whatToNotice: "k does not increment, omitting duplicate from unique prefix.",
+              keyInsight: "In-place filter without shifting elements guarantees O(n) runtime.",
+              nextStep: i === rawNums.length - 1 ? "Scan complete, return k." : `Inspect element at index ${i + 1}.`,
+            },
+          });
+        } else {
+          curNums[runningK] = rawNums[i];
+          runningK++;
+          vSteps.push({
+            stepNumber: vSteps.length,
+            title: `Copy Unique Element: ${rawNums[i]}`,
+            actions: [
+              { action: "create_array", id: "nums", values: [...curNums] },
+              { action: "highlight_element", indices: [runningK - 1] },
+              { action: "create_pointer", pointer: "i", targetIndex: i },
+              { action: "create_pointer", pointer: "k", targetIndex: runningK },
+              { action: "create_variable", name: "k (unique)", value: runningK },
+              {
+                action: "show_callout",
+                text: `New unique value ${rawNums[i]} placed at nums[${runningK - 1}]. Increment k to ${runningK}.`,
+                boxType: "success",
+              },
+            ],
+            codeLine: "place",
+            narrative: {
+              currentStep: "Place Unique Value",
+              why: `Value ${rawNums[i]} is distinct from last placed element.`,
+              whatChanged: `nums[${runningK - 1}] set to ${rawNums[i]}; k updated to ${runningK}.`,
+              whatToNotice: `Unique prefix length is now ${runningK}.`,
+              keyInsight: "Direct placement preserves relative sorted order.",
+              nextStep: i === rawNums.length - 1 ? "Scan complete, return k." : `Inspect element at index ${i + 1}.`,
+            },
+          });
+        }
+      }
+
+      vSteps.push({
+        stepNumber: vSteps.length,
+        title: "Deduplication Complete",
+        actions: [
+          { action: "create_array", id: "nums", values: [...curNums] },
+          { action: "highlight_element", indices: Array.from({ length: runningK }, (_, idx) => idx) },
+          { action: "create_variable", name: "k (final count)", value: runningK },
+          {
+            action: "show_callout",
+            text: `Finished! k = ${runningK} unique elements: [${curNums.slice(0, runningK).join(", ")}].`,
+            boxType: "insight",
+          },
+        ],
+        codeLine: "return",
+        narrative: {
+          currentStep: "Algorithm Complete",
+          why: "All elements scanned. Return k.",
+          whatChanged: "Array modified in place; unique prefix highlighted.",
+          whatToNotice: `Prefix [0..${runningK - 1}] contains strictly distinct sorted values.`,
+          keyInsight: "O(n) time, O(1) space optimal in-place algorithm.",
+          nextStep: "Inspect code implementation and complexity analysis.",
+        },
+      });
+
+      return vSteps;
+    })(),
   };
 
   return ProblemSolutionPlanSchema.parse(plan);
@@ -4829,7 +4967,10 @@ export function buildProblemSolvingLesson(plan: ProblemSolutionPlan): Lesson {
       { action: "reset_scene" },
       {
         action: "set_board_header",
-        title: plan.normalizedProblem,
+        title:
+          plan.normalizedProblem.length > 50
+            ? plan.topic || plan.selectedApproach?.name || (plan.normalizedProblem.slice(0, 47) + "...")
+            : plan.normalizedProblem,
         subtitle: `Approach: ${plan.selectedApproach.name} • Time: ${plan.selectedApproach.timeComplexity}`,
         badge: plan.category.toUpperCase(),
       },
