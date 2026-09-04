@@ -1,6 +1,17 @@
 import type { CanvasState, DSLAction, LessonStep } from "../types/dsa";
 
 export const initialCanvas = (): CanvasState => ({
+  boardHeader: null,
+  callout: null,
+  insightCard: null,
+  transformation: null,
+  slidingWindow: null,
+  setContainer: null,
+  callStack: null,
+  decisionTree: null,
+  dpTable: null,
+  mergeTree: null,
+  comparisonBoard: null,
   array: null,
   variables: {},
   linkedList: null,
@@ -22,6 +33,115 @@ export function applyAction(
   switch (action.action) {
     case "reset_scene":
       return initialCanvas();
+
+    case "set_board_header":
+      return {
+        ...state,
+        boardHeader: {
+          title: action.title,
+          subtitle: action.subtitle,
+          badge: action.badge,
+        },
+      };
+
+    case "show_callout":
+      return {
+        ...state,
+        callout: {
+          text: action.text,
+          boxType: action.boxType,
+        },
+      };
+
+    case "show_insight_card":
+      return {
+        ...state,
+        insightCard: {
+          title: action.title,
+          text: action.text,
+        },
+      };
+
+    case "show_transformation":
+      return {
+        ...state,
+        transformation: {
+          fromLabel: action.fromLabel,
+          toLabel: action.toLabel,
+          text: action.text,
+        },
+      };
+
+    case "set_sliding_window":
+      return {
+        ...state,
+        slidingWindow: {
+          startIndex: action.startIndex,
+          endIndex: action.endIndex,
+          label: action.label,
+          conditionOrSum: action.conditionOrSum,
+        },
+      };
+
+    case "clear_sliding_window":
+      return {
+        ...state,
+        slidingWindow: null,
+      };
+
+    case "create_set_container":
+      return {
+        ...state,
+        setContainer: {
+          title: action.title,
+          elements: [...action.elements],
+          highlightElements: action.highlightElements ? [...action.highlightElements] : [],
+          operation: action.operation,
+          note: action.note,
+        },
+      };
+
+    case "create_call_stack":
+      return {
+        ...state,
+        callStack: {
+          frames: [...action.frames],
+        },
+      };
+
+    case "create_decision_tree":
+      return {
+        ...state,
+        decisionTree: {
+          nodes: [...action.nodes],
+          edges: [...action.edges],
+        },
+      };
+
+    case "create_dp_table":
+      return {
+        ...state,
+        dpTable: {
+          ...action.table,
+        },
+      };
+
+    case "create_merge_tree":
+      return {
+        ...state,
+        mergeTree: {
+          levels: [...action.levels],
+          activeLevel: action.activeLevel,
+        },
+      };
+
+    case "show_comparison_board":
+      return {
+        ...state,
+        comparisonBoard: {
+          ...action.board,
+        },
+      };
 
     case "create_array":
       return {

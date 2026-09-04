@@ -29,10 +29,25 @@ function getStorage(): Storage | null {
   return null;
 }
 
+export function applyDocumentTheme(theme: AppTheme) {
+  if (typeof document !== "undefined") {
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+      document.documentElement.classList.remove("light");
+    } else {
+      document.documentElement.classList.add("light");
+      document.documentElement.classList.remove("dark");
+    }
+  }
+}
+
 function persistWorkspaces(workspaces: LearningWorkspace[], activeId: string) {
   try {
     const storage = getStorage();
     if (!storage) return;
+    // CRITICAL: Never write to localStorage before client rehydration has run,
+    // otherwise the deterministic initial workspace shell will wipe out saved workspaces!
+    if (!useWorkspaceStore.getState().isHydrated) return;
     // Strip non-serializable fields (timers, etc.)
     const cleanWorkspaces = workspaces.map((ws) => ({
       ...ws,
@@ -49,16 +64,9 @@ function persistTheme(theme: AppTheme) {
   try {
     const storage = getStorage();
     if (!storage) return;
+    if (!useWorkspaceStore.getState().isHydrated) return;
     storage.setItem(STORAGE_THEME_KEY, theme);
-    if (typeof document !== "undefined") {
-      if (theme === "dark") {
-        document.documentElement.classList.add("dark");
-        document.documentElement.classList.remove("light");
-      } else {
-        document.documentElement.classList.add("light");
-        document.documentElement.classList.remove("dark");
-      }
-    }
+    applyDocumentTheme(theme);
   } catch (err) {
     console.warn("Failed to persist SmartZero theme:", err);
   }
@@ -80,6 +88,42 @@ export function generateWorkspaceTitle(
   return topicName;
 }
 
+export function createEmptyWorkspace(
+  id?: string,
+  title: string = "New Canvas"
+): LearningWorkspace {
+  const wsId = id || `ws-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  return {
+    id: wsId,
+    title,
+    topicId: null,
+    lessonId: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    mode: "learn",
+    lesson: null,
+    step: 0,
+    phase: "idle",
+    playing: false,
+    speed: 1,
+    draftAnswer: null,
+    selectedAnswer: null,
+    answerCorrect: null,
+    hintIndex: 0,
+    canvasState: initialCanvas(),
+    teachState: initialCanvas(),
+    chat: [
+      {
+        role: "ai",
+        text: "Hi! I'm your SmartZero AI Teacher. Ask me any DSA question and we'll learn it visually.",
+      },
+    ],
+    clarificationOptions: null,
+    language: "javascript",
+    notes: [],
+  };
+}
+
 export function createInitialWorkspace(
   id?: string,
   topicId?: string,
@@ -88,16 +132,20 @@ export function createInitialWorkspace(
   inputData?: number[],
   initialGreeting?: string
 ): LearningWorkspace {
+  if (!topicId && !lessonId) {
+    return createEmptyWorkspace(id, title || "New Canvas");
+  }
+
   const wsId = id || `ws-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const effectiveLessonId = lessonId || (topicId ? topicId : "second-max");
-  const effectiveTopicId = topicId || (effectiveLessonId ? effectiveLessonId : "second-max");
+  const effectiveLessonId = lessonId || (topicId ? topicId : null);
+  const effectiveTopicId = topicId || (effectiveLessonId ? effectiveLessonId : null);
 
   // Lookup topic info
   const topicMeta = effectiveTopicId ? DSA_TOPIC_REGISTRY[effectiveTopicId] : null;
   const computedTitle =
     title ||
     generateWorkspaceTitle(
-      topicMeta?.name || "Second Maximum Element",
+      topicMeta?.name || "DSA Canvas",
       inputData,
       undefined
     );
@@ -114,7 +162,7 @@ export function createInitialWorkspace(
     initialGreeting ||
     (topicMeta
       ? `Welcome to **${topicMeta.name}**! I'm your AI Teacher for this workspace. We will explore ${topicMeta.summary.toLowerCase()}`
-      : "Hi! I'm SmartZero, your AI-powered interactive DSA teacher. Ask any question about Data Structures & Algorithms!");
+      : "Hi! I'm your SmartZero AI Teacher. Ask me any DSA question and we'll learn it visually.");
 
   return {
     id: wsId,
@@ -142,23 +190,48 @@ export function createInitialWorkspace(
   };
 }
 
+export const DETERMINISTIC_DEFAULT_WS_ID = "ws-default-canvas";
+
+export function createDeterministicDefaultWorkspace(): LearningWorkspace {
+  return {
+    id: DETERMINISTIC_DEFAULT_WS_ID,
+    title: "New Canvas",
+    topicId: null,
+    lessonId: null,
+    createdAt: 0,
+    updatedAt: 0,
+    mode: "learn",
+    lesson: null,
+    step: 0,
+    phase: "idle",
+    playing: false,
+    speed: 1,
+    draftAnswer: null,
+    selectedAnswer: null,
+    answerCorrect: null,
+    hintIndex: 0,
+    canvasState: initialCanvas(),
+    teachState: initialCanvas(),
+    chat: [
+      {
+        role: "ai",
+        text: "Hi! I'm your SmartZero AI Teacher. Ask me any DSA question and we'll learn it visually.",
+      },
+    ],
+    clarificationOptions: null,
+    language: "javascript",
+    notes: [],
+  };
+}
+
 function loadPersistedState(): {
   workspaces: LearningWorkspace[];
   activeWorkspaceId: string;
   theme: AppTheme;
-} {
-  const defaultTheme: AppTheme = "light";
-  const defaultWs = createInitialWorkspace();
-
+} | null {
   try {
     const storage = getStorage();
-    if (!storage) {
-      return {
-        workspaces: [defaultWs],
-        activeWorkspaceId: defaultWs.id,
-        theme: defaultTheme,
-      };
-    }
+    if (!storage) return null;
 
     const themeRaw = storage.getItem(STORAGE_THEME_KEY);
     const theme: AppTheme = themeRaw === "dark" ? "dark" : "light";
@@ -175,8 +248,8 @@ function loadPersistedState(): {
           title: ws.title || "DSA Canvas",
           topicId: ws.topicId ?? null,
           lessonId: ws.lessonId ?? null,
-          createdAt: ws.createdAt || Date.now(),
-          updatedAt: ws.updatedAt || Date.now(),
+          createdAt: typeof ws.createdAt === "number" ? ws.createdAt : 0,
+          updatedAt: typeof ws.updatedAt === "number" ? ws.updatedAt : 0,
           mode: ws.mode === "teach" ? "teach" : "learn",
           lesson: ws.lesson ?? (ws.lessonId ? lessonFromId(ws.lessonId) : null),
           step: typeof ws.step === "number" ? ws.step : 0,
@@ -189,9 +262,17 @@ function loadPersistedState(): {
           hintIndex: typeof ws.hintIndex === "number" ? ws.hintIndex : 0,
           canvasState: ws.canvasState || initialCanvas(),
           teachState: ws.teachState || initialCanvas(),
-          chat: Array.isArray(ws.chat) && ws.chat.length > 0 ? ws.chat : [{ role: "ai", text: "Ready to continue learning." }],
+          chat:
+            Array.isArray(ws.chat) && ws.chat.length > 0
+              ? ws.chat
+              : [{ role: "ai", text: "Ready to continue learning." }],
           clarificationOptions: ws.clarificationOptions ?? null,
-          language: ws.language === "cpp" ? "cpp" : "javascript",
+          language:
+            ws.language === "cpp"
+              ? "cpp"
+              : ws.language === "python"
+              ? "python"
+              : "javascript",
           notes: Array.isArray(ws.notes) ? ws.notes : [],
         }));
 
@@ -204,18 +285,18 @@ function loadPersistedState(): {
       }
     }
 
-    return {
-      workspaces: [defaultWs],
-      activeWorkspaceId: defaultWs.id,
-      theme,
-    };
+    if (themeRaw) {
+      return {
+        workspaces: [createDeterministicDefaultWorkspace()],
+        activeWorkspaceId: DETERMINISTIC_DEFAULT_WS_ID,
+        theme,
+      };
+    }
+
+    return null;
   } catch (err) {
     console.warn("Failed to load SmartZero state from localStorage; fallback to default:", err);
-    return {
-      workspaces: [defaultWs],
-      activeWorkspaceId: defaultWs.id,
-      theme: defaultTheme,
-    };
+    return null;
   }
 }
 
@@ -227,6 +308,10 @@ export interface WorkspaceStore {
   activeWorkspaceId: string;
   theme: AppTheme;
   isNotesOpen: boolean;
+  isHydrated: boolean;
+
+  /* ── Hydration ── */
+  rehydrateFromStorage: () => void;
 
   /* ── Workspace Management ── */
   getActiveWorkspace: () => LearningWorkspace;
@@ -263,13 +348,35 @@ export interface WorkspaceStore {
 /* ══════════════════════════════════════════════
    Zustand Store Creation
    ══════════════════════════════════════════════ */
-const initial = loadPersistedState();
+const defaultWs = createDeterministicDefaultWorkspace();
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
-  workspaces: initial.workspaces,
-  activeWorkspaceId: initial.activeWorkspaceId,
-  theme: initial.theme,
+  workspaces: [defaultWs],
+  activeWorkspaceId: defaultWs.id,
+  theme: "light",
   isNotesOpen: false,
+  isHydrated: false,
+
+  rehydrateFromStorage: () => {
+    if (get().isHydrated) return;
+    try {
+      const persisted = loadPersistedState();
+      if (persisted) {
+        applyDocumentTheme(persisted.theme);
+        set({
+          workspaces: persisted.workspaces,
+          activeWorkspaceId: persisted.activeWorkspaceId,
+          theme: persisted.theme,
+          isHydrated: true,
+        });
+      } else {
+        set({ isHydrated: true });
+      }
+    } catch (err) {
+      console.warn("Failed to rehydrate SmartZero workspace store:", err);
+      set({ isHydrated: true });
+    }
+  },
 
   getActiveWorkspace: () => {
     const { workspaces, activeWorkspaceId } = get();
@@ -293,13 +400,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         w.id === state.activeWorkspaceId ? { ...w, playing: false } : w
       );
       const nextWorkspaces = [...updatedList, newWs];
-      persistWorkspaces(nextWorkspaces, newWs.id);
       return {
         workspaces: nextWorkspaces,
         activeWorkspaceId: newWs.id,
+        isHydrated: true,
       };
     });
 
+    persistWorkspaces(get().workspaces, newWs.id);
     return newWs.id;
   },
 
@@ -314,12 +422,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const updatedList = state.workspaces.map((w) =>
         w.id === state.activeWorkspaceId ? { ...w, playing: false } : w
       );
-      persistWorkspaces(updatedList, id);
       return {
         workspaces: updatedList,
         activeWorkspaceId: id,
+        isHydrated: true,
       };
     });
+
+    persistWorkspaces(get().workspaces, id);
   },
 
   deleteWorkspace: (id: string) => {
@@ -330,6 +440,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       set({
         workspaces: [cleanWs],
         activeWorkspaceId: cleanWs.id,
+        isHydrated: true,
       });
       persistWorkspaces([cleanWs], cleanWs.id);
       return;
@@ -346,6 +457,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({
       workspaces: filtered,
       activeWorkspaceId: nextActiveId,
+      isHydrated: true,
     });
     persistWorkspaces(filtered, nextActiveId);
   },
@@ -358,9 +470,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const updated = state.workspaces.map((w) =>
         w.id === id ? { ...w, title: trimmed, updatedAt: Date.now() } : w
       );
-      persistWorkspaces(updated, state.activeWorkspaceId);
-      return { workspaces: updated };
+      return { workspaces: updated, isHydrated: true };
     });
+
+    persistWorkspaces(get().workspaces, get().activeWorkspaceId);
   },
 
   findWorkspaceByTopic: (topicId: string) => {
@@ -408,9 +521,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         w.id === state.activeWorkspaceId ? updatedActive : w
       );
 
-      persistWorkspaces(nextWorkspaces, state.activeWorkspaceId);
-      return { workspaces: nextWorkspaces };
+      return { workspaces: nextWorkspaces, isHydrated: true };
     });
+
+    persistWorkspaces(get().workspaces, get().activeWorkspaceId);
   },
 
   loadLessonInActive: (lesson: Lesson, topicId?: string, customTitle?: string) => {
@@ -485,13 +599,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   /* ── Theme Actions ── */
   setTheme: (theme: AppTheme) => {
+    set({ theme, isHydrated: true });
     persistTheme(theme);
-    set({ theme });
   },
 
   toggleTheme: () => {
     const nextTheme: AppTheme = get().theme === "dark" ? "light" : "dark";
+    set({ theme: nextTheme, isHydrated: true });
     persistTheme(nextTheme);
-    set({ theme: nextTheme });
   },
 }));
+
+

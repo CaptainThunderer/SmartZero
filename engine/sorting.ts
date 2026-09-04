@@ -139,8 +139,8 @@ export function buildBubbleSortLesson(values: number[] = [9, 4, 7, 3, 10]): Less
       cpp: [
         "void bubbleSort(vector<int>& arr) {",
         "  int n = arr.size();",
-        "  for (int i = 0; i < n - 1; i++) {",
-        "    for (int j = 0; j < n - i - 1; j++) {",
+        "  for (let i = 0; i < n - 1; i++) {",
+        "    for (let j = 0; j < n - i - 1; j++) {",
         "      if (arr[j] > arr[j + 1]) {",
         "        swap(arr[j], arr[j + 1]);",
         "      }",
@@ -148,10 +148,20 @@ export function buildBubbleSortLesson(values: number[] = [9, 4, 7, 3, 10]): Less
         "  }",
         "}",
       ],
+      python: [
+        "def bubble_sort(arr: list[int]) -> list[int]:",
+        "    n = len(arr)",
+        "    for i in range(n - 1):",
+        "        for j in range(n - i - 1):",
+        "            if arr[j] > arr[j + 1]:",
+        "                arr[j], arr[j + 1] = arr[j + 1], arr[j]",
+        "    return arr",
+      ],
     },
     lineMap: {
       javascript: { init: 2, loop: 3, compare: 5, swap: 6, done: 10 },
       cpp: { init: 2, loop: 3, compare: 5, swap: 6, done: 10 },
+      python: { init: 2, loop: 3, compare: 5, swap: 6, done: 7 },
     },
   };
 }
@@ -275,17 +285,30 @@ export function buildSelectionSortLesson(values: number[] = [29, 10, 14, 37, 13]
         "  int n = arr.size();",
         "  for (int i = 0; i < n - 1; i++) {",
         "    int minIdx = i;",
-        "    for (int j = i + 1; j < n; j++) {",
+        "    for (let j = i + 1; j < n; j++) {",
         "      if (arr[j] < arr[minIdx]) minIdx = j;",
         "    }",
-        "    if (minIdx !== i) swap(arr[i], arr[minIdx]);",
+        "    if (minIdx != i) swap(arr[i], arr[minIdx]);",
         "  }",
         "}",
+      ],
+      python: [
+        "def selection_sort(arr: list[int]) -> list[int]:",
+        "    n = len(arr)",
+        "    for i in range(n - 1):",
+        "        min_idx = i",
+        "        for j in range(i + 1, n):",
+        "            if arr[j] < arr[min_idx]:",
+        "                min_idx = j",
+        "        if min_idx != i:",
+        "            arr[i], arr[min_idx] = arr[min_idx], arr[i]",
+        "    return arr",
       ],
     },
     lineMap: {
       javascript: { init: 2, outer: 3, inner: 5, updatemin: 6, swap: 8, done: 10 },
       cpp: { init: 2, outer: 3, inner: 5, updatemin: 6, swap: 8, done: 10 },
+      python: { init: 2, outer: 3, inner: 5, updatemin: 6, swap: 8, done: 10 },
     },
   };
 }
@@ -405,10 +428,22 @@ export function buildInsertionSortLesson(values: number[] = [12, 11, 13, 5, 6]):
         "  }",
         "}",
       ],
+      python: [
+        "def insertion_sort(arr: list[int]) -> list[int]:",
+        "    for i in range(1, len(arr)):",
+        "        key = arr[i]",
+        "        j = i - 1",
+        "        while j >= 0 and arr[j] > key:",
+        "            arr[j + 1] = arr[j]",
+        "            j -= 1",
+        "        arr[j + 1] = key",
+        "    return arr",
+      ],
     },
     lineMap: {
       javascript: { init: 1, extractkey: 3, shiftcheck: 5, shift: 6, insert: 9, done: 11 },
       cpp: { init: 1, extractkey: 3, shiftcheck: 5, shift: 6, insert: 9, done: 11 },
+      python: { init: 1, extractkey: 3, shiftcheck: 5, shift: 6, insert: 8, done: 9 },
     },
   };
 }
@@ -544,6 +579,14 @@ export function buildQuickSortLesson(values: number[] = [8, 3, 5, 1, 9, 2]): Les
         "}",
       ],
       cpp: [
+        "int partition(vector<int>& arr, int low, int high) {",
+        "  int pivot = arr[high], i = low - 1;",
+        "  for (int j = low; j < high; j++) {",
+        "    if (arr[j] < pivot) { i++; swap(arr[i], arr[j]); }",
+        "  }",
+        "  swap(arr[i + 1], arr[high]);",
+        "  return i + 1;",
+        "}",
         "void quickSort(vector<int>& arr, int low, int high) {",
         "  if (low < high) {",
         "    int pi = partition(arr, low, high);",
@@ -552,10 +595,31 @@ export function buildQuickSortLesson(values: number[] = [8, 3, 5, 1, 9, 2]): Les
         "  }",
         "}",
       ],
+      python: [
+        "def quick_sort(arr: list[int], low: int = 0, high: int = -1) -> list[int]:",
+        "    if high == -1:",
+        "        high = len(arr) - 1",
+        "    if low < high:",
+        "        pi = partition(arr, low, high)",
+        "        quick_sort(arr, low, pi - 1)",
+        "        quick_sort(arr, pi + 1, high)",
+        "    return arr",
+        "",
+        "def partition(arr: list[int], low: int, high: int) -> int:",
+        "    pivot = arr[high]",
+        "    i = low - 1",
+        "    for j in range(low, high):",
+        "        if arr[j] < pivot:",
+        "            i += 1",
+        "            arr[i], arr[j] = arr[j], arr[i]",
+        "    arr[i + 1], arr[high] = arr[high], arr[i + 1]",
+        "    return i + 1",
+      ],
     },
     lineMap: {
       javascript: { init: 1, choosepivot: 10, compare: 13, swap: 15, placepivot: 18, done: 7 },
-      cpp: { init: 1, choosepivot: 2, compare: 3, swap: 4, placepivot: 5, done: 6 },
+      cpp: { init: 9, choosepivot: 2, compare: 4, swap: 4, placepivot: 6, done: 14 },
+      python: { init: 1, choosepivot: 11, compare: 14, swap: 16, placepivot: 17, done: 8 },
     },
   };
 }
@@ -566,15 +630,43 @@ export function buildQuickSortLesson(values: number[] = [8, 3, 5, 1, 9, 2]): Les
 export function buildMergeSortLesson(values: number[] = [38, 27, 43, 3, 9, 82, 10]): Lesson {
   const arr = [...values];
   const steps: LessonStep[] = [];
+  const midPoint = Math.ceil(arr.length / 2);
 
+  // Initial Step: Divide & Conquer Whiteboard Setup
   steps.push({
     actions: [
       { action: "reset_scene" },
+      {
+        action: "set_board_header",
+        title: "Merge Sort",
+        subtitle: "Divide → Recursively Sort → Merge",
+        badge: "O(n log n) Guaranteed",
+      },
       { action: "create_array", id: "arr-merge", values: [...arr] },
-      { action: "show_message", text: "Merge Sort: Divide array into halves recursively, then merge sorted halves." },
+      {
+        action: "create_merge_tree",
+        levels: [
+          { label: "Initial Array", arrays: [[...arr]] },
+          { label: "Divide in Halves", arrays: [arr.slice(0, midPoint), arr.slice(midPoint)] },
+        ],
+        activeLevel: 0,
+      },
+      {
+        action: "show_callout",
+        text: "KEY IDEA: Repeatedly divide array into halves until single elements remain, then merge sorted halves.",
+        boxType: "info",
+      },
     ],
     codeLine: "init",
-    explanation: "Merge Sort divides the array in half until single-element subarrays remain, then merges pairs in sorted order.",
+    explanation: "Merge Sort repeatedly divides the array into smaller halves, sorts those halves, and merges the sorted halves.",
+    narrative: {
+      currentStep: "Divide Phase: Halve the Array",
+      why: "Halving recursively creates a tree of depth log₂(n), bounding total comparison passes.",
+      whatChanged: "Split initial array into left half [" + arr.slice(0, midPoint).join(", ") + "] and right half [" + arr.slice(midPoint).join(", ") + "].",
+      whatToNotice: "Notice single elements are trivially sorted by definition.",
+      keyInsight: "By breaking an unsorted array into sorted halves, merging can be done in linear O(n) time.",
+      nextStep: "Recursively sort subproblems and begin the merge phase.",
+    },
   });
 
   function merge(l: number, m: number, r: number) {
@@ -584,10 +676,22 @@ export function buildMergeSortLesson(values: number[] = [38, 27, 43, 3, 9, 82, 1
     steps.push({
       actions: [
         { action: "highlight_element", indices: Array.from({ length: r - l + 1 }, (_, k) => l + k) },
-        { action: "show_message", text: `Merging [${left.join(", ")}] and [${right.join(", ")}]` },
+        {
+          action: "show_callout",
+          text: `Merging [${left.join(", ")}] and [${right.join(", ")}]: compare front elements and pick the smaller.`,
+          boxType: "insight",
+        },
       ],
       codeLine: "merge",
       explanation: `Merging left sorted subarray [${left.join(", ")}] with right sorted subarray [${right.join(", ")}].`,
+      narrative: {
+        currentStep: `Merge Sorted Subarrays [${left.join(", ")}] and [${right.join(", ")}]`,
+        why: "Because both halves are already sorted, we only need to compare their front elements.",
+        whatChanged: `Active merge window set across indices ${l} to ${r}.`,
+        whatToNotice: "Both input halves are already in ascending order.",
+        keyInsight: "Because each half is sorted, we never need to compare every element with every other element.",
+        nextStep: "Compare the front element of both halves.",
+      },
     });
 
     let i = 0, j = 0, k = l;
@@ -598,9 +702,21 @@ export function buildMergeSortLesson(values: number[] = [38, 27, 43, 3, 9, 82, 1
           actions: [
             { action: "update_array_element", index: k, value: left[i] },
             { action: "highlight_element", indices: [k] },
+            {
+              action: "compare",
+              text: `Compare: ${left[i]} ≤ ${right[j]} → Place ${left[i]} at index ${k}`,
+            },
           ],
           codeLine: "mergecompare",
           explanation: `left[${i}] (${left[i]}) ≤ right[${j}] (${right[j]}). Place ${left[i]} at index ${k}.`,
+          narrative: {
+            currentStep: `Take Smaller Front Element (${left[i]})`,
+            why: `${left[i]} is smaller than or equal to ${right[j]}, so it comes first in sorted order.`,
+            whatChanged: `Placed ${left[i]} into index ${k}. Advanced left pointer.`,
+            whatToNotice: "Notice stable sorting: equal elements maintain their relative original order.",
+            keyInsight: "Taking the smaller of two sorted heads preserves the sorted invariant.",
+            nextStep: "Continue comparing the remaining front elements.",
+          },
         });
         i++;
       } else {
@@ -609,9 +725,21 @@ export function buildMergeSortLesson(values: number[] = [38, 27, 43, 3, 9, 82, 1
           actions: [
             { action: "update_array_element", index: k, value: right[j] },
             { action: "highlight_element", indices: [k] },
+            {
+              action: "compare",
+              text: `Compare: ${right[j]} < ${left[i]} → Place ${right[j]} at index ${k}`,
+            },
           ],
           codeLine: "mergecompare",
           explanation: `right[${j}] (${right[j]}) < left[${i}] (${left[i]}). Place ${right[j]} at index ${k}.`,
+          narrative: {
+            currentStep: `Take Smaller Front Element (${right[j]})`,
+            why: `${right[j]} is strictly smaller than ${left[i]}, so it comes next in sorted order.`,
+            whatChanged: `Placed ${right[j]} into index ${k}. Advanced right pointer.`,
+            whatToNotice: "Right element moves ahead of remaining left elements.",
+            keyInsight: "Each comparison makes definite progress placing one element into its final position.",
+            nextStep: "Continue comparing the remaining front elements.",
+          },
         });
         j++;
       }
@@ -624,6 +752,14 @@ export function buildMergeSortLesson(values: number[] = [38, 27, 43, 3, 9, 82, 1
         actions: [{ action: "update_array_element", index: k, value: left[i] }],
         codeLine: "copyremain",
         explanation: `Copy remaining element ${left[i]} to index ${k}.`,
+        narrative: {
+          currentStep: `Copy Remaining Left Element (${left[i]})`,
+          why: "Right half is exhausted; remaining left elements are already sorted.",
+          whatChanged: `Copied ${left[i]} to index ${k}.`,
+          whatToNotice: "No further comparisons needed for remaining elements.",
+          keyInsight: "When one half empties, the remainder of the other half can be copied directly.",
+          nextStep: "Finish copy pass.",
+        },
       });
       i++;
       k++;
@@ -635,6 +771,14 @@ export function buildMergeSortLesson(values: number[] = [38, 27, 43, 3, 9, 82, 1
         actions: [{ action: "update_array_element", index: k, value: right[j] }],
         codeLine: "copyremain",
         explanation: `Copy remaining element ${right[j]} to index ${k}.`,
+        narrative: {
+          currentStep: `Copy Remaining Right Element (${right[j]})`,
+          why: "Left half is exhausted; remaining right elements are already sorted.",
+          whatChanged: `Copied ${right[j]} to index ${k}.`,
+          whatToNotice: "No further comparisons needed for remaining elements.",
+          keyInsight: "When one half empties, the remainder of the other half can be copied directly.",
+          nextStep: "Finish copy pass.",
+        },
       });
       j++;
       k++;
@@ -655,11 +799,24 @@ export function buildMergeSortLesson(values: number[] = [38, 27, 43, 3, 9, 82, 1
   steps.push({
     actions: [
       { action: "set_sorted_region", startIndex: 0, endIndex: arr.length - 1 },
-      { action: "show_message", text: "Merge Sort Complete!" },
+      {
+        action: "show_insight_card",
+        title: "Guaranteed O(n log n) Performance",
+        text: "Tree height is log₂(n) levels. Each level performs O(n) total merge work. Total time: O(n log n) in all cases.",
+      },
+      { action: "show_message", text: "Merge Sort Complete: Sorted Array ✓" },
       { action: "show_complexity", time: "O(n log n)", space: "O(n)" },
     ],
     codeLine: "done",
-    explanation: "Merge Sort complete. Guaranteed O(n log n) runtime across all best, average, and worst cases.",
+    explanation: "Merge Sort complete. Guaranteed O(n log n) runtime across all best, average, and worst cases with O(n) auxiliary space.",
+    narrative: {
+      currentStep: "Merge Sort Complete: All Elements Sorted",
+      why: "All subproblems have been recursively merged back into the complete array.",
+      whatChanged: "Final array is completely sorted in ascending order.",
+      whatToNotice: "Notice runtime is always O(n log n), unaffected by initial array ordering.",
+      keyInsight: "Merge Sort guarantees O(n log n) worst-case time and stability, trading O(n) temporary space.",
+      nextStep: "Lesson complete.",
+    },
   });
 
   return {
@@ -689,10 +846,23 @@ export function buildMergeSortLesson(values: number[] = [38, 27, 43, 3, 9, 82, 1
         "  merge(arr, l, m, r);",
         "}",
       ],
+      python: [
+        "def merge_sort(arr: list[int], l: int = 0, r: int = -1) -> list[int]:",
+        "    if r == -1:",
+        "        r = len(arr) - 1",
+        "    if l >= r:",
+        "        return arr",
+        "    m = (l + r) // 2",
+        "    merge_sort(arr, l, m)",
+        "    merge_sort(arr, m + 1, r)",
+        "    merge(arr, l, m, r)",
+        "    return arr",
+      ],
     },
     lineMap: {
       javascript: { init: 1, merge: 6, mergecompare: 6, copyremain: 6, done: 2 },
       cpp: { init: 1, merge: 6, mergecompare: 6, copyremain: 6, done: 2 },
+      python: { init: 1, merge: 9, mergecompare: 9, copyremain: 9, done: 5 },
     },
   };
 }
@@ -811,10 +981,21 @@ export function buildHeapSortLesson(values: number[] = [12, 11, 13, 5, 6, 7]): L
         "  }",
         "}",
       ],
+      python: [
+        "def heap_sort(arr: list[int]) -> list[int]:",
+        "    n = len(arr)",
+        "    for i in range(n // 2 - 1, -1, -1):",
+        "        heapify(arr, n, i)",
+        "    for i in range(n - 1, 0, -1):",
+        "        arr[0], arr[i] = arr[i], arr[0]",
+        "        heapify(arr, i, 0)",
+        "    return arr",
+      ],
     },
     lineMap: {
       javascript: { init: 1, buildheap: 3, extract: 5, heapify: 6, done: 8 },
       cpp: { init: 1, buildheap: 3, extract: 5, heapify: 6, done: 8 },
+      python: { init: 1, buildheap: 3, extract: 5, heapify: 6, done: 8 },
     },
   };
 }
@@ -824,15 +1005,50 @@ export function buildHeapSortLesson(values: number[] = [12, 11, 13, 5, 6, 7]): L
    ═══════════════════════════════════════════════════════════ */
 export function buildCountingSortLesson(values: number[] = [4, 2, 2, 8, 3, 3, 1]): Lesson {
   const arr = [...values];
-  const maxVal = Math.max(...arr);
-  const count = new Array(maxVal + 1).fill(0);
   const steps: LessonStep[] = [];
+
+  if (arr.length === 0) {
+    steps.push({
+      actions: [
+        { action: "reset_scene" },
+        { action: "create_array", id: "arr-count", values: [] },
+        { action: "show_message", text: "Counting Sort: array is empty, already sorted." },
+        { action: "show_complexity", time: "O(1)", space: "O(1)" },
+      ],
+      codeLine: "done",
+      explanation: "Empty array requires 0 steps; already sorted.",
+    });
+    return {
+      id: "counting-sort",
+      title: "Counting Sort",
+      dataStructure: "Array",
+      pattern: "Frequency Counting Distribution",
+      objective: "Sort an array of bounded integers in linear time by tallying counts",
+      difficulty: "Easy",
+      steps,
+      code: {
+        javascript: ["function countingSort(arr) { return arr; }"],
+        cpp: ["void countingSort(vector<int>& arr) {}"],
+        python: ["def counting_sort(arr: list[int]) -> list[int]: return arr"],
+      },
+      lineMap: {
+        javascript: { init: 1, count: 1, reconstruct: 1, done: 1 },
+        cpp: { init: 1, count: 1, reconstruct: 1, done: 1 },
+        python: { init: 1, count: 1, reconstruct: 1, done: 1 },
+      },
+    };
+  }
+
+  const minVal = Math.min(...arr);
+  const maxVal = Math.max(...arr);
+  const range = maxVal - minVal + 1;
+  const count = new Array(range).fill(0);
 
   steps.push({
     actions: [
       { action: "reset_scene" },
       { action: "create_array", id: "arr-count", values: [...arr] },
-      { action: "show_message", text: `Counting Sort: Non-comparison integer sort over range [0..${maxVal}].` },
+      { action: "show_message", text: `Counting Sort: Non-comparison integer sort over range [${minVal}..${maxVal}].` },
     ],
     codeLine: "init",
     explanation: "Counting Sort counts distinct value occurrences and reconstructs the sorted output without pairwise comparisons.",
@@ -840,21 +1056,23 @@ export function buildCountingSortLesson(values: number[] = [4, 2, 2, 8, 3, 3, 1]
 
   // Count frequencies
   for (let i = 0; i < arr.length; i++) {
-    count[arr[i]]++;
+    const offset = arr[i] - minVal;
+    count[offset]++;
     steps.push({
       actions: [
         { action: "highlight_element", indices: [i] },
-        { action: "show_message", text: `Count frequency of ${arr[i]} (now ${count[arr[i]]})` },
+        { action: "show_message", text: `Count frequency of ${arr[i]} (now ${count[offset]})` },
       ],
       codeLine: "count",
-      explanation: `Counted occurrence of value ${arr[i]}. Total frequency is ${count[arr[i]]}.`,
+      explanation: `Counted occurrence of value ${arr[i]}. Total frequency is ${count[offset]}.`,
     });
   }
 
   // Reconstruct array
   let outIdx = 0;
-  for (let num = 0; num <= maxVal; num++) {
-    while (count[num] > 0) {
+  for (let offset = 0; offset < range; offset++) {
+    const num = minVal + offset;
+    while (count[offset] > 0) {
       arr[outIdx] = num;
       steps.push({
         actions: [
@@ -865,7 +1083,7 @@ export function buildCountingSortLesson(values: number[] = [4, 2, 2, 8, 3, 3, 1]
         explanation: `Placed value ${num} at output index ${outIdx}.`,
       });
       outIdx++;
-      count[num]--;
+      count[offset]--;
     }
   }
 
@@ -890,31 +1108,53 @@ export function buildCountingSortLesson(values: number[] = [4, 2, 2, 8, 3, 3, 1]
     code: {
       javascript: [
         "function countingSort(arr) {",
+        "  if (arr.length <= 1) return arr;",
+        "  const min = Math.min(...arr);",
         "  const max = Math.max(...arr);",
-        "  const count = new Array(max + 1).fill(0);",
-        "  for (const num of arr) count[num]++;",
+        "  const count = new Array(max - min + 1).fill(0);",
+        "  for (const num of arr) count[num - min]++;",
         "  let idx = 0;",
-        "  for (let num = 0; num <= max; num++) {",
-        "    while (count[num]-- > 0) arr[idx++] = num;",
+        "  for (let offset = 0; offset < count.length; offset++) {",
+        "    while (count[offset]-- > 0) arr[idx++] = min + offset;",
         "  }",
         "  return arr;",
         "}",
       ],
       cpp: [
         "void countingSort(vector<int>& arr) {",
+        "  if (arr.size() <= 1) return;",
+        "  int minVal = *min_element(arr.begin(), arr.end());",
         "  int maxVal = *max_element(arr.begin(), arr.end());",
-        "  vector<int> count(maxVal + 1, 0);",
-        "  for (int num : arr) count[num]++;",
+        "  vector<int> count(maxVal - minVal + 1, 0);",
+        "  for (int num : arr) count[num - minVal]++;",
         "  int idx = 0;",
-        "  for (int num = 0; num <= maxVal; num++) {",
-        "    while (count[num]-- > 0) arr[idx++] = num;",
+        "  for (size_t offset = 0; offset < count.size(); offset++) {",
+        "    while (count[offset]-- > 0) arr[idx++] = minVal + offset;",
         "  }",
         "}",
       ],
+      python: [
+        "def counting_sort(arr: list[int]) -> list[int]:",
+        "    if len(arr) <= 1:",
+        "        return arr",
+        "    min_val = min(arr)",
+        "    max_val = max(arr)",
+        "    count = [0] * (max_val - min_val + 1)",
+        "    for x in arr:",
+        "        count[x - min_val] += 1",
+        "    idx = 0",
+        "    for offset in range(len(count)):",
+        "        while count[offset] > 0:",
+        "            arr[idx] = min_val + offset",
+        "            idx += 1",
+        "            count[offset] -= 1",
+        "    return arr",
+      ],
     },
     lineMap: {
-      javascript: { init: 1, count: 4, reconstruct: 7, done: 9 },
-      cpp: { init: 1, count: 4, reconstruct: 7, done: 9 },
+      javascript: { init: 1, count: 6, reconstruct: 9, done: 11 },
+      cpp: { init: 1, count: 6, reconstruct: 9, done: 11 },
+      python: { init: 1, count: 8, reconstruct: 12, done: 14 },
     },
   };
 }
@@ -1000,16 +1240,39 @@ export function buildRadixSortLesson(values: number[] = [170, 45, 75, 90, 802, 2
       ],
       cpp: [
         "void radixSort(vector<int>& arr) {",
+        "  if (arr.empty()) return;",
         "  int maxVal = *max_element(arr.begin(), arr.end());",
         "  for (int exp = 1; maxVal / exp > 0; exp *= 10) {",
         "    countSortByDigit(arr, exp);",
         "  }",
         "}",
       ],
+      python: [
+        "def radix_sort(arr: list[int]) -> list[int]:",
+        "    if not arr:",
+        "        return []",
+        "    max_val = max(arr)",
+        "    exp = 1",
+        "    while max_val // exp > 0:",
+        "        count = [0] * 10",
+        "        out = [0] * len(arr)",
+        "        for x in arr:",
+        "            count[(x // exp) % 10] += 1",
+        "        for i in range(1, 10):",
+        "            count[i] += count[i - 1]",
+        "        for i in range(len(arr) - 1, -1, -1):",
+        "            d = (arr[i] // exp) % 10",
+        "            out[count[d] - 1] = arr[i]",
+        "            count[d] -= 1",
+        "        arr = out",
+        "        exp *= 10",
+        "    return arr",
+      ],
     },
     lineMap: {
       javascript: { init: 1, pass: 3, bucket: 4, done: 6 },
-      cpp: { init: 1, pass: 3, bucket: 4, done: 6 },
+      cpp: { init: 1, pass: 4, bucket: 5, done: 7 },
+      python: { init: 1, pass: 6, bucket: 11, done: 18 },
     },
   };
 }
@@ -1020,6 +1283,38 @@ export function buildRadixSortLesson(values: number[] = [170, 45, 75, 90, 802, 2
 export function buildBucketSortLesson(values: number[] = [78, 17, 39, 26, 72, 94, 21, 12]): Lesson {
   const arr = [...values];
   const steps: LessonStep[] = [];
+
+  if (arr.length === 0) {
+    steps.push({
+      actions: [
+        { action: "reset_scene" },
+        { action: "create_array", id: "arr-bucket", values: [] },
+        { action: "show_message", text: "Bucket Sort: array is empty, already sorted." },
+        { action: "show_complexity", time: "O(1)", space: "O(1)" },
+      ],
+      codeLine: "done",
+      explanation: "Empty array requires 0 steps; already sorted.",
+    });
+    return {
+      id: "bucket-sort",
+      title: "Bucket Sort",
+      dataStructure: "Array",
+      pattern: "Scatter-Gather Bucket Distribution",
+      objective: "Sort uniformly distributed elements by bucketing and concatenation",
+      difficulty: "Medium",
+      steps,
+      code: {
+        javascript: ["function bucketSort(arr) { return arr; }"],
+        cpp: ["void bucketSort(vector<int>& arr) {}"],
+        python: ["def bucket_sort(arr: list[int]) -> list[int]: return arr"],
+      },
+      lineMap: {
+        javascript: { init: 1, scatter: 1, gather: 1, done: 1 },
+        cpp: { init: 1, scatter: 1, gather: 1, done: 1 },
+        python: { init: 1, scatter: 1, gather: 1, done: 1 },
+      },
+    };
+  }
 
   steps.push({
     actions: [
@@ -1089,22 +1384,66 @@ export function buildBucketSortLesson(values: number[] = [78, 17, 39, 26, 72, 94
     code: {
       javascript: [
         "function bucketSort(arr, bucketCount = 5) {",
+        "  if (arr.length <= 1) return arr;",
+        "  const min = Math.min(...arr);",
+        "  const max = Math.max(...arr);",
+        "  if (min === max) return arr;",
+        "  const range = (max - min) / bucketCount;",
         "  const buckets = Array.from({ length: bucketCount }, () => []);",
-        "  // 1. Scatter into buckets",
-        "  // 2. Sort individual buckets",
-        "  // 3. Gather back into array",
-        "  return arr;",
+        "  for (const num of arr) {",
+        "    const idx = Math.min(bucketCount - 1, Math.floor((num - min) / range));",
+        "    buckets[idx].push(num);",
+        "  }",
+        "  const result = [];",
+        "  for (const bucket of buckets) {",
+        "    bucket.sort((a, b) => a - b);",
+        "    result.push(...bucket);",
+        "  }",
+        "  return result;",
         "}",
       ],
       cpp: [
-        "void bucketSort(vector<int>& arr) {",
-        "  // Scatter into buckets, sort, gather",
+        "void bucketSort(vector<int>& arr, int bucketCount = 5) {",
+        "  if (arr.size() <= 1) return;",
+        "  int minVal = *min_element(arr.begin(), arr.end());",
+        "  int maxVal = *max_element(arr.begin(), arr.end());",
+        "  if (minVal == maxVal) return;",
+        "  double range = (double)(maxVal - minVal) / bucketCount;",
+        "  vector<vector<int>> buckets(bucketCount);",
+        "  for (int num : arr) {",
+        "    int idx = min(bucketCount - 1, (int)((num - minVal) / range));",
+        "    buckets[idx].push_back(num);",
+        "  }",
+        "  int k = 0;",
+        "  for (auto& bucket : buckets) {",
+        "    sort(bucket.begin(), bucket.end());",
+        "    for (int num : bucket) arr[k++] = num;",
+        "  }",
         "}",
+      ],
+      python: [
+        "def bucket_sort(arr: list[int], bucket_count: int = 5) -> list[int]:",
+        "    if len(arr) <= 1:",
+        "        return arr",
+        "    min_val, max_val = min(arr), max(arr)",
+        "    if min_val == max_val:",
+        "        return arr",
+        "    rng = (max_val - min_val) / bucket_count",
+        "    buckets = [[] for _ in range(bucket_count)]",
+        "    for x in arr:",
+        "        idx = min(bucket_count - 1, int((x - min_val) / rng))",
+        "        buckets[idx].append(x)",
+        "    out = []",
+        "    for b in buckets:",
+        "        b.sort()",
+        "        out.extend(b)",
+        "    return out",
       ],
     },
     lineMap: {
-      javascript: { init: 1, scatter: 3, gather: 5, done: 6 },
-      cpp: { init: 1, scatter: 2, gather: 2, done: 3 },
+      javascript: { init: 1, scatter: 8, gather: 13, done: 17 },
+      cpp: { init: 1, scatter: 8, gather: 13, done: 16 },
+      python: { init: 1, scatter: 9, gather: 13, done: 16 },
     },
   };
 }

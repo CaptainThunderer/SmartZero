@@ -53,6 +53,533 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
     edgeHighlight: isDark ? "#F59E0B" : "#5B5FEF",
   };
 
+  /* ── Whiteboard Header ── */
+  if (state.boardHeader) {
+    specs.push({
+      type: "text",
+      id: stableId("wb-title"),
+      x: 100,
+      y,
+      text: state.boardHeader.title.toUpperCase(),
+      fontSize: 24,
+      strokeColor: colors.title,
+    });
+    if (state.boardHeader.subtitle) {
+      specs.push({
+        type: "text",
+        id: stableId("wb-subtitle"),
+        x: 100,
+        y: y + 32,
+        text: state.boardHeader.subtitle,
+        fontSize: 15,
+        strokeColor: colors.textSecondary,
+      });
+    }
+    if (state.boardHeader.badge) {
+      specs.push({
+        type: "text",
+        id: stableId("wb-badge"),
+        x: 620,
+        y: y + 4,
+        text: `[ ${state.boardHeader.badge} ]`,
+        fontSize: 14,
+        strokeColor: colors.accent,
+      });
+    }
+    y += state.boardHeader.subtitle ? 70 : 45;
+  }
+
+  /* ── Callout Box ── */
+  if (state.callout) {
+    const boxColor =
+      state.callout.boxType === "insight"
+        ? colors.cellBorderActive
+        : state.callout.boxType === "warning"
+          ? colors.compare
+          : state.callout.boxType === "success"
+            ? colors.cellBorderSorted
+            : colors.boxBorder;
+    const bgColor =
+      state.callout.boxType === "insight"
+        ? colors.cellBgActive
+        : state.callout.boxType === "success"
+          ? colors.cellBgSorted
+          : colors.boxBg;
+
+    specs.push({
+      type: "rectangle",
+      id: stableId("callout-box"),
+      x: 100,
+      y,
+      width: 720,
+      height: 44,
+      strokeColor: boxColor,
+      backgroundColor: bgColor,
+      strokeWidth: 1.5,
+    });
+    specs.push({
+      type: "text",
+      id: stableId("callout-text"),
+      x: 115,
+      y: y + 12,
+      text: state.callout.text,
+      fontSize: 15,
+      strokeColor: colors.textPrimary,
+    });
+    y += 58;
+  }
+
+  /* ── Key Insight Card ── */
+  if (state.insightCard) {
+    specs.push({
+      type: "rectangle",
+      id: stableId("insight-card-box"),
+      x: 100,
+      y,
+      width: 720,
+      height: 56,
+      strokeColor: colors.cellBorderActive,
+      backgroundColor: colors.cellBgActive,
+      strokeWidth: 2,
+    });
+    specs.push({
+      type: "text",
+      id: stableId("insight-card-title"),
+      x: 115,
+      y: y + 8,
+      text: `★ KEY INSIGHT: ${state.insightCard.title}`,
+      fontSize: 13,
+      strokeColor: colors.accent,
+    });
+    specs.push({
+      type: "text",
+      id: stableId("insight-card-text"),
+      x: 115,
+      y: y + 28,
+      text: state.insightCard.text,
+      fontSize: 14,
+      strokeColor: colors.textPrimary,
+    });
+    y += 70;
+  }
+
+  /* ── Side-by-Side Comparison Board ── */
+  if (state.comparisonBoard) {
+    const board = state.comparisonBoard;
+    specs.push({
+      type: "rectangle",
+      id: stableId("cmp-left-box"),
+      x: 100,
+      y,
+      width: 340,
+      height: 160,
+      strokeColor: colors.cellBorderActive,
+      backgroundColor: colors.boxBg,
+      strokeWidth: 1.5,
+    });
+    specs.push({
+      type: "text",
+      id: stableId("cmp-left-title"),
+      x: 115,
+      y: y + 12,
+      text: board.leftTitle,
+      fontSize: 18,
+      strokeColor: colors.title,
+    });
+    board.leftItems.slice(0, 4).forEach((item, idx) => {
+      specs.push({
+        type: "text",
+        id: stableId(`cmp-left-item-${idx}`),
+        x: 115,
+        y: y + 42 + idx * 26,
+        text: `• ${item}`,
+        fontSize: 14,
+        strokeColor: colors.textPrimary,
+      });
+    });
+
+    specs.push({
+      type: "rectangle",
+      id: stableId("cmp-right-box"),
+      x: 480,
+      y,
+      width: 340,
+      height: 160,
+      strokeColor: colors.cellBorderSorted,
+      backgroundColor: colors.boxBg,
+      strokeWidth: 1.5,
+    });
+    specs.push({
+      type: "text",
+      id: stableId("cmp-right-title"),
+      x: 495,
+      y: y + 12,
+      text: board.rightTitle,
+      fontSize: 18,
+      strokeColor: colors.cellBorderSorted,
+    });
+    board.rightItems.slice(0, 4).forEach((item, idx) => {
+      specs.push({
+        type: "text",
+        id: stableId(`cmp-right-item-${idx}`),
+        x: 495,
+        y: y + 42 + idx * 26,
+        text: `• ${item}`,
+        fontSize: 14,
+        strokeColor: colors.textPrimary,
+      });
+    });
+
+    if (board.verdict) {
+      specs.push({
+        type: "text",
+        id: stableId("cmp-verdict"),
+        x: 100,
+        y: y + 175,
+        text: `Verdict: ${board.verdict}`,
+        fontSize: 15,
+        strokeColor: colors.accent,
+      });
+      y += 210;
+    } else {
+      y += 180;
+    }
+  }
+
+  /* ── Merge Tree (Gold Standard Divide & Conquer) ── */
+  if (state.mergeTree) {
+    state.mergeTree.levels.forEach((lvl, li) => {
+      const isLvlActive = state.mergeTree!.activeLevel === li;
+      specs.push({
+        type: "text",
+        id: stableId(`mt-lbl-${li}`),
+        x: 100,
+        y,
+        text: lvl.label,
+        fontSize: 14,
+        strokeColor: isLvlActive ? colors.accent : colors.title,
+      });
+
+      let subX = 250;
+      lvl.arrays.forEach((subArr, ai) => {
+        const subWidth = Math.max(70, subArr.length * 36 + 14);
+        specs.push({
+          type: "rectangle",
+          id: stableId(`mt-box-${li}-${ai}`),
+          x: subX,
+          y: y - 6,
+          width: subWidth,
+          height: 32,
+          strokeColor: isLvlActive ? colors.cellBorderActive : colors.cellBorder,
+          backgroundColor: isLvlActive ? colors.cellBgActive : colors.cellBg,
+          strokeWidth: isLvlActive ? 2 : 1,
+        });
+        specs.push({
+          type: "text",
+          id: stableId(`mt-val-${li}-${ai}`),
+          x: subX + 10,
+          y: y + 2,
+          text: `[ ${subArr.join(", ")} ]`,
+          fontSize: 14,
+          strokeColor: colors.textPrimary,
+        });
+        subX += subWidth + 20;
+      });
+
+      if (li < state.mergeTree!.levels.length - 1) {
+        specs.push({
+          type: "text",
+          id: stableId(`mt-arr-${li}`),
+          x: 350,
+          y: y + 30,
+          text: "↓",
+          fontSize: 16,
+          strokeColor: colors.title,
+        });
+      }
+      y += 50;
+    });
+    y += 15;
+  }
+
+  /* ── DP Table ── */
+  if (state.dpTable) {
+    const table = state.dpTable;
+    specs.push({
+      type: "text",
+      id: stableId("dp-title"),
+      x: 100,
+      y,
+      text: table.title || "DP State Table",
+      fontSize: 20,
+      strokeColor: colors.title,
+    });
+    y += 32;
+
+    if (table.meaning) {
+      specs.push({
+        type: "text",
+        id: stableId("dp-meaning"),
+        x: 100,
+        y,
+        text: `State Meaning: ${table.meaning}`,
+        fontSize: 14,
+        strokeColor: colors.accent,
+      });
+      y += 26;
+    }
+
+    if (table.headers) {
+      table.headers.forEach((h, hi) => {
+        specs.push({
+          type: "text",
+          id: stableId(`dp-hdr-${hi}`),
+          x: 170 + hi * 75,
+          y,
+          text: h,
+          fontSize: 14,
+          strokeColor: colors.indexText,
+        });
+      });
+      y += 24;
+    }
+
+    table.rows.forEach((row, ri) => {
+      if (table.rowHeaders && table.rowHeaders[ri]) {
+        specs.push({
+          type: "text",
+          id: stableId(`dp-rhdr-${ri}`),
+          x: 100,
+          y: y + 8,
+          text: table.rowHeaders[ri],
+          fontSize: 14,
+          strokeColor: colors.indexText,
+        });
+      }
+
+      row.forEach((cell, ci) => {
+        const cx = 160 + ci * 75;
+        const isHighlighted =
+          table.highlightCell &&
+          table.highlightCell[0] === ri &&
+          table.highlightCell[1] === ci;
+
+        specs.push({
+          type: "rectangle",
+          id: stableId(`dp-cell-${ri}-${ci}`),
+          x: cx,
+          y,
+          width: 65,
+          height: 38,
+          strokeColor: isHighlighted ? colors.cellBorderActive : colors.cellBorder,
+          backgroundColor: isHighlighted ? colors.cellBgActive : colors.cellBg,
+          strokeWidth: isHighlighted ? 2 : 1,
+        });
+        specs.push({
+          type: "text",
+          id: stableId(`dp-val-${ri}-${ci}`),
+          x: cx + 18,
+          y: y + 9,
+          text: String(cell),
+          fontSize: 15,
+          strokeColor: isHighlighted ? colors.accent : colors.textPrimary,
+        });
+      });
+      y += 46;
+    });
+
+    if (table.formula) {
+      specs.push({
+        type: "text",
+        id: stableId("dp-formula"),
+        x: 100,
+        y: y + 5,
+        text: `Transition: ${table.formula}`,
+        fontSize: 15,
+        strokeColor: colors.cellBorderSorted,
+      });
+      y += 35;
+    }
+    y += 15;
+  }
+
+  /* ── Set Container ── */
+  if (state.setContainer) {
+    const setC = state.setContainer;
+    specs.push({
+      type: "text",
+      id: stableId("set-title"),
+      x: 100,
+      y,
+      text: setC.title || "Set (Unique Elements)",
+      fontSize: 20,
+      strokeColor: colors.title,
+    });
+    y += 32;
+
+    const setWidth = Math.max(300, setC.elements.length * 75 + 40);
+    specs.push({
+      type: "rectangle",
+      id: stableId("set-box"),
+      x: 100,
+      y,
+      width: setWidth,
+      height: 68,
+      strokeColor: colors.cellBorderActive,
+      backgroundColor: colors.boxBg,
+      strokeWidth: 2,
+    });
+
+    setC.elements.forEach((elem, ei) => {
+      const ex = 120 + ei * 75;
+      const isHigh = setC.highlightElements?.includes(elem) ?? false;
+      specs.push({
+        type: "rectangle",
+        id: stableId(`set-elem-${ei}`),
+        x: ex,
+        y: y + 11,
+        width: 55,
+        height: 44,
+        strokeColor: isHigh ? colors.cellBorderSorted : colors.cellBorder,
+        backgroundColor: isHigh ? colors.cellBgSorted : colors.cellBg,
+        strokeWidth: isHigh ? 2 : 1,
+      });
+      specs.push({
+        type: "text",
+        id: stableId(`set-elem-val-${ei}`),
+        x: ex + 18,
+        y: y + 23,
+        text: String(elem),
+        fontSize: 17,
+        strokeColor: colors.textPrimary,
+      });
+    });
+
+    if (setC.note) {
+      specs.push({
+        type: "text",
+        id: stableId("set-note"),
+        x: 100,
+        y: y + 78,
+        text: setC.note,
+        fontSize: 14,
+        strokeColor: colors.textSecondary,
+      });
+      y += 110;
+    } else {
+      y += 85;
+    }
+  }
+
+  /* ── Call Stack ── */
+  if (state.callStack) {
+    specs.push({
+      type: "text",
+      id: stableId("cs-title"),
+      x: 100,
+      y,
+      text: "Call Stack (Recursion Frames)",
+      fontSize: 20,
+      strokeColor: colors.title,
+    });
+    y += 32;
+
+    state.callStack.frames.forEach((frame, fi) => {
+      const isTop = frame.active ?? (fi === state.callStack!.frames.length - 1);
+      specs.push({
+        type: "rectangle",
+        id: stableId(`cs-frame-${fi}`),
+        x: 100,
+        y,
+        width: 320,
+        height: 40,
+        strokeColor: isTop ? colors.cellBorderActive : colors.cellBorder,
+        backgroundColor: isTop ? colors.cellBgActive : colors.cellBg,
+        strokeWidth: isTop ? 2 : 1,
+      });
+      specs.push({
+        type: "text",
+        id: stableId(`cs-frame-text-${fi}`),
+        x: 115,
+        y: y + 10,
+        text: `${frame.fnName}(${frame.args})${frame.returnValue ? ` → ${frame.returnValue}` : ""}`,
+        fontSize: 15,
+        strokeColor: colors.textPrimary,
+      });
+      if (isTop) {
+        specs.push({
+          type: "text",
+          id: stableId("cs-top-ptr"),
+          x: 435,
+          y: y + 10,
+          text: "← ACTIVE FRAME",
+          fontSize: 14,
+          strokeColor: colors.accent,
+        });
+      }
+      y += 46;
+    });
+    y += 15;
+  }
+
+  /* ── Decision Tree ── */
+  if (state.decisionTree) {
+    specs.push({
+      type: "text",
+      id: stableId("dt-title"),
+      x: 100,
+      y,
+      text: "Decision Tree (Backtracking: Choose → Explore → Undo)",
+      fontSize: 20,
+      strokeColor: colors.title,
+    });
+    const offsetY = y + 40;
+    const nodeMap = Object.fromEntries(state.decisionTree.nodes.map((n) => [n.id, n]));
+
+    state.decisionTree.edges.forEach(([uId, vId], ei) => {
+      const u = nodeMap[uId];
+      const v = nodeMap[vId];
+      if (u && v) {
+        specs.push({
+          type: "arrow",
+          id: stableId(`dt-edge-${ei}`),
+          x: u.x,
+          y: u.y + offsetY,
+          width: v.x - u.x,
+          height: v.y - u.y,
+          strokeColor: colors.edgeNormal,
+        });
+      }
+    });
+
+    state.decisionTree.nodes.forEach((n) => {
+      const isPruned = n.state === "pruned";
+      const isActive = n.state === "active";
+
+      specs.push({
+        type: "rectangle",
+        id: stableId(`dt-node-${n.id}`),
+        x: n.x - 30,
+        y: n.y - 18 + offsetY,
+        width: 60,
+        height: 36,
+        strokeColor: isPruned ? colors.compare : isActive ? colors.cellBorderActive : colors.cellBorder,
+        backgroundColor: isPruned ? colors.cellBgDimmed : isActive ? colors.cellBgActive : colors.cellBg,
+        strokeWidth: isActive ? 2 : 1,
+      });
+      specs.push({
+        type: "text",
+        id: stableId(`dt-text-${n.id}`),
+        x: n.x - 18,
+        y: n.y - 8 + offsetY,
+        text: n.label,
+        fontSize: 14,
+        strokeColor: isPruned ? colors.textDimmed : colors.textPrimary,
+      });
+    });
+    y = offsetY + 220;
+  }
+
   /* ── Array ── */
   if (state.array) {
     specs.push({
@@ -131,6 +658,45 @@ function buildScene(state: CanvasState, theme: "light" | "dark" = "light") {
         }
       });
     });
+
+    /* ── Sliding Window Bracket ── */
+    if (state.slidingWindow) {
+      const { startIndex, endIndex, label, conditionOrSum } = state.slidingWindow;
+      const winX = 100 + startIndex * 90;
+      const winWidth = Math.max(72, (endIndex - startIndex + 1) * 90 - 18);
+      specs.push({
+        type: "rectangle",
+        id: stableId("sliding-window-box"),
+        x: winX - 6,
+        y: y - 6,
+        width: winWidth + 12,
+        height: 72,
+        strokeColor: colors.accent,
+        backgroundColor: "transparent",
+        strokeWidth: 2.5,
+      });
+      specs.push({
+        type: "text",
+        id: stableId("sliding-window-label"),
+        x: winX + 8,
+        y: y + 90,
+        text: `WINDOW: [${startIndex}..${endIndex}] ${conditionOrSum ? `(${conditionOrSum})` : ""}`,
+        fontSize: 14,
+        strokeColor: colors.accent,
+      });
+      if (label) {
+        specs.push({
+          type: "text",
+          id: stableId("sliding-window-action"),
+          x: winX + 8,
+          y: y - 36,
+          text: `▲ ${label}`,
+          fontSize: 14,
+          strokeColor: colors.pointer,
+        });
+      }
+    }
+
     y += 150;
   }
 

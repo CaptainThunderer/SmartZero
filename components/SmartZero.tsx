@@ -37,7 +37,7 @@ import { applyAction, initialCanvas, replay } from "../engine/core";
 import { lessonFromId, SUPPORTED_LESSONS } from "../engine/lessons";
 import { DSA_CATEGORIES } from "../engine/registry";
 import { useWorkspaceStore, generateWorkspaceTitle } from "../stores/workspaceStore";
-import type { Lesson, LessonPhase, CanvasState, LessonStep, ChatMessage, DSLAction } from "../types/dsa";
+import type { Lesson, LessonPhase, CanvasState, LessonStep, ChatMessage, DSLAction, SupportedLanguage } from "../types/dsa";
 
 /* ══════════════════════════════════════════════
    Constants
@@ -77,7 +77,13 @@ export default function SmartZero() {
     switchWorkspace,
     findWorkspaceByTopic,
     toggleNotes,
+    rehydrateFromStorage,
   } = useWorkspaceStore();
+
+  /* ── Safe Client-Side Rehydration from LocalStorage ── */
+  useEffect(() => {
+    rehydrateFromStorage();
+  }, [rehydrateFromStorage]);
 
   /* ── Active Workspace is the Single Source of Truth ── */
   const activeWs = getActiveWorkspace();
@@ -121,7 +127,7 @@ export default function SmartZero() {
   );
 
   const setLanguage = useCallback(
-    (lang: "javascript" | "cpp") => {
+    (lang: SupportedLanguage) => {
       updateActiveWorkspace({ language: lang });
     },
     [updateActiveWorkspace]
@@ -207,6 +213,8 @@ export default function SmartZero() {
       updateActiveWorkspace((prev) => ({
         lesson: l,
         lessonId: l.id,
+        topicId: prev.topicId || l.id,
+        title: prev.title === "New Canvas" || /^Canvas \d+$/.test(prev.title) ? l.title : prev.title,
         step: 0,
         phase: "idle",
         playing: false,
@@ -247,7 +255,14 @@ export default function SmartZero() {
       const r = await fetch("/api/interpret", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({
+          question: q,
+          context: {
+            topicId: activeWs.topicId,
+            lessonId: activeWs.lessonId,
+            language: activeWs.language,
+          },
+        }),
       });
       const task = await r.json();
       if (!r.ok) throw new Error(task.error || "Unable to interpret question");
@@ -301,6 +316,14 @@ export default function SmartZero() {
         }
       }
 
+      if (/\b(python|py)\b/i.test(q)) {
+        updateActiveWorkspace({ language: "python" });
+      } else if (/\b(c\+\+|cpp)\b/i.test(q)) {
+        updateActiveWorkspace({ language: "cpp" });
+      } else if (/\b(javascript|js|node)\b/i.test(q)) {
+        updateActiveWorkspace({ language: "javascript" });
+      }
+
       // Stays in current workspace
       if (task.intent === "unsupported_non_dsa") {
         updateActiveWorkspace((prev) => ({
@@ -338,6 +361,8 @@ export default function SmartZero() {
             },
           ],
         }));
+      } else if (task.customLesson) {
+        startLesson(task.customLesson, task.explanation);
       } else if (
         task.lessonId &&
         (task.intent === "visualize" || !task.explanation)
@@ -1321,6 +1346,20 @@ export default function SmartZero() {
                       >
                         C++
                       </button>
+                      <button
+                        onClick={() => setLanguage("python")}
+                        className={`px-2 py-0.5 text-[9px] font-semibold transition-colors ${
+                          language === "python"
+                            ? isDark
+                              ? "bg-[#5B5FEF] text-white"
+                              : "bg-[#232946] text-white"
+                            : isDark
+                              ? "bg-[#181824] text-[#A0A6C2] hover:bg-[#252646]"
+                              : "bg-white text-[#6B6F8A] hover:bg-[#F2F2EE]"
+                        }`}
+                      >
+                        Python
+                      </button>
                     </div>
                   </div>
 
@@ -1330,10 +1369,10 @@ export default function SmartZero() {
                       isDark ? "bg-[#12121A]" : "bg-white"
                     }`}
                   >
-                    {lesson.code[language].map((line, i) => {
+                    {((lesson.code && lesson.code[language]) || lesson.code.javascript || []).map((line, i) => {
+                      const lineMapping = (lesson.lineMap && lesson.lineMap[language]) || lesson.lineMap.javascript || {};
                       const highlighted =
-                        lesson.lineMap[language][current?.codeLine || ""] ===
-                        i + 1;
+                        lineMapping[current?.codeLine || ""] === i + 1;
                       return (
                         <div
                           key={i}
@@ -1399,11 +1438,11 @@ export default function SmartZero() {
                     Current Step ({step + 1}/{total})
                   </div>
                   <div
-                    className={`text-[11px] font-semibold mt-0.5 ${
+                    className={`text-[11.5px] font-bold mt-0.5 ${
                       isDark ? "text-[#F1F5F9]" : "text-[#232946]"
                     }`}
                   >
-                    {current.codeLine ? `Phase: ${current.codeLine}` : "Step Execution"}
+                    {current.narrative?.currentStep || (current.codeLine ? `Phase: ${current.codeLine}` : "Step Execution")}
                   </div>
                 </div>
 
@@ -1416,22 +1455,28 @@ export default function SmartZero() {
                       isDark ? "text-[#C7C9D9]" : "text-[#4A4E68]"
                     }`}
                   >
-                    {current.explanation}
+                    {current.narrative?.why || current.explanation}
                   </div>
                 </div>
 
-                {changesInCurrentStep.length > 0 && (
-                  <div>
-                    <div className="text-[8px] uppercase tracking-wider text-[#10B981] font-bold">
-                      What Changed
-                    </div>
-                    <div className="text-[10px] font-mono text-[#10B981] mt-0.5 space-y-0.5">
-                      {changesInCurrentStep.map((c, ci) => (
-                        <div key={ci}>• {c}</div>
-                      ))}
-                    </div>
+                <div>
+                  <div className="text-[8px] uppercase tracking-wider text-[#10B981] font-bold">
+                    What Changed
                   </div>
-                )}
+                  <div className="text-[10px] text-[#10B981] mt-0.5 leading-snug">
+                    {current.narrative?.whatChanged || (
+                      changesInCurrentStep.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {changesInCurrentStep.map((c, ci) => (
+                            <div key={ci}>• {c}</div>
+                          ))}
+                        </div>
+                      ) : (
+                        "Pointer moved or state examined."
+                      )
+                    )}
+                  </div>
+                </div>
 
                 <div>
                   <div className="text-[8px] uppercase tracking-wider text-[#F59E0B] font-bold">
@@ -1442,13 +1487,37 @@ export default function SmartZero() {
                       isDark ? "text-[#9498B3]" : "text-[#6B6F8A]"
                     }`}
                   >
-                    {current.question
-                      ? "Interactive decision point: Analyze the state and select the correct algorithmic action."
-                      : current.codeLine === "found" || current.codeLine === "done" || current.codeLine === "return"
-                        ? "Algorithm completed: Review the final invariants and complexity guarantees."
-                        : "Notice how pointer movements and state transitions preserve deterministic bounds."}
+                    {current.narrative?.whatToNotice || (
+                      current.question
+                        ? "Interactive decision point: Analyze the state and select the correct algorithmic action."
+                        : current.codeLine === "found" || current.codeLine === "done" || current.codeLine === "return"
+                          ? "Algorithm completed: Review the final invariants and complexity guarantees."
+                          : "Notice how pointer movements and state transitions preserve deterministic bounds."
+                    )}
                   </div>
                 </div>
+
+                {current.narrative?.keyInsight && (
+                  <div className="p-2 rounded-lg bg-[#5B5FEF]/10 border border-[#5B5FEF]/20">
+                    <div className="text-[8px] uppercase tracking-wider text-[#5B5FEF] font-bold">
+                      Key Insight
+                    </div>
+                    <div className={`text-[10px] leading-snug mt-0.5 font-medium ${isDark ? "text-[#E0E7FF]" : "text-[#3730A3]"}`}>
+                      {current.narrative.keyInsight}
+                    </div>
+                  </div>
+                )}
+
+                {current.narrative?.nextStep && (
+                  <div>
+                    <div className="text-[8px] uppercase tracking-wider text-[#9498B3] font-bold">
+                      Next
+                    </div>
+                    <div className={`text-[10px] mt-0.5 ${isDark ? "text-[#9498B3]" : "text-[#6B6F8A]"}`}>
+                      {current.narrative.nextStep}
+                    </div>
+                  </div>
+                )}
 
                 {canvasState.complexity && (
                   <div className="pt-1 flex gap-2">

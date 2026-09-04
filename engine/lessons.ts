@@ -156,6 +156,18 @@ export function buildSecondMaxLesson(
         "  return secondMax;",
         "}",
       ],
+      python: [
+        "def second_max(arr: list[int]) -> int:",
+        "    max_val = float('-inf')",
+        "    second = float('-inf')",
+        "    for x in arr:",
+        "        if x > max_val:",
+        "            second = max_val",
+        "            max_val = x",
+        "        elif x > second and x != max_val:",
+        "            second = x",
+        "    return second",
+      ],
     },
     lineMap: {
       javascript: {
@@ -171,6 +183,13 @@ export function buildSecondMaxLesson(
         ifbranch: 4,
         elsebranch: 7,
         return: 11,
+      },
+      python: {
+        init: 2,
+        loopcheck: 4,
+        ifbranch: 5,
+        elsebranch: 8,
+        return: 10,
       },
     },
   };
@@ -342,6 +361,19 @@ export function buildBinarySearchLesson(
         "  return -1;",
         "}",
       ],
+      python: [
+        "def binary_search(arr: list[int], target: int) -> int:",
+        "    low, high = 0, len(arr) - 1",
+        "    while low <= high:",
+        "        mid = (low + high) // 2",
+        "        if arr[mid] == target:",
+        "            return mid",
+        "        elif arr[mid] < target:",
+        "            low = mid + 1",
+        "        else:",
+        "            high = mid - 1",
+        "    return -1",
+      ],
     },
     lineMap: {
       javascript: {
@@ -359,6 +391,14 @@ export function buildBinarySearchLesson(
         found: 5,
         moveLow: 6,
         moveHigh: 7,
+      },
+      python: {
+        init: 2,
+        mid: 4,
+        compare: 5,
+        found: 6,
+        moveLow: 8,
+        moveHigh: 10,
       },
     },
   };
@@ -488,10 +528,21 @@ export function buildBSTLesson(insertValue = 65): Lesson {
         "  return node;",
         "}",
       ],
+      python: [
+        "def insert(node, value):",
+        "    if not node:",
+        "        return {'value': value, 'left': None, 'right': None}",
+        "    if value < node['value']:",
+        "        node['left'] = insert(node['left'], value)",
+        "    else:",
+        "        node['right'] = insert(node['right'], value)",
+        "    return node",
+      ],
     },
     lineMap: {
       javascript: { init: 1, compare: 3, insert: 4, done: 7 },
       cpp: { init: 1, compare: 3, insert: 4, done: 7 },
+      python: { init: 1, compare: 4, insert: 5, done: 8 },
     },
   };
 }
@@ -653,10 +704,22 @@ export function buildLinkedListLesson(
         "  return prev;",
         "}",
       ],
+      python: [
+        "def reverse_list(head):",
+        "    prev = None",
+        "    curr = head",
+        "    while curr:",
+        "        next_node = curr.next",
+        "        curr.next = prev",
+        "        prev = curr",
+        "        curr = next_node",
+        "    return prev",
+      ],
     },
     lineMap: {
       javascript: { init: 2, savenext: 4, relink: 5, advance: 6, done: 9 },
       cpp: { init: 2, savenext: 4, relink: 5, advance: 6, done: 9 },
+      python: { init: 2, savenext: 5, relink: 6, advance: 7, done: 9 },
     },
   };
 }
@@ -678,9 +741,36 @@ import {
   buildQueueLesson,
   buildHashTableLesson,
 } from "./linearStructures";
+import {
+  buildArrayWhiteboardLesson,
+  buildTwoPointersWhiteboardLesson,
+  buildSlidingWindowWhiteboardLesson,
+  buildSetWhiteboardLesson,
+  buildDPWhiteboardLesson,
+  buildRecursionWhiteboardLesson,
+  buildBacktrackingWhiteboardLesson,
+  buildArrayVsLinkedListWhiteboardLesson,
+  buildBFSvsDFSWhiteboardLesson,
+  buildComplexityWhiteboardLesson,
+} from "./whiteboardLessons";
+
+/* ── Dynamic Problem Lessons Cache ── */
+const DYNAMIC_LESSONS_MAP = new Map<string, Lesson>();
+
+export function registerDynamicLesson(lesson: Lesson): void {
+  DYNAMIC_LESSONS_MAP.set(lesson.id, lesson);
+}
+
+export function getDynamicLesson(id: string): Lesson | undefined {
+  return DYNAMIC_LESSONS_MAP.get(id);
+}
 
 /* ── Lesson Registry ── */
 export function lessonFromId(id: string, customValues?: number[]): Lesson | null {
+  if (DYNAMIC_LESSONS_MAP.has(id)) {
+    return DYNAMIC_LESSONS_MAP.get(id)!;
+  }
+
   if (id === "second-max") return buildSecondMaxLesson(customValues);
   if (id === "binary-search") return buildBinarySearchLesson();
   if (id === "bst-insert") return buildBSTLesson();
@@ -702,6 +792,18 @@ export function lessonFromId(id: string, customValues?: number[]): Lesson | null
   if (id === "stack-ops") return buildStackLesson();
   if (id === "queue-ops") return buildQueueLesson();
   if (id === "hash-table-ops") return buildHashTableLesson();
+
+  /* Whiteboard Conceptual Visual Lessons */
+  if (id === "explain-arrays" || id === "array-traversal") return buildArrayWhiteboardLesson();
+  if (id === "explain-two-pointers" || id === "two-pointers") return buildTwoPointersWhiteboardLesson();
+  if (id === "explain-sliding-window" || id === "sliding-window") return buildSlidingWindowWhiteboardLesson();
+  if (id === "explain-set" || id === "set-ops") return buildSetWhiteboardLesson();
+  if (id === "explain-dp" || id === "dynamic-programming") return buildDPWhiteboardLesson();
+  if (id === "explain-recursion") return buildRecursionWhiteboardLesson();
+  if (id === "explain-backtracking") return buildBacktrackingWhiteboardLesson();
+  if (id === "compare-array-vs-linked-list") return buildArrayVsLinkedListWhiteboardLesson();
+  if (id === "compare-bfs-vs-dfs") return buildBFSvsDFSWhiteboardLesson();
+  if (id === "explain-complexity") return buildComplexityWhiteboardLesson();
 
   return null;
 }
@@ -725,4 +827,14 @@ export const SUPPORTED_LESSONS = [
   { id: "stack-ops", title: "Stack Operations" },
   { id: "queue-ops", title: "Queue Operations" },
   { id: "hash-table-ops", title: "Hash Table" },
+  { id: "explain-arrays", title: "Understanding Arrays" },
+  { id: "explain-two-pointers", title: "Two Pointer Technique" },
+  { id: "explain-sliding-window", title: "Sliding Window Technique" },
+  { id: "explain-set", title: "Understanding Sets" },
+  { id: "explain-dp", title: "Dynamic Programming" },
+  { id: "explain-recursion", title: "Recursion & Call Stack" },
+  { id: "explain-backtracking", title: "Backtracking Decision Tree" },
+  { id: "compare-array-vs-linked-list", title: "Array vs. Linked List" },
+  { id: "compare-bfs-vs-dfs", title: "BFS vs. DFS" },
+  { id: "explain-complexity", title: "Time & Space Complexity" },
 ] as const;

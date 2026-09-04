@@ -12,7 +12,7 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const task = await getAIProvider().interpretQuestion(parsed.data.question);
+    const task = await getAIProvider().interpretQuestion(parsed.data.question, parsed.data.context);
     return NextResponse.json(task);
   } catch (e) {
     return NextResponse.json(

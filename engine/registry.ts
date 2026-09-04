@@ -8,17 +8,22 @@ export interface DSATopicDefinition {
     | "stacks"
     | "queues"
     | "hashing"
+    | "sets"
     | "trees"
     | "balanced-trees"
     | "heaps"
-    | "graphs"
     | "tries"
     | "dsu"
-    | "searching"
+    | "graphs"
+    | "shortest-paths"
     | "sorting"
+    | "searching"
     | "recursion"
-    | "greedy"
+    | "backtracking"
     | "dp"
+    | "greedy"
+    | "bit-manipulation"
+    | "complexity"
     | "patterns";
   aliases: string[];
   keywords: string[];
@@ -30,6 +35,7 @@ export interface DSATopicDefinition {
   };
   spaceComplexity: string;
   hasDeterministicEngine: boolean;
+  lessonId?: string;
   defaultInput?: number[];
   summary: string;
   whyItMatters: string;
@@ -47,18 +53,28 @@ export interface DSATopicDefinition {
 }
 
 export const DSA_CATEGORIES = [
-  { id: "arrays", label: "Arrays", description: "Contiguous memory, direct indexing, traversal, and sliding windows" },
+  { id: "arrays", label: "Arrays", description: "Contiguous memory, direct indexing, traversal, two-pointers, and sliding windows" },
+  { id: "strings", label: "Strings", description: "Character arrays, palindromes, substrings, and string manipulation" },
   { id: "linked-lists", label: "Linked Lists", description: "Node-pointer chains, dynamic size, reversal, and cycle detection" },
   { id: "stacks", label: "Stacks", description: "Last-In First-Out (LIFO), function calls, and monotonic tracking" },
   { id: "queues", label: "Queues", description: "First-In First-Out (FIFO), BFS buffers, and circular queues" },
   { id: "hashing", label: "Hash Tables", description: "Key-value indexing, hash functions, and collision resolution" },
-  { id: "trees", label: "Trees & BST", description: "Hierarchical branching, BST invariants, and recursive traversals" },
-  { id: "heaps", label: "Heaps", description: "Complete binary trees satisfying heap order for priority queues" },
-  { id: "graphs", label: "Graphs", description: "Networks of vertices and edges, BFS/DFS, and shortest paths" },
+  { id: "sets", label: "Sets & Unique Elements", description: "Deduplication, hash sets, membership testing, and set operations" },
+  { id: "trees", label: "Trees & Binary Trees", description: "Hierarchical branching, BST invariants, and recursive traversals" },
+  { id: "balanced-trees", label: "Balanced Trees", description: "AVL trees, red-black trees, rotations, and strict height balancing" },
+  { id: "heaps", label: "Heaps & Priority Queues", description: "Complete binary trees satisfying heap order for priority queues" },
+  { id: "tries", label: "Tries & Prefix Trees", description: "Retrieval trees for efficient prefix search, auto-complete, and dictionary lookups" },
+  { id: "dsu", label: "Disjoint Set Union (DSU)", description: "Union-Find structure with path compression and union by rank" },
+  { id: "graphs", label: "Graphs & Traversals", description: "Networks of vertices and edges, BFS/DFS, and topological sorting" },
+  { id: "shortest-paths", label: "Shortest Paths & MST", description: "Dijkstra, Bellman-Ford, Prim, and Kruskal algorithms" },
   { id: "sorting", label: "Sorting", description: "Ordering collections: comparison-based and linear distribution sorts" },
   { id: "searching", label: "Searching", description: "Locating targets via linear scans or logarithmic divide-and-conquer" },
+  { id: "recursion", label: "Recursion & Call Stack", description: "Self-referential functions, base cases, call stacks, and divide-and-conquer" },
+  { id: "backtracking", label: "Backtracking", description: "Systematic search with choose-explore-unchoose and constraint pruning" },
   { id: "dp", label: "Dynamic Programming", description: "Breaking problems into overlapping subproblems with memoization/tabulation" },
-  { id: "recursion", label: "Recursion & Backtracking", description: "Self-referential functions, base cases, and combinatorial search" },
+  { id: "greedy", label: "Greedy Algorithms", description: "Making locally optimal choices to achieve globally optimal solutions" },
+  { id: "bit-manipulation", label: "Bit Manipulation & Math", description: "Hardware-level bitwise operations, masking, power of 2, and XOR tricks" },
+  { id: "complexity", label: "Complexity & Big-O", description: "Theoretical analysis of algorithm time and space resource scaling" },
 ] as const;
 
 export const DSA_TOPIC_REGISTRY: Record<string, DSATopicDefinition> = {
@@ -237,6 +253,7 @@ export const DSA_TOPIC_REGISTRY: Record<string, DSATopicDefinition> = {
     timeComplexity: { best: "O(n)", avg: "O(n)", worst: "O(n)" },
     spaceComplexity: "O(1)",
     hasDeterministicEngine: true,
+    lessonId: "second-max",
     defaultInput: [10, 5, 20, 8, 15],
     visualType: "array",
     summary: "Finds the second largest distinct element in an unsorted array in a single pass without sorting.",
@@ -255,12 +272,49 @@ export const DSA_TOPIC_REGISTRY: Record<string, DSATopicDefinition> = {
     timeComplexity: { best: "O(1)", avg: "O(n)", worst: "O(n)" },
     spaceComplexity: "O(1)",
     hasDeterministicEngine: false,
+    lessonId: "explain-arrays",
     defaultInput: [10, 20, 30, 40, 50],
     visualType: "conceptual",
     summary: "A fundamental linear data structure storing elements in contiguous memory locations, enabling constant-time indexing by address arithmetic.",
     whyItMatters: "Foundation of computer memory layouts, cache performance, and all contiguous structures.",
     misconceptions: {
       INCORRECT_COMPARISON: "Inserting at index 0 requires shifting all n elements right (O(n) time).",
+    },
+  },
+  "two-pointers": {
+    id: "two-pointers",
+    name: "Two Pointer Technique",
+    category: "arrays",
+    aliases: ["two pointers", "two pointer", "two pointer technique", "left right pointers"],
+    keywords: ["two pointers", "opposite ends", "shrink window", "sorted pair", "converge"],
+    operations: ["left pointer", "right pointer", "inward convergence", "partitioning"],
+    timeComplexity: { best: "O(n)", avg: "O(n)", worst: "O(n)" },
+    spaceComplexity: "O(1)",
+    hasDeterministicEngine: false,
+    lessonId: "explain-two-pointers",
+    visualType: "conceptual",
+    summary: "An algorithmic technique using two pointers to iterate across a data structure simultaneously, typically converging from opposite ends or moving at different speeds.",
+    whyItMatters: "Solves pair-sum, container with most water, and palindrome checks in linear O(n) time with O(1) space.",
+    misconceptions: {
+      INCORRECT_COMPARISON: "Two pointers converging from ends requires the array to be sorted to know which pointer to move.",
+    },
+  },
+  "sliding-window": {
+    id: "sliding-window",
+    name: "Sliding Window Technique",
+    category: "arrays",
+    aliases: ["sliding window", "sliding window technique", "window technique", "subarray window"],
+    keywords: ["sliding window", "window", "expand contract", "fixed window", "variable window", "max subarray"],
+    operations: ["expand right", "contract left", "maintain window state", "update answer"],
+    timeComplexity: { best: "O(n)", avg: "O(n)", worst: "O(n)" },
+    spaceComplexity: "O(1)",
+    hasDeterministicEngine: false,
+    lessonId: "explain-sliding-window",
+    visualType: "conceptual",
+    summary: "Maintains a computational window over a linear collection that slides across elements, adding new incoming elements and discarding outgoing ones.",
+    whyItMatters: "Converts brute-force O(n·k) or O(n²) contiguous subarray/substring problems into optimal O(n) single passes.",
+    misconceptions: {
+      INCORRECT_COMPARISON: "A sliding window problem only applies to contiguous subarrays or substrings, not arbitrary subsets.",
     },
   },
 
@@ -307,12 +361,13 @@ export const DSA_TOPIC_REGISTRY: Record<string, DSATopicDefinition> = {
     id: "linked-list-reverse",
     name: "Linked List Reversal",
     category: "linked-lists",
-    aliases: ["reverse linked list", "linked list reversal", "reverse list"],
-    keywords: ["reverse", "prev curr next", "pointer manipulation"],
+    aliases: ["linked list", "linked lists", "reverse linked list", "linked list reversal", "reverse list"],
+    keywords: ["reverse", "prev curr next", "pointer manipulation", "node pointer", "linked list"],
     operations: ["save next", "relink next to prev", "advance prev", "advance curr"],
     timeComplexity: { best: "O(n)", avg: "O(n)", worst: "O(n)" },
     spaceComplexity: "O(1)",
     hasDeterministicEngine: true,
+    lessonId: "linked-list-reverse",
     defaultInput: [1, 2, 3, 4],
     visualType: "linked-list",
     summary: "Reverses a singly linked list in-place by updating each node's next pointer to point to its predecessor.",
@@ -327,8 +382,8 @@ export const DSA_TOPIC_REGISTRY: Record<string, DSATopicDefinition> = {
     id: "stack-ops",
     name: "Stack Operations (LIFO)",
     category: "stacks",
-    aliases: ["stack", "stacks", "push pop", "lifo"],
-    keywords: ["stack", "push", "pop", "peek", "top", "lifo"],
+    aliases: ["stack", "stacks", "push pop", "lifo", "undo", "undo redo", "undo stack"],
+    keywords: ["stack", "push", "pop", "peek", "top", "lifo", "undo"],
     operations: ["push O(1)", "pop O(1)", "peek O(1)"],
     timeComplexity: { best: "O(1)", avg: "O(1)", worst: "O(1)" },
     spaceComplexity: "O(n)",
@@ -365,8 +420,8 @@ export const DSA_TOPIC_REGISTRY: Record<string, DSATopicDefinition> = {
     id: "hash-table-ops",
     name: "Hash Table & Collisions",
     category: "hashing",
-    aliases: ["hash table", "hash map", "hashing", "hash collision"],
-    keywords: ["hash", "bucket", "collision", "chaining", "key value"],
+    aliases: ["hash table", "hash map", "hashing", "hash collision", "dictionary", "dict", "map"],
+    keywords: ["hash", "bucket", "collision", "chaining", "key value", "dictionary", "map"],
     operations: ["hash function", "modulo indexing", "bucket insertion", "chaining"],
     timeComplexity: { best: "O(1)", avg: "O(1)", worst: "O(n)" },
     spaceComplexity: "O(n)",
@@ -501,11 +556,223 @@ export const DSA_TOPIC_REGISTRY: Record<string, DSATopicDefinition> = {
     timeComplexity: { best: "O(n)", avg: "O(n · W)", worst: "Polynomial" },
     spaceComplexity: "O(n)",
     hasDeterministicEngine: false,
+    lessonId: "explain-dp",
     visualType: "conceptual",
     summary: "An algorithmic optimization technique that solves complex problems by breaking them into overlapping subproblems and storing subproblem results to avoid redundant calculations.",
     whyItMatters: "Transforms exponential O(2ⁿ) recursive algorithms into efficient polynomial O(n) or O(n·W) solutions.",
     misconceptions: {
       UNCERTAIN: "DP applies only when the problem exhibits both Optimal Substructure and Overlapping Subproblems.",
+    },
+  },
+
+  /* ──── SETS ──── */
+  "set-ops": {
+    id: "set-ops",
+    name: "Set & Unique Elements",
+    category: "sets",
+    aliases: ["set", "sets", "hashset", "unique elements", "deduplication", "set operations"],
+    keywords: ["set", "unique", "distinct", "deduplicate", "hash set", "union", "intersection", "difference"],
+    operations: ["add element", "has element O(1)", "delete element", "union / intersection"],
+    timeComplexity: { best: "O(1)", avg: "O(1)", worst: "O(n)" },
+    spaceComplexity: "O(n)",
+    hasDeterministicEngine: false,
+    lessonId: "explain-set",
+    visualType: "conceptual",
+    summary: "An abstract collection that stores unique elements in no particular order, automatically rejecting duplicates and providing average O(1) membership lookups.",
+    whyItMatters: "Essential for duplicate elimination, visited sets in graph search, and constant-time set algebra.",
+    misconceptions: {
+      INCORRECT_COMPARISON: "A standard HashSet does not maintain insertion order or sorted order; use LinkedHashSet or TreeSet for ordering.",
+    },
+  },
+
+  /* ──── STRINGS ──── */
+  "strings": {
+    id: "strings",
+    name: "String Manipulation",
+    category: "strings",
+    aliases: ["string", "strings", "string manipulation", "character array"],
+    keywords: ["string", "character", "substring", "immutable", "ascii"],
+    operations: ["charAt O(1)", "substring O(k)", "concatenation", "pattern match"],
+    timeComplexity: { best: "O(1)", avg: "O(n)", worst: "O(n)" },
+    spaceComplexity: "O(n)",
+    hasDeterministicEngine: false,
+    visualType: "conceptual",
+    summary: "Sequences of characters stored contiguously, often immutable in high-level languages, requiring array builders for efficient concatenation.",
+    whyItMatters: "Core of text processing, parsing, tokenization, serialization, and string matching algorithms.",
+    misconceptions: {
+      INCORRECT_COMPARISON: "Concatenating strings inside an n-step loop without a builder results in O(n²) time due to repeated memory allocations.",
+    },
+  },
+  "palindrome": {
+    id: "palindrome",
+    name: "Palindrome Verification",
+    category: "strings",
+    aliases: ["palindrome", "valid palindrome", "check palindrome"],
+    keywords: ["palindrome", "mirror", "symmetric string", "two pointer palindrome"],
+    operations: ["compare left and right", "advance left", "retreat right"],
+    timeComplexity: { best: "O(1)", avg: "O(n)", worst: "O(n)" },
+    spaceComplexity: "O(1)",
+    hasDeterministicEngine: false,
+    visualType: "conceptual",
+    summary: "Checks whether a string reads the same forwards and backwards by converging two pointers inward.",
+    whyItMatters: "Classic two-pointer pattern demonstrating symmetry verification in O(1) auxiliary space.",
+    misconceptions: {
+      INCORRECT_COMPARISON: "Allocating a reversed copy of the string uses O(n) memory, whereas two pointers requires only O(1) auxiliary space.",
+    },
+  },
+
+  /* ──── STACKS (EXTENDED) ──── */
+  "monotonic-stack": {
+    id: "monotonic-stack",
+    name: "Monotonic Stack",
+    category: "stacks",
+    aliases: ["monotonic stack", "next greater element", "daily temperatures", "previous smaller"],
+    keywords: ["monotonic stack", "next greater", "next smaller", "stock span", "histogram"],
+    operations: ["maintain monotonic order", "pop smaller/greater", "record next greater", "push element"],
+    timeComplexity: { best: "O(n)", avg: "O(n)", worst: "O(n)" },
+    spaceComplexity: "O(n)",
+    hasDeterministicEngine: false,
+    visualType: "stack",
+    summary: "A stack that maintains its elements in strictly increasing or decreasing order, popping elements that violate the invariant before pushing a new value.",
+    whyItMatters: "Solves next greater element, stock span, and largest rectangle in histogram in optimal O(n) time.",
+    misconceptions: {
+      STACK_LIFO_MISCONCEPTION: "Although there is a while loop inside a for loop, each element is pushed and popped at most once, yielding amortized O(n) time.",
+    },
+  },
+
+  /* ──── TRIES ──── */
+  "trie-prefix-tree": {
+    id: "trie-prefix-tree",
+    name: "Trie (Prefix Tree)",
+    category: "tries",
+    aliases: ["trie", "prefix tree", "trie tree", "autocomplete"],
+    keywords: ["trie", "prefix", "character children", "isEndOfWord", "autocomplete", "dictionary"],
+    operations: ["insert word O(k)", "search word O(k)", "startsWith prefix O(k)"],
+    timeComplexity: { best: "O(k)", avg: "O(k)", worst: "O(k)" },
+    spaceComplexity: "O(Σ · k · N)",
+    hasDeterministicEngine: false,
+    visualType: "tree",
+    summary: "A tree where each node represents a character along a prefix path, allowing words sharing common prefixes to share nodes.",
+    whyItMatters: "Provides O(k) prefix and word lookup time independent of dictionary size, powering auto-complete and spell check.",
+    misconceptions: {
+      INCORRECT_COMPARISON: "Lookup time in a Trie depends only on the length of the query key k, not on how many thousands of words are stored in the tree.",
+    },
+  },
+
+  /* ──── DISJOINT SET UNION ──── */
+  "disjoint-set-union": {
+    id: "disjoint-set-union",
+    name: "Disjoint Set Union (DSU / Union-Find)",
+    category: "dsu",
+    aliases: ["disjoint set union", "dsu", "union find", "union-find", "disjoint sets"],
+    keywords: ["dsu", "union find", "path compression", "union by rank", "connected components", "cycle detection"],
+    operations: ["find with path compression", "union by rank/size", "connected check"],
+    timeComplexity: { best: "O(α(n))", avg: "O(α(n))", worst: "O(α(n))" },
+    spaceComplexity: "O(n)",
+    hasDeterministicEngine: false,
+    visualType: "conceptual",
+    summary: "A data structure tracking elements partitioned into non-overlapping subsets, supporting near-constant time Find and Union operations.",
+    whyItMatters: "Enables near-linear O(α(n)) cycle detection in undirected graphs and powers Kruskal's Minimum Spanning Tree algorithm.",
+    misconceptions: {
+      INCORRECT_COMPARISON: "Without path compression or union by rank, trees can degrade into degenerate linked lists of height O(n).",
+    },
+  },
+
+  /* ──── RECURSION & DIVIDE-AND-CONQUER ──── */
+  "recursion-basics": {
+    id: "recursion-basics",
+    name: "Recursion & Call Stack",
+    category: "recursion",
+    aliases: ["recursion", "recursive function", "call stack", "base case"],
+    keywords: ["recursion", "base case", "call stack", "stack frame", "recursive leap of faith"],
+    operations: ["check base case", "decompose problem", "invoke self", "combine results"],
+    timeComplexity: { best: "O(n)", avg: "O(n)", worst: "O(2ⁿ)" },
+    spaceComplexity: "O(n)",
+    hasDeterministicEngine: false,
+    lessonId: "explain-recursion",
+    visualType: "conceptual",
+    summary: "A fundamental computational technique where a function solves a problem by calling copies of itself on smaller subproblems until a base case is reached.",
+    whyItMatters: "Foundation of divide-and-conquer, tree/graph traversals, and dynamic programming.",
+    misconceptions: {
+      UNCERTAIN: "Forgetting a base case causes an infinite recursion loop and a Stack Overflow error because stack frames exhaust memory.",
+    },
+  },
+
+  /* ──── BACKTRACKING ──── */
+  "backtracking": {
+    id: "backtracking",
+    name: "Backtracking & Decision Trees",
+    category: "backtracking",
+    aliases: ["backtracking", "backtrack", "decision tree", "n queens", "permutations", "subsets"],
+    keywords: ["backtracking", "decision tree", "choose explore unchoose", "prune branch", "constraint satisfaction"],
+    operations: ["choose candidate", "explore recursively", "unchoose / backtrack", "prune invalid state"],
+    timeComplexity: { best: "O(1)", avg: "O(kⁿ)", worst: "O(n!)" },
+    spaceComplexity: "O(n)",
+    hasDeterministicEngine: false,
+    lessonId: "explain-backtracking",
+    visualType: "conceptual",
+    summary: "An algorithmic technique that systematically explores all possible candidates via a decision tree, abandoning candidates ('backtracking') as soon as constraints are violated.",
+    whyItMatters: "Solves constraint satisfaction and combinatorial optimization problems (N-Queens, Sudoku, Hamiltonian paths, Subset Sum).",
+    misconceptions: {
+      UNCERTAIN: "Backtracking differs from naive brute-force through pruning: invalid branches are abandoned early before exploring deeper.",
+    },
+  },
+
+  /* ──── GREEDY ALGORITHMS ──── */
+  "greedy-algorithms": {
+    id: "greedy-algorithms",
+    name: "Greedy Algorithms",
+    category: "greedy",
+    aliases: ["greedy", "greedy algorithm", "greedy choice", "interval scheduling", "activity selection"],
+    keywords: ["greedy", "locally optimal", "activity selection", "fractional knapsack", "huffman coding"],
+    operations: ["sort by criteria", "make local choice", "commit choice", "advance state"],
+    timeComplexity: { best: "O(n log n)", avg: "O(n log n)", worst: "O(n log n)" },
+    spaceComplexity: "O(1)",
+    hasDeterministicEngine: false,
+    visualType: "conceptual",
+    summary: "An algorithmic paradigm that makes the locally optimal choice at each stage with the intent of reaching a global optimum.",
+    whyItMatters: "Fast and memory-efficient when the problem exhibits the Greedy-Choice Property and Optimal Substructure (e.g., Dijkstra, Kruskal).",
+    misconceptions: {
+      UNCERTAIN: "Greedy algorithms fail on 0/1 Knapsack and arbitrary coin systems because local choices can prevent the global optimum.",
+    },
+  },
+
+  /* ──── BIT MANIPULATION ──── */
+  "bit-manipulation": {
+    id: "bit-manipulation",
+    name: "Bit Manipulation & Binary Math",
+    category: "bit-manipulation",
+    aliases: ["bit manipulation", "bitwise operations", "bits", "power of two", "xor tricks"],
+    keywords: ["bit manipulation", "bitwise AND", "bitwise XOR", "bitwise OR", "bit shift", "power of 2", "hamming weight"],
+    operations: ["bitwise AND (&)", "bitwise OR (|)", "bitwise XOR (^)", "bit shifts (<<, >>)", "masking"],
+    timeComplexity: { best: "O(1)", avg: "O(1)", worst: "O(1)" },
+    spaceComplexity: "O(1)",
+    hasDeterministicEngine: false,
+    visualType: "conceptual",
+    summary: "Directly manipulating integer binary representations using bitwise operators at single-CPU-cycle speed.",
+    whyItMatters: "Produces O(1) bit hacks (e.g. n & (n - 1) checks power of two or clears lowest set bit, x ^ x = 0 finds single unique element).",
+    misconceptions: {
+      INCORRECT_COMPARISON: "Bitwise operators have lower precedence than comparison operators in JS/C++; write (n & (n - 1)) === 0, not n & (n - 1) === 0.",
+    },
+  },
+
+  /* ──── COMPLEXITY ANALYSIS ──── */
+  "complexity-analysis": {
+    id: "complexity-analysis",
+    name: "Complexity & Big-O Analysis",
+    category: "complexity",
+    aliases: ["complexity", "big o", "time complexity", "space complexity", "asymptotic analysis", "big omega", "big theta"],
+    keywords: ["big o", "time complexity", "space complexity", "asymptotic", "growth rate", "o(1)", "o(n)", "o(n log n)", "o(n^2)"],
+    operations: ["count basic operations", "drop constants", "drop lower order terms", "identify worst-case input"],
+    timeComplexity: { best: "O(1)", avg: "O(1)", worst: "O(1)" },
+    spaceComplexity: "O(1)",
+    hasDeterministicEngine: false,
+    lessonId: "explain-complexity",
+    visualType: "conceptual",
+    summary: "Mathematical classification of how an algorithm's execution time and memory consumption scale as the input size n approaches infinity.",
+    whyItMatters: "Provides an objective, hardware-independent standard to evaluate and compare algorithmic efficiency.",
+    misconceptions: {
+      INCORRECT_COMPARISON: "Big-O characterizes asymptotic growth rate as n grows, not wall-clock execution time in milliseconds for small inputs.",
     },
   },
 };
@@ -515,23 +782,38 @@ export function findTopicByQuery(query: string): DSATopicDefinition | null {
   const q = query.toLowerCase().trim();
 
   // 1. Exact alias match: longest match wins to prioritize specific topics (e.g. "binary search tree" over "binary search")
-  let bestAliasTopic: DSATopicDefinition | null = null;
-  let maxAliasLen = 0;
+  // Prioritize concrete algorithmic topics over meta topics like "complexity"
+  let bestNonMetaTopic: DSATopicDefinition | null = null;
+  let maxNonMetaLen = 0;
+  let bestMetaTopic: DSATopicDefinition | null = null;
+  let maxMetaLen = 0;
 
   for (const topic of Object.values(DSA_TOPIC_REGISTRY)) {
     for (const alias of topic.aliases) {
       const a = alias.toLowerCase();
       const matches =
         a.length <= 4 ? new RegExp(`\\b${a}\\b`, "i").test(q) : q.includes(a);
-      if (matches && a.length > maxAliasLen) {
-        maxAliasLen = a.length;
-        bestAliasTopic = topic;
+      if (matches) {
+        if (topic.category === "complexity") {
+          if (a.length > maxMetaLen) {
+            maxMetaLen = a.length;
+            bestMetaTopic = topic;
+          }
+        } else {
+          if (a.length > maxNonMetaLen) {
+            maxNonMetaLen = a.length;
+            bestNonMetaTopic = topic;
+          }
+        }
       }
     }
   }
 
-  if (bestAliasTopic) {
-    return bestAliasTopic;
+  if (bestNonMetaTopic) {
+    return bestNonMetaTopic;
+  }
+  if (bestMetaTopic) {
+    return bestMetaTopic;
   }
 
   // 2. Keyword match
@@ -557,8 +839,10 @@ export function findTopicsByCategory(category: string): DSATopicDefinition[] {
 }
 
 export function detectComparison(query: string): [DSATopicDefinition, DSATopicDefinition] | null {
-  const q = query.toLowerCase();
-  const vsMatch = q.match(/(.+?)\s+(?:vs\.?|versus|compared?\s+to|or|difference\s+between)\s+(.+)/i);
+  const q = query.toLowerCase().trim();
+  const vsMatch =
+    q.match(/(?:compare|difference\s+between)\s+(.+?)\s+(?:and|with|to|vs\.?)\s+(.+)/i) ||
+    q.match(/(.+?)\s+(?:vs\.?|versus|compared?\s+to|or|difference\s+between)\s+(.+)/i);
   if (!vsMatch) return null;
 
   const topicA = findTopicByQuery(vsMatch[1]);

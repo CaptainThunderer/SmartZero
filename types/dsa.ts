@@ -1,6 +1,94 @@
+/* ──── Whiteboard & Pedagogical Visual Models ──── */
+export type BoardHeader = {
+  title: string;
+  subtitle?: string;
+  badge?: string;
+};
+
+export type CalloutBox = {
+  text: string;
+  boxType?: "info" | "insight" | "warning" | "success";
+};
+
+export type InsightCard = {
+  title: string;
+  text: string;
+};
+
+export type TransformationArrow = {
+  fromLabel: string;
+  toLabel: string;
+  text?: string;
+};
+
+export type SlidingWindow = {
+  startIndex: number;
+  endIndex: number;
+  label?: string;
+  conditionOrSum?: string;
+};
+
+export type SetContainer = {
+  title?: string;
+  elements: (string | number)[];
+  highlightElements?: (string | number)[];
+  operation?: string;
+  note?: string;
+};
+
+export type CallStackFrame = {
+  fnName: string;
+  args: string;
+  returnValue?: string;
+  active?: boolean;
+};
+
+export type DecisionTreeNode = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  state?: "active" | "chosen" | "backtracked" | "pruned";
+};
+
+export type DPTable = {
+  title?: string;
+  headers?: string[];
+  rowHeaders?: string[];
+  rows: (string | number)[][];
+  highlightCell?: [number, number];
+  formula?: string;
+  meaning?: string;
+};
+
+export type MergeTreeLevel = {
+  label: string;
+  arrays: number[][];
+};
+
+export type ComparisonBoard = {
+  leftTitle: string;
+  leftItems: string[];
+  rightTitle: string;
+  rightItems: string[];
+  verdict?: string;
+};
+
 /* ──── Semantic DSL Actions ──── */
 export type DSLAction =
   | { action: "reset_scene" }
+  | { action: "set_board_header"; title: string; subtitle?: string; badge?: string }
+  | { action: "show_callout"; text: string; boxType?: "info" | "insight" | "warning" | "success" }
+  | { action: "show_insight_card"; title: string; text: string }
+  | { action: "show_transformation"; fromLabel: string; toLabel: string; text?: string }
+  | { action: "set_sliding_window"; startIndex: number; endIndex: number; label?: string; conditionOrSum?: string }
+  | { action: "clear_sliding_window" }
+  | { action: "create_set_container"; title?: string; elements: (string | number)[]; highlightElements?: (string | number)[]; operation?: string; note?: string }
+  | { action: "create_call_stack"; frames: CallStackFrame[] }
+  | { action: "create_decision_tree"; nodes: DecisionTreeNode[]; edges: [string, string][] }
+  | { action: "create_dp_table"; table: DPTable }
+  | { action: "create_merge_tree"; levels: MergeTreeLevel[]; activeLevel?: number }
+  | { action: "show_comparison_board"; board: ComparisonBoard }
   | { action: "create_array"; id: string; values: number[] }
   | { action: "update_array_element"; index: number; value: number }
   | { action: "swap_elements"; i: number; j: number }
@@ -62,6 +150,17 @@ export type GraphEdge = {
 };
 
 export type CanvasState = {
+  boardHeader?: BoardHeader | null;
+  callout?: CalloutBox | null;
+  insightCard?: InsightCard | null;
+  transformation?: TransformationArrow | null;
+  slidingWindow?: SlidingWindow | null;
+  setContainer?: SetContainer | null;
+  callStack?: { frames: CallStackFrame[] } | null;
+  decisionTree?: { nodes: DecisionTreeNode[]; edges: [string, string][] } | null;
+  dpTable?: DPTable | null;
+  mergeTree?: { levels: MergeTreeLevel[]; activeLevel?: number } | null;
+  comparisonBoard?: ComparisonBoard | null;
   array: null | {
     id: string;
     values: number[];
@@ -135,13 +234,95 @@ export type LessonQuestion = {
   misconceptions: Record<string, { code: string; feedback: string }>;
 };
 
+/* ──── Structured Step Narrative (Whiteboard Pedagogy) ──── */
+export type StepExplanation = {
+  currentStep: string;
+  why: string;
+  whatChanged: string;
+  whatToNotice: string;
+  keyInsight: string;
+  nextStep: string;
+};
+
 /* ──── Lesson Structure ──── */
 export type LessonStep = {
   actions: DSLAction[];
   codeLine: string;
   explanation: string;
+  narrative?: StepExplanation;
   pause?: boolean;
   question?: LessonQuestion;
+};
+
+export type SupportedLanguage = "javascript" | "cpp" | "python";
+
+/* ──── Universal Problem Solution Plan Model ──── */
+export type ProblemCandidateApproach = {
+  name: string;
+  description: string;
+  timeComplexity: string;
+  spaceComplexity: string;
+  tradeoffs?: string;
+  recommended?: boolean;
+};
+
+export type ProblemDryRunStep = {
+  step: number;
+  stateDescription: string;
+  activeVariables: Record<string, string | number | boolean>;
+  explanation: string;
+};
+
+export type ProblemVisualStep = {
+  stepNumber: number;
+  title: string;
+  actions: DSLAction[];
+  codeLine?: string;
+  narrative: StepExplanation;
+};
+
+export type ProblemSolutionPlan = {
+  problemStatement: string;
+  normalizedProblem: string;
+  objective: string;
+  storyContext?: string;
+  inputs: string[];
+  outputs: string;
+  constraints: string[];
+  examples: { input: string; output: string; explanation?: string }[];
+  edgeCases: string[];
+
+  topic: string;
+  category: string;
+  dataStructures: string[];
+  patterns: string[];
+
+  candidateApproaches: ProblemCandidateApproach[];
+  selectedApproach: {
+    name: string;
+    timeComplexity: string;
+    spaceComplexity: string;
+    whySelected: string;
+  };
+  reasoning: string;
+  correctnessExplanation: string;
+
+  visualSteps?: ProblemVisualStep[];
+  dryRun: ProblemDryRunStep[];
+
+  implementations: {
+    javascript: string;
+    cpp: string;
+    python: string;
+  };
+
+  complexity: {
+    time: string;
+    space: string;
+    rationale: string;
+  };
+  finalAnswer: string;
+  learnerQuestion?: LessonQuestion;
 };
 
 export type Lesson = {
@@ -152,18 +333,27 @@ export type Lesson = {
   objective: string;
   difficulty: string;
   steps: LessonStep[];
-  code: { javascript: string[]; cpp: string[] };
+  code: { javascript: string[]; cpp: string[]; python?: string[] };
   lineMap: {
     javascript: Record<string, number>;
     cpp: Record<string, number>;
+    python?: Record<string, number>;
   };
 };
 
 export type DSAIntent =
   | "visualize"
   | "explain"
-  | "compare"
+  | "theory"
+  | "implementation"
+  | "trace"
   | "complexity"
+  | "compare"
+  | "problem_solving"
+  | "debugging"
+  | "code_explanation"
+  | "example"
+  | "edge_case"
   | "clarification"
   | "unsupported_non_dsa";
 
@@ -184,6 +374,10 @@ export type DSATask = {
   explanation?: string;
   clarificationOptions?: { label: string; query: string }[];
   complexity?: { time: string; space: string; best?: string; worst?: string };
+  codeSnippet?: { language: string; code: string };
+  codeSnippets?: { javascript?: string; cpp?: string; python?: string };
+  problemPlan?: ProblemSolutionPlan;
+  customLesson?: Lesson;
 };
 
 export type LessonPlan = Lesson;
@@ -249,7 +443,7 @@ export type LearningWorkspace = {
   clarificationOptions: { label: string; query: string }[] | null;
 
   /* Language */
-  language: "javascript" | "cpp";
+  language: SupportedLanguage;
 
   /* Notes */
   notes: WorkspaceNote[];

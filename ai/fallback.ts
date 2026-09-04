@@ -3,9 +3,9 @@ import { interpretDSAQuery } from "../agent/nlu";
 import type { AIProvider } from "./provider";
 
 export const fallbackProvider: AIProvider = {
-  async interpretQuestion(input) {
-    const task = interpretDSAQuery(input);
-    const lesson = task.lessonId ? lessonFromId(task.lessonId, task.inputData) : null;
+  async interpretQuestion(input, context) {
+    const task = interpretDSAQuery(input, context);
+    const lesson = task.customLesson || (task.lessonId ? lessonFromId(task.lessonId, task.inputData) : null);
     return {
       ...task,
       rawQuestion: input,
@@ -17,7 +17,7 @@ export const fallbackProvider: AIProvider = {
   },
 
   async createLesson(task) {
-    return task.lessonId ? lessonFromId(task.lessonId, task.inputData) : null;
+    return task.customLesson || (task.lessonId ? lessonFromId(task.lessonId, task.inputData) : null);
   },
 
   async generateHint() {
