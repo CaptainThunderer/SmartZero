@@ -169,4 +169,4 @@ smartzero-v1/
 
 ---
 
-*To continue exploring SmartZero, see [SETUP.md](SETUP.md) for local installation or [ARCHITECTURE.md](ARCHITECTURE.md) for deep system mechanics.*
+*To continue exploring SmartZero, see [INSTALL_GUIDE.md](INSTALL_GUIDE.md) for installation and setup instructions or [ARCHITECTURE.md](ARCHITECTURE.md) for deep system mechanics.*

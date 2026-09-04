@@ -2,6 +2,9 @@
 
 A complete, practical setup and operations manual for developers, contributors, and evaluators running SmartZero locally or preparing for production deployment.
 
+> [!NOTE]
+> For the primary, step-by-step installation, environment setup, and Vercel deployment instructions, see **[INSTALL_GUIDE.md](INSTALL_GUIDE.md)**. This guide provides complementary operational, platform-specific, and database configuration details.
+
 ---
 
 ## 1. Prerequisites
