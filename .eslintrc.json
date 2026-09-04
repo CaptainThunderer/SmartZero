@@ -1,0 +1,4 @@
+{
+  "extends": "next/core-web-vitals",
+  "ignorePatterns": ["legacy-SmartZero-original.jsx", ".next/**", "node_modules/**"]
+}
