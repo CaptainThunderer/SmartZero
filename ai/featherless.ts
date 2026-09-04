@@ -36,17 +36,24 @@ function parseJson(text: string) {
   return JSON.parse(cleaned.trim());
 }
 
+import { extractNumbers } from "../agent/nlu";
+
 export const featherlessProvider: AIProvider = {
   async interpretQuestion(input: string) {
     const raw = await chat(
-      "You are SmartZero, a DSA teaching planner. Output ONLY a valid JSON object with keys: lessonId, dataStructure, algorithm, pattern, objective, difficulty. lessonId must be one of: second-max, binary-search, bst-insert, linked-list-reverse, or null. Do not invent unsupported lesson IDs.",
+      "You are SmartZero, a DSA teaching planner. Output ONLY a valid JSON object with keys: lessonId, dataStructure, algorithm, pattern, objective, difficulty. lessonId must be one of: second-max, binary-search, bst-insert, linked-list-reverse, bubble-sort, selection-sort, insertion-sort, merge-sort, quick-sort, heap-sort, counting-sort, radix-sort, bucket-sort, graph-bfs, graph-dfs, stack-ops, queue-ops, hash-table-ops, or null. Do not invent unsupported lesson IDs.",
       input
     );
     const parsed = AIResponseSchema.parse(parseJson(raw));
-    return DSATaskSchema.parse({ ...parsed, rawQuestion: input });
+    const customData = extractNumbers(input);
+    return DSATaskSchema.parse({
+      ...parsed,
+      rawQuestion: input,
+      inputData: customData ?? undefined,
+    });
   },
   async createLesson(task) {
-    return task.lessonId ? lessonFromId(task.lessonId) : null;
+    return task.lessonId ? lessonFromId(task.lessonId, task.inputData) : null;
   },
   async generateHint(context) {
     return await chat(

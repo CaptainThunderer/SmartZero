@@ -661,12 +661,48 @@ export function buildLinkedListLesson(
   };
 }
 
+import {
+  buildBubbleSortLesson,
+  buildSelectionSortLesson,
+  buildInsertionSortLesson,
+  buildMergeSortLesson,
+  buildQuickSortLesson,
+  buildHeapSortLesson,
+  buildCountingSortLesson,
+  buildRadixSortLesson,
+  buildBucketSortLesson,
+} from "./sorting";
+import { buildBFSGraphLesson, buildDFSGraphLesson } from "./graph";
+import {
+  buildStackLesson,
+  buildQueueLesson,
+  buildHashTableLesson,
+} from "./linearStructures";
+
 /* ── Lesson Registry ── */
-export function lessonFromId(id: string): Lesson | null {
-  if (id === "second-max") return buildSecondMaxLesson();
+export function lessonFromId(id: string, customValues?: number[]): Lesson | null {
+  if (id === "second-max") return buildSecondMaxLesson(customValues);
   if (id === "binary-search") return buildBinarySearchLesson();
   if (id === "bst-insert") return buildBSTLesson();
   if (id === "linked-list-reverse") return buildLinkedListLesson();
+
+  if (id === "bubble-sort") return buildBubbleSortLesson(customValues);
+  if (id === "selection-sort") return buildSelectionSortLesson(customValues);
+  if (id === "insertion-sort") return buildInsertionSortLesson(customValues);
+  if (id === "merge-sort") return buildMergeSortLesson(customValues);
+  if (id === "quick-sort") return buildQuickSortLesson(customValues);
+  if (id === "heap-sort") return buildHeapSortLesson(customValues);
+  if (id === "counting-sort") return buildCountingSortLesson(customValues);
+  if (id === "radix-sort") return buildRadixSortLesson(customValues);
+  if (id === "bucket-sort") return buildBucketSortLesson(customValues);
+
+  if (id === "graph-bfs") return buildBFSGraphLesson();
+  if (id === "graph-dfs") return buildDFSGraphLesson();
+
+  if (id === "stack-ops") return buildStackLesson();
+  if (id === "queue-ops") return buildQueueLesson();
+  if (id === "hash-table-ops") return buildHashTableLesson();
+
   return null;
 }
 
@@ -675,4 +711,18 @@ export const SUPPORTED_LESSONS = [
   { id: "binary-search", title: "Binary Search" },
   { id: "bst-insert", title: "BST Insertion" },
   { id: "linked-list-reverse", title: "Linked List Reversal" },
+  { id: "bubble-sort", title: "Bubble Sort" },
+  { id: "selection-sort", title: "Selection Sort" },
+  { id: "insertion-sort", title: "Insertion Sort" },
+  { id: "merge-sort", title: "Merge Sort" },
+  { id: "quick-sort", title: "Quick Sort" },
+  { id: "heap-sort", title: "Heap Sort" },
+  { id: "counting-sort", title: "Counting Sort" },
+  { id: "radix-sort", title: "Radix Sort" },
+  { id: "bucket-sort", title: "Bucket Sort" },
+  { id: "graph-bfs", title: "Graph BFS" },
+  { id: "graph-dfs", title: "Graph DFS" },
+  { id: "stack-ops", title: "Stack Operations" },
+  { id: "queue-ops", title: "Queue Operations" },
+  { id: "hash-table-ops", title: "Hash Table" },
 ] as const;

@@ -2,6 +2,9 @@
 export type DSLAction =
   | { action: "reset_scene" }
   | { action: "create_array"; id: string; values: number[] }
+  | { action: "update_array_element"; index: number; value: number }
+  | { action: "swap_elements"; i: number; j: number }
+  | { action: "set_sorted_region"; startIndex: number; endIndex: number }
   | { action: "create_variable"; name: string; value: string | number }
   | { action: "update_variable"; name: string; value: string | number }
   | { action: "create_pointer"; pointer: string; targetIndex: number }
@@ -16,6 +19,20 @@ export type DSLAction =
   | { action: "create_tree"; nodes: TreeNode[]; edges: [string, string][] }
   | { action: "reveal_tree_node"; id: string; edge?: [string, string] }
   | { action: "highlight_tree_node"; id: string }
+  | { action: "create_stack"; items: (number | string)[] }
+  | { action: "push_stack"; value: number | string }
+  | { action: "pop_stack" }
+  | { action: "create_queue"; items: (number | string)[] }
+  | { action: "enqueue"; value: number | string }
+  | { action: "dequeue" }
+  | { action: "create_graph"; nodes: GraphNode[]; edges: GraphEdge[] }
+  | { action: "visit_graph_node"; id: string }
+  | { action: "highlight_edge"; from: string; to: string }
+  | { action: "create_hash_table"; size: number }
+  | { action: "hash_insert"; bucket: number; key: string | number; value?: string | number }
+  | { action: "highlight_bucket"; bucket: number }
+  | { action: "create_heap"; values: number[] }
+  | { action: "swap_heap_nodes"; i: number; j: number }
   | { action: "show_message"; text: string }
   | { action: "show_complexity"; time: string; space: string };
 
@@ -28,6 +45,22 @@ export type TreeNode = {
   visible: boolean;
 };
 
+export type GraphNode = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  visited?: boolean;
+};
+
+export type GraphEdge = {
+  from: string;
+  to: string;
+  weight?: number;
+  directed?: boolean;
+  highlighted?: boolean;
+};
+
 export type CanvasState = {
   array: null | {
     id: string;
@@ -35,6 +68,7 @@ export type CanvasState = {
     highlightIndices: number[];
     dimIndices: number[];
     pointers: Record<string, number>;
+    sortedRegion?: { start: number; end: number };
   };
   variables: Record<string, string | number>;
   linkedList: null | {
@@ -47,6 +81,29 @@ export type CanvasState = {
     nodes: TreeNode[];
     edges: [string, string][];
     highlightId: string | null;
+  };
+  stack?: null | {
+    items: (string | number)[];
+    topIndex: number;
+  };
+  queue?: null | {
+    items: (string | number)[];
+    front: number;
+    rear: number;
+  };
+  graph?: null | {
+    nodes: GraphNode[];
+    edges: GraphEdge[];
+    visited: string[];
+    activeId: string | null;
+  };
+  hashTable?: null | {
+    buckets: { index: number; items: { key: string | number; value?: string | number }[] }[];
+    highlightBucket?: number | null;
+  };
+  heap?: null | {
+    values: number[];
+    activeIndices?: [number, number] | null;
   };
   bounds: null | { low: number; mid: number; high: number };
   compareText: string | null;
@@ -62,7 +119,13 @@ export type MisconceptionCode =
   | "BINARY_SEARCH_WRONG_HALF"
   | "BST_WRONG_BRANCH"
   | "LINKED_LIST_POINTER_CONFUSION"
-  | "WRONG_HALF_ELIMINATED";
+  | "WRONG_HALF_ELIMINATED"
+  | "SORTING_WRONG_SWAP"
+  | "SORTING_PARTITION_ERROR"
+  | "GRAPH_CYCLE_CONFUSION"
+  | "STACK_LIFO_MISCONCEPTION"
+  | "QUEUE_FIFO_MISCONCEPTION"
+  | "HEAP_PROPERTY_VIOLATION";
 
 export type LessonQuestion = {
   prompt: string;
@@ -96,14 +159,31 @@ export type Lesson = {
   };
 };
 
+export type DSAIntent =
+  | "visualize"
+  | "explain"
+  | "compare"
+  | "complexity"
+  | "clarification"
+  | "unsupported_non_dsa";
+
 export type DSATask = {
+  intent?: DSAIntent;
   lessonId: string | null;
-  dataStructure?: string;
+  topicId?: string | null;
+  category?: string;
+  subtopic?: string;
   algorithm?: string;
   pattern?: string;
   objective?: string;
   difficulty?: string;
   rawQuestion: string;
+  inputData?: number[];
+  targetValue?: number | string;
+  comparisonTopics?: string[];
+  explanation?: string;
+  clarificationOptions?: { label: string; query: string }[];
+  complexity?: { time: string; space: string; best?: string; worst?: string };
 };
 
 export type LessonPlan = Lesson;
@@ -117,3 +197,61 @@ export type LessonPhase =
   | "correct"
   | "incorrect"
   | "completed";
+
+/* ──── Workspace & Notes Model ──── */
+export type AppTheme = "light" | "dark";
+
+export type WorkspaceNote = {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type ChatMessage = {
+  role: "ai" | "user";
+  text: string;
+};
+
+export type LearningWorkspace = {
+  id: string;
+  title: string;
+  topicId: string | null;
+  lessonId: string | null;
+  createdAt: number;
+  updatedAt: number;
+
+  /* Mode */
+  mode: "learn" | "teach";
+
+  /* Lesson / Runtime state */
+  lesson: Lesson | null;
+  step: number;
+  phase: LessonPhase;
+
+  /* Playback state */
+  playing: boolean;
+  speed: number;
+
+  /* Learner Interaction state */
+  draftAnswer: string | null;
+  selectedAnswer: string | null;
+  answerCorrect: boolean | null;
+  hintIndex: number;
+
+  /* Canvas state */
+  canvasState: CanvasState;
+  teachState: CanvasState;
+
+  /* AI Tutor conversation */
+  chat: ChatMessage[];
+  clarificationOptions: { label: string; query: string }[] | null;
+
+  /* Language */
+  language: "javascript" | "cpp";
+
+  /* Notes */
+  notes: WorkspaceNote[];
+};
+
