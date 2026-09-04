@@ -37,7 +37,7 @@ import { applyAction, initialCanvas, replay } from "../engine/core";
 import { lessonFromId, SUPPORTED_LESSONS } from "../engine/lessons";
 import { DSA_CATEGORIES } from "../engine/registry";
 import { useWorkspaceStore, generateWorkspaceTitle } from "../stores/workspaceStore";
-import type { Lesson, LessonPhase, CanvasState, LessonStep, ChatMessage } from "../types/dsa";
+import type { Lesson, LessonPhase, CanvasState, LessonStep, ChatMessage, DSLAction } from "../types/dsa";
 
 /* ══════════════════════════════════════════════
    Constants
@@ -79,46 +79,55 @@ export default function SmartZero() {
     toggleNotes,
   } = useWorkspaceStore();
 
+  /* ── Active Workspace is the Single Source of Truth ── */
   const activeWs = getActiveWorkspace();
+  const {
+    mode,
+    lesson,
+    step,
+    phase,
+    playing,
+    speed,
+    draftAnswer,
+    selectedAnswer,
+    answerCorrect,
+    hintIndex,
+    chat,
+    clarificationOptions,
+    language,
+    teachState,
+  } = activeWs;
 
-  /* ── Mode ── */
-  const [mode, setMode] = useState<"learn" | "teach">(activeWs.mode);
-
-  /* ── Sidebar Minimization ── */
+  /* ── Sidebar Minimization & Transient UI State ── */
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
-
-  /* ── Lesson Runtime ── */
-  const [lesson, setLesson] = useState<Lesson | null>(activeWs.lesson);
-  const [step, setStep] = useState(activeWs.step);
-  const [phase, setPhase] = useState<LessonPhase>(activeWs.phase);
-
-  /* ── Playback ── */
-  const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(activeWs.speed);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  /* ── Learner Interaction Modal State ── */
-  const [draftAnswer, setDraftAnswer] = useState<string | null>(activeWs.draftAnswer);
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(activeWs.selectedAnswer);
-  const [answerCorrect, setAnswerCorrect] = useState<boolean | null>(activeWs.answerCorrect);
-  const [hintIndex, setHintIndex] = useState(activeWs.hintIndex);
-
-  /* ── AI Chat ── */
-  const [chat, setChat] = useState<ChatMessage[]>(activeWs.chat);
-  const [clarificationOptions, setClarificationOptions] = useState<
-    { label: string; query: string }[] | null
-  >(activeWs.clarificationOptions);
   const [input, setInput] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /* ── Language ── */
-  const [language, setLanguage] = useState<"javascript" | "cpp">(activeWs.language);
+  /* ── Helper Callbacks to Update Active Workspace ── */
+  const setDraftAnswer = useCallback(
+    (val: string | null) => {
+      updateActiveWorkspace({ draftAnswer: val });
+    },
+    [updateActiveWorkspace]
+  );
 
-  /* ── Teach Mode ── */
-  const [teachState, setTeachState] = useState<CanvasState>(activeWs.teachState);
+  const setSpeed = useCallback(
+    (s: number) => {
+      updateActiveWorkspace({ speed: s });
+    },
+    [updateActiveWorkspace]
+  );
 
-  /* ── Computed ── */
+  const setLanguage = useCallback(
+    (lang: "javascript" | "cpp") => {
+      updateActiveWorkspace({ language: lang });
+    },
+    [updateActiveWorkspace]
+  );
+
+  /* ── Computed Canvas State ── */
   const canvasState: CanvasState =
     mode === "teach"
       ? teachState
@@ -134,77 +143,6 @@ export default function SmartZero() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chat]);
-
-  /* ── Synchronize workspace switch: load incoming workspace cleanly ── */
-  const prevActiveIdRef = useRef(activeWorkspaceId);
-  useEffect(() => {
-    if (prevActiveIdRef.current !== activeWorkspaceId) {
-      // 1. Clear any running playback timer
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      prevActiveIdRef.current = activeWorkspaceId;
-
-      // 2. Load incoming workspace state
-      const ws = getActiveWorkspace();
-      setLesson(ws.lesson);
-      setStep(ws.step);
-      setPhase(ws.phase);
-      setPlaying(false);
-      setSpeed(ws.speed);
-      setDraftAnswer(ws.draftAnswer);
-      setSelectedAnswer(ws.selectedAnswer);
-      setAnswerCorrect(ws.answerCorrect);
-      setHintIndex(ws.hintIndex);
-      setTeachState(ws.teachState);
-      setChat(ws.chat);
-      setClarificationOptions(ws.clarificationOptions);
-      setLanguage(ws.language);
-      setMode(ws.mode);
-    }
-  }, [activeWorkspaceId, getActiveWorkspace]);
-
-  /* ── Synchronize changes back to the active workspace in store ── */
-  useEffect(() => {
-    if (prevActiveIdRef.current === activeWorkspaceId) {
-      updateActiveWorkspace({
-        lesson,
-        step,
-        phase,
-        playing,
-        speed,
-        draftAnswer,
-        selectedAnswer,
-        answerCorrect,
-        hintIndex,
-        canvasState,
-        teachState,
-        chat,
-        clarificationOptions,
-        language,
-        mode,
-      });
-    }
-  }, [
-    lesson,
-    step,
-    phase,
-    playing,
-    speed,
-    draftAnswer,
-    selectedAnswer,
-    answerCorrect,
-    hintIndex,
-    canvasState,
-    teachState,
-    chat,
-    clarificationOptions,
-    language,
-    mode,
-    activeWorkspaceId,
-    updateActiveWorkspace,
-  ]);
 
   /* ── Trigger resize event when sidebars collapse/expand ── */
   const toggleLeftSidebar = useCallback(() => {
@@ -240,10 +178,15 @@ export default function SmartZero() {
   /* ══════════════════════════════════════════
      Lesson Loader & State Machine
      ══════════════════════════════════════════ */
-  function computePhase(curStep: number, answerCorrectVal: boolean | null): LessonPhase {
-    if (!lesson) return "idle";
-    const st = lesson.steps[curStep];
-    if (curStep >= total - 1 && !st?.pause) return "completed";
+  function computePhase(
+    curStep: number,
+    answerCorrectVal: boolean | null,
+    targetLesson: Lesson | null = lesson
+  ): LessonPhase {
+    if (!targetLesson) return "idle";
+    const totalSteps = targetLesson.steps.length;
+    const st = targetLesson.steps[curStep];
+    if (curStep >= totalSteps - 1 && !st?.pause) return "completed";
     if (st?.pause && answerCorrectVal === null) return "waiting_for_learner";
     if (st?.pause && answerCorrectVal === true) return "correct";
     if (st?.pause && answerCorrectVal === false) return "incorrect";
@@ -256,30 +199,37 @@ export default function SmartZero() {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
-      setLesson(l);
-      setStep(0);
-      setPlaying(false);
-      setDraftAnswer(null);
-      setSelectedAnswer(null);
-      setAnswerCorrect(null);
-      setHintIndex(0);
-      setMode("learn");
-      setPhase("idle");
 
       const intro =
         preamble ||
         `**Lesson Loaded: ${l.title}**\n\n${l.objective}\n\n• **Data Structure**: ${l.dataStructure}\n• **Pattern**: ${l.pattern}\n• **Difficulty**: ${l.difficulty}\n\nPress **Play** or **Next** to walk through the algorithm step by step.`;
 
-      setChat((c) => [...c, { role: "ai", text: intro }]);
+      updateActiveWorkspace((prev) => ({
+        lesson: l,
+        lessonId: l.id,
+        step: 0,
+        phase: "idle",
+        playing: false,
+        draftAnswer: null,
+        selectedAnswer: null,
+        answerCorrect: null,
+        hintIndex: 0,
+        mode: "learn",
+        canvasState: replay(l.steps, 0),
+        chat: [...prev.chat, { role: "ai", text: intro }],
+      }));
     },
-    []
+    [updateActiveWorkspace]
   );
 
-  function loadLesson(id: string, preamble?: string, customValues?: number[]) {
-    const l = lessonFromId(id, customValues);
-    if (!l) return;
-    startLesson(l, preamble);
-  }
+  const loadLesson = useCallback(
+    (id: string, preamble?: string, customValues?: number[]) => {
+      const l = lessonFromId(id, customValues);
+      if (!l) return;
+      startLesson(l, preamble);
+    },
+    [startLesson]
+  );
 
   /* ══════════════════════════════════════════
      AI Question Handler with Intelligent Routing
@@ -288,7 +238,9 @@ export default function SmartZero() {
     const q = text.trim();
     if (!q) return;
     setInput("");
-    setChat((c) => [...c, { role: "user", text: q }]);
+    updateActiveWorkspace((prev) => ({
+      chat: [...prev.chat, { role: "user", text: q }],
+    }));
     setAiBusy(true);
 
     try {
@@ -300,11 +252,9 @@ export default function SmartZero() {
       const task = await r.json();
       if (!r.ok) throw new Error(task.error || "Unable to interpret question");
 
-      if (task.clarificationOptions) {
-        setClarificationOptions(task.clarificationOptions);
-      } else {
-        setClarificationOptions(null);
-      }
+      updateActiveWorkspace({
+        clarificationOptions: task.clarificationOptions || null,
+      });
 
       // Check if question belongs to a different DSA topic (unrelated)
       const isUnrelatedTopic = Boolean(
@@ -319,10 +269,13 @@ export default function SmartZero() {
         if (existingWs) {
           // Switch to existing workspace for this topic
           switchWorkspace(existingWs.id);
-          setChat((c) => [...c, { role: "user", text: q }]);
-          if (task.explanation) {
-            setChat((c) => [...c, { role: "ai", text: task.explanation }]);
-          }
+          updateActiveWorkspace((prev) => {
+            const nextChat = [...prev.chat, { role: "user" as const, text: q }];
+            if (task.explanation) {
+              nextChat.push({ role: "ai" as const, text: task.explanation });
+            }
+            return { chat: nextChat };
+          });
           if (task.lessonId) {
             loadLesson(task.lessonId, undefined, task.inputData);
           }
@@ -350,35 +303,41 @@ export default function SmartZero() {
 
       // Stays in current workspace
       if (task.intent === "unsupported_non_dsa") {
-        setChat((c) => [
-          ...c,
-          {
-            role: "ai",
-            text:
-              task.explanation ||
-              "I am SmartZero, specialized in Data Structures and Algorithms. Feel free to ask about sorting, trees, graphs, dynamic programming, and more!",
-          },
-        ]);
+        updateActiveWorkspace((prev) => ({
+          chat: [
+            ...prev.chat,
+            {
+              role: "ai",
+              text:
+                task.explanation ||
+                "I am SmartZero, specialized in Data Structures and Algorithms. Feel free to ask about sorting, trees, graphs, dynamic programming, and more!",
+            },
+          ],
+        }));
       } else if (task.intent === "clarification") {
-        setChat((c) => [
-          ...c,
-          {
-            role: "ai",
-            text:
-              task.explanation ||
-              "Which specific algorithm would you like to explore?",
-          },
-        ]);
+        updateActiveWorkspace((prev) => ({
+          chat: [
+            ...prev.chat,
+            {
+              role: "ai",
+              text:
+                task.explanation ||
+                "Which specific algorithm would you like to explore?",
+            },
+          ],
+        }));
       } else if (task.intent === "compare" || task.intent === "complexity") {
-        setChat((c) => [
-          ...c,
-          {
-            role: "ai",
-            text:
-              task.explanation ||
-              `Here is the analysis for ${task.algorithm || "this topic"}.`,
-          },
-        ]);
+        updateActiveWorkspace((prev) => ({
+          chat: [
+            ...prev.chat,
+            {
+              role: "ai",
+              text:
+                task.explanation ||
+                `Here is the analysis for ${task.algorithm || "this topic"}.`,
+            },
+          ],
+        }));
       } else if (
         task.lessonId &&
         (task.intent === "visualize" || !task.explanation)
@@ -389,13 +348,15 @@ export default function SmartZero() {
           task.inputData
         );
       } else if (task.explanation) {
-        setChat((c) => [
-          ...c,
-          {
-            role: "ai",
-            text: task.explanation,
-          },
-        ]);
+        updateActiveWorkspace((prev) => ({
+          chat: [
+            ...prev.chat,
+            {
+              role: "ai",
+              text: task.explanation,
+            },
+          ],
+        }));
         if (task.lessonId) {
           loadLesson(
             task.lessonId,
@@ -404,22 +365,26 @@ export default function SmartZero() {
           );
         }
       } else {
-        setChat((c) => [
-          ...c,
-          {
-            role: "ai",
-            text: "I teach Data Structures & Algorithms across arrays, linked lists, stacks, queues, hash tables, trees, heaps, graphs, sorting, searching, recursion, and dynamic programming. Ask any question to begin!",
-          },
-        ]);
+        updateActiveWorkspace((prev) => ({
+          chat: [
+            ...prev.chat,
+            {
+              role: "ai",
+              text: "I teach Data Structures & Algorithms across arrays, linked lists, stacks, queues, hash tables, trees, heaps, graphs, sorting, searching, recursion, and dynamic programming. Ask any question to begin!",
+            },
+          ],
+        }));
       }
     } catch (e) {
-      setChat((c) => [
-        ...c,
-        {
-          role: "ai",
-          text: e instanceof Error ? e.message : "Something went wrong.",
-        },
-      ]);
+      updateActiveWorkspace((prev) => ({
+        chat: [
+          ...prev.chat,
+          {
+            role: "ai",
+            text: e instanceof Error ? e.message : "Something went wrong.",
+          },
+        ],
+      }));
     } finally {
       setAiBusy(false);
     }
@@ -431,43 +396,39 @@ export default function SmartZero() {
   function checkAnswer() {
     if (!draftAnswer || !current?.question) return;
     const correct = draftAnswer === current.question.correctId;
-    setSelectedAnswer(draftAnswer);
-    setAnswerCorrect(correct);
-    setPhase(correct ? "correct" : "incorrect");
-
     const choiceText =
       current.question.choices.find((c) => c.id === draftAnswer)?.text || "";
 
-    if (correct) {
-      setChat((c) => [
-        ...c,
-        {
+    const feedbackMsg: ChatMessage = correct
+      ? {
           role: "ai",
           text: `✅ Correct! ${choiceText}\n\nGreat algorithmic intuition. Let's continue the lesson.`,
-        },
-      ]);
-    } else {
-      const m = current.question.misconceptions[draftAnswer];
-      setChat((c) => [
-        ...c,
-        {
+        }
+      : {
           role: "ai",
-          text: m?.feedback
-            ? `❌ ${m.feedback}\n\nReview the explanation on screen and continue when ready.`
+          text: current.question.misconceptions[draftAnswer]?.feedback
+            ? `❌ ${current.question.misconceptions[draftAnswer].feedback}\n\nReview the explanation on screen and continue when ready.`
             : "❌ Not quite. Review the visual state and try again, or continue when ready.",
-        },
-      ]);
-    }
+        };
+
+    updateActiveWorkspace((prev) => ({
+      selectedAnswer: draftAnswer,
+      answerCorrect: correct,
+      phase: correct ? "correct" : "incorrect",
+      chat: [...prev.chat, feedbackMsg],
+    }));
   }
 
   /* ══════════════════════════════════════════
      Learner Interaction: Try Again
      ══════════════════════════════════════════ */
   function tryAgain() {
-    setSelectedAnswer(null);
-    setAnswerCorrect(null);
-    setDraftAnswer(null);
-    setPhase("waiting_for_learner");
+    updateActiveWorkspace({
+      selectedAnswer: null,
+      answerCorrect: null,
+      draftAnswer: null,
+      phase: "waiting_for_learner",
+    });
   }
 
   /* ══════════════════════════════════════════
@@ -476,16 +437,24 @@ export default function SmartZero() {
   function continueLesson() {
     if (!lesson) return;
     const nextStep = step + 1;
-    setDraftAnswer(null);
-    setSelectedAnswer(null);
-    setAnswerCorrect(null);
-    setHintIndex(0);
-
     if (nextStep < total) {
-      setStep(nextStep);
-      setPhase(computePhase(nextStep, null));
+      updateActiveWorkspace({
+        step: nextStep,
+        draftAnswer: null,
+        selectedAnswer: null,
+        answerCorrect: null,
+        hintIndex: 0,
+        phase: computePhase(nextStep, null, lesson),
+        canvasState: replay(lesson.steps, nextStep),
+      });
     } else {
-      setPhase("completed");
+      updateActiveWorkspace({
+        draftAnswer: null,
+        selectedAnswer: null,
+        answerCorrect: null,
+        hintIndex: 0,
+        phase: "completed",
+      });
     }
   }
 
@@ -496,18 +465,22 @@ export default function SmartZero() {
     if (!current?.question?.hints) return;
     const hints = current.question.hints;
     if (hintIndex >= hints.length) {
-      setChat((c) => [
-        ...c,
-        { role: "ai", text: "All hints revealed! Analyze the current canvas values." },
-      ]);
+      updateActiveWorkspace((prev) => ({
+        chat: [
+          ...prev.chat,
+          { role: "ai", text: "All hints revealed! Analyze the current canvas values." },
+        ],
+      }));
       return;
     }
     const hint = hints[hintIndex];
-    setHintIndex((h) => h + 1);
-    setChat((c) => [
-      ...c,
-      { role: "ai", text: `💡 Hint ${hintIndex + 1}: ${hint}` },
-    ]);
+    updateActiveWorkspace((prev) => ({
+      hintIndex: prev.hintIndex + 1,
+      chat: [
+        ...prev.chat,
+        { role: "ai", text: `💡 Hint ${prev.hintIndex + 1}: ${hint}` },
+      ],
+    }));
   }
 
   /* ══════════════════════════════════════════
@@ -518,23 +491,29 @@ export default function SmartZero() {
     if (phase === "waiting_for_learner") return;
     if (step >= total - 1) return;
     const nextStep = step + 1;
-    setStep(nextStep);
-    setDraftAnswer(null);
-    setSelectedAnswer(null);
-    setAnswerCorrect(null);
-    setHintIndex(0);
-    setPhase(computePhase(nextStep, null));
+    updateActiveWorkspace({
+      step: nextStep,
+      draftAnswer: null,
+      selectedAnswer: null,
+      answerCorrect: null,
+      hintIndex: 0,
+      phase: computePhase(nextStep, null, lesson),
+      canvasState: replay(lesson.steps, nextStep),
+    });
   }
 
   function prev() {
-    if (step <= 0) return;
+    if (!lesson || step <= 0) return;
     const prevStep = step - 1;
-    setStep(prevStep);
-    setDraftAnswer(null);
-    setSelectedAnswer(null);
-    setAnswerCorrect(null);
-    setHintIndex(0);
-    setPhase(computePhase(prevStep, null));
+    updateActiveWorkspace({
+      step: prevStep,
+      draftAnswer: null,
+      selectedAnswer: null,
+      answerCorrect: null,
+      hintIndex: 0,
+      phase: computePhase(prevStep, null, lesson),
+      canvasState: replay(lesson.steps, prevStep),
+    });
   }
 
   function restart() {
@@ -543,21 +522,23 @@ export default function SmartZero() {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    setPlaying(false);
-    setStep(0);
-    setDraftAnswer(null);
-    setSelectedAnswer(null);
-    setAnswerCorrect(null);
-    setHintIndex(0);
-    setPhase(computePhase(0, null));
+    updateActiveWorkspace({
+      playing: false,
+      step: 0,
+      draftAnswer: null,
+      selectedAnswer: null,
+      answerCorrect: null,
+      hintIndex: 0,
+      phase: computePhase(0, null, lesson),
+      canvasState: replay(lesson.steps, 0),
+    });
   }
 
   function togglePlay() {
     if (playing) {
-      setPlaying(false);
+      updateActiveWorkspace({ playing: false });
     } else if (lesson && phase !== "waiting_for_learner" && phase !== "completed") {
-      setPlaying(true);
-      setPhase("teaching");
+      updateActiveWorkspace({ playing: true, phase: "teaching" });
     }
   }
 
@@ -572,23 +553,36 @@ export default function SmartZero() {
     timerRef.current = setTimeout(() => {
       const nextStep = step + 1;
       if (nextStep >= total) {
-        setPlaying(false);
-        setPhase("completed");
+        updateActiveWorkspace({
+          playing: false,
+          phase: "completed",
+        });
         return;
       }
       const nextStepData = lesson.steps[nextStep];
       const isPause = !!nextStepData?.pause;
-      setStep(nextStep);
-      setSelectedAnswer(null);
-      setDraftAnswer(null);
-      setAnswerCorrect(null);
-      setHintIndex(0);
       if (isPause) {
-        setPhase("waiting_for_learner");
-        setPlaying(false);
+        updateActiveWorkspace({
+          step: nextStep,
+          selectedAnswer: null,
+          draftAnswer: null,
+          answerCorrect: null,
+          hintIndex: 0,
+          phase: "waiting_for_learner",
+          playing: false,
+          canvasState: replay(lesson.steps, nextStep),
+        });
       } else {
-        setPhase(nextStep === total - 1 ? "completed" : "teaching");
-        setPlaying(nextStep < total - 1);
+        updateActiveWorkspace({
+          step: nextStep,
+          selectedAnswer: null,
+          draftAnswer: null,
+          answerCorrect: null,
+          hintIndex: 0,
+          phase: nextStep === total - 1 ? "completed" : "teaching",
+          playing: nextStep < total - 1,
+          canvasState: replay(lesson.steps, nextStep),
+        });
       }
     }, 1200 / speed);
 
@@ -598,15 +592,17 @@ export default function SmartZero() {
         timerRef.current = null;
       }
     };
-  }, [playing, step, lesson, speed, total]);
+  }, [playing, step, lesson, speed, total, activeWorkspaceId, updateActiveWorkspace]);
 
   /* ══════════════════════════════════════════
      Mode Switching
      ══════════════════════════════════════════ */
   function switchToLearn() {
     if (mode === "learn") return;
-    setTeachState(initialCanvas());
-    setMode("learn");
+    updateActiveWorkspace({
+      mode: "learn",
+      teachState: initialCanvas(),
+    });
   }
 
   function switchToTeach() {
@@ -615,86 +611,83 @@ export default function SmartZero() {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    setPlaying(false);
-    setLesson(null);
-    setStep(0);
-    setDraftAnswer(null);
-    setSelectedAnswer(null);
-    setAnswerCorrect(null);
-    setHintIndex(0);
-    setPhase("idle");
-    setTeachState(initialCanvas());
-    setMode("teach");
+    updateActiveWorkspace({
+      playing: false,
+      lesson: null,
+      lessonId: null,
+      step: 0,
+      draftAnswer: null,
+      selectedAnswer: null,
+      answerCorrect: null,
+      hintIndex: 0,
+      phase: "idle",
+      teachState: initialCanvas(),
+      mode: "teach",
+    });
   }
 
   /* ══════════════════════════════════════════
      Teach Mode Tool Handlers
      ══════════════════════════════════════════ */
   function teachToolClick(toolId: string) {
+    let action: DSLAction | null = null;
     switch (toolId) {
       case "array":
-        setTeachState((s) =>
-          applyAction(s, {
-            action: "create_array",
-            id: "manual-array",
-            values: [10, 20, 30, 40],
-          })
-        );
+        action = {
+          action: "create_array",
+          id: "manual-array",
+          values: [10, 20, 30, 40],
+        };
         break;
       case "variable":
-        setTeachState((s) =>
-          applyAction(s, {
-            action: "create_variable",
-            name: "max",
-            value: 0,
-          })
-        );
+        action = {
+          action: "create_variable",
+          name: "max",
+          value: 0,
+        };
         break;
       case "pointer":
-        setTeachState((s) =>
-          s.array
-            ? applyAction(s, {
-                action: "create_pointer",
-                pointer: "i",
-                targetIndex: 0,
-              })
-            : s
-        );
+        if (teachState.array) {
+          action = {
+            action: "create_pointer",
+            pointer: "i",
+            targetIndex: 0,
+          };
+        }
         break;
       case "list":
-        setTeachState((s) =>
-          applyAction(s, {
-            action: "create_linked_list",
-            values: [1, 2, 3, 4],
-          })
-        );
+        action = {
+          action: "create_linked_list",
+          values: [1, 2, 3, 4],
+        };
         break;
       case "tree":
-        setTeachState((s) =>
-          applyAction(s, {
-            action: "create_tree",
-            nodes: [
-              { id: "t50", value: 50, x: 300, y: 80, visible: true },
-              { id: "t30", value: 30, x: 180, y: 170, visible: true },
-              { id: "t70", value: 70, x: 420, y: 170, visible: true },
-            ],
-            edges: [
-              ["t50", "t30"],
-              ["t50", "t70"],
-            ],
-          })
-        );
+        action = {
+          action: "create_tree",
+          nodes: [
+            { id: "t50", value: 50, x: 300, y: 80, visible: true },
+            { id: "t30", value: 30, x: 180, y: 170, visible: true },
+            { id: "t70", value: 70, x: 420, y: 170, visible: true },
+          ],
+          edges: [
+            ["t50", "t30"],
+            ["t50", "t70"],
+          ],
+        };
         break;
       case "loop":
-        setTeachState((s) =>
-          applyAction(s, {
-            action: "show_message",
-            text: "for (i = 0; i < n; i++) — loop step",
-          })
-        );
+        action = {
+          action: "show_message",
+          text: "for (i = 0; i < n; i++) — loop step",
+        };
         break;
       case "pen":
         break;
+    }
+    if (action) {
+      updateActiveWorkspace((prev) => ({
+        teachState: applyAction(prev.teachState, action!),
+      }));
     }
   }
 

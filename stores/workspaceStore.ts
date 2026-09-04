@@ -376,6 +376,28 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (!activeWs) return state;
 
       const patch = typeof updater === "function" ? updater(activeWs) : updater;
+      if (!patch) return state;
+
+      // Guard against no-op updates: check if any property actually changed
+      const keys = Object.keys(patch) as (keyof LearningWorkspace)[];
+      let hasChanges = false;
+      for (const k of keys) {
+        if (patch[k] !== activeWs[k]) {
+          hasChanges = true;
+          break;
+        }
+      }
+      if (!hasChanges) return state;
+
+      // Keep canvasState in sync if step changed and canvasState was not explicitly provided
+      if (patch.step !== undefined && patch.canvasState === undefined) {
+        const targetLesson = patch.lesson !== undefined ? patch.lesson : activeWs.lesson;
+        const targetMode = patch.mode !== undefined ? patch.mode : activeWs.mode;
+        if (targetMode === "learn" && targetLesson) {
+          patch.canvasState = replay(targetLesson.steps, patch.step);
+        }
+      }
+
       const updatedActive: LearningWorkspace = {
         ...activeWs,
         ...patch,

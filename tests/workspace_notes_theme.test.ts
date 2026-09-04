@@ -329,6 +329,57 @@ console.log("\n── 9. Light / Dark Theme Management ──");
   assert(curWsAfter.lessonId === lessonIdBefore, "Theme switch does NOT reset lesson");
 }
 
+/* ══════════════════════════════════════════
+   10. Infinite Update Prevention & Single Source of Truth Regression
+   ══════════════════════════════════════════ */
+console.log("\n── 10. Infinite Update Prevention & Single Source of Truth ──");
+{
+  const store = useWorkspaceStore.getState();
+  const wsBefore = store.getActiveWorkspace();
+  const updatedAtBefore = wsBefore.updatedAt;
+
+  // 1. Redundant / no-op update should be a no-op bailout
+  store.updateActiveWorkspace({
+    step: wsBefore.step,
+    playing: wsBefore.playing,
+    speed: wsBefore.speed,
+    mode: wsBefore.mode,
+  });
+  const wsAfterNoop = useWorkspaceStore.getState().getActiveWorkspace();
+  assert(
+    wsAfterNoop.updatedAt === updatedAtBefore,
+    "No-op updateActiveWorkspace bails out early without mutating state or updatedAt"
+  );
+
+  // 2. High-frequency updates do not cause infinite recursion or stack overflow
+  let loopError = false;
+  try {
+    for (let i = 0; i < 50; i++) {
+      store.updateActiveWorkspace({ speed: (i % 2) + 1 });
+    }
+  } catch (err) {
+    loopError = true;
+  }
+  assert(!loopError, "50 rapid sequential updates execute without recursion error");
+
+  // 3. Step advancement automatically synchronizes canvasState
+  store.updateActiveWorkspace({ step: 2 });
+  const wsAtStep2 = useWorkspaceStore.getState().getActiveWorkspace();
+  assert(wsAtStep2.step === 2, "Step advanced to 2");
+  assert(wsAtStep2.canvasState !== null, "canvasState is automatically synchronized on step advance");
+
+  // 4. Switching workspace preserves single source of truth without desynchronization
+  const curId = store.activeWorkspaceId;
+  const otherWs = store.workspaces.find((w) => w.id !== curId)!;
+  store.switchWorkspace(otherWs.id);
+  assert(useWorkspaceStore.getState().activeWorkspaceId === otherWs.id, "Clean switch to other workspace");
+
+  store.switchWorkspace(curId);
+  const restored = useWorkspaceStore.getState().getActiveWorkspace();
+  assert(restored.id === curId, "Clean switch back to original workspace");
+  assert(restored.step === 2, "Step 2 preserved upon return");
+}
+
 /* ═══════════════════════════════════════════
    RESULTS
    ═══════════════════════════════════════════ */
