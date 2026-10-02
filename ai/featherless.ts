@@ -35,7 +35,7 @@ async function chatWithModel(system: string, user: string, modelId: string, time
   return (choice?.message?.content || choice?.message?.reasoning || "").trim();
 }
 
-async function chatWithFallback(system: string, user: string, taskType: ModelTaskType = "TEXT_PROBLEM_SOLVING"): Promise<string> {
+export async function chatWithFallback(system: string, user: string, taskType: ModelTaskType = "TEXT_PROBLEM_SOLVING"): Promise<string> {
   const chain = await getFallbackChain(taskType);
   let lastError: unknown = null;
 
@@ -65,6 +65,7 @@ function parseJson(text: string) {
 }
 
 export const featherlessProvider: AIProvider = {
+  name: "featherless",
   async interpretQuestion(input: string, context?: unknown) {
     const localTask = interpretDSAQuery(input, context as any);
 

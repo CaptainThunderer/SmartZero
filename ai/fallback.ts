@@ -3,6 +3,7 @@ import { interpretDSAQuery } from "../agent/nlu";
 import type { AIProvider } from "./provider";
 
 export const fallbackProvider: AIProvider = {
+  name: "fallback",
   async interpretQuestion(input, context) {
     const task = interpretDSAQuery(input, context);
     const lesson = task.customLesson || (task.lessonId ? lessonFromId(task.lessonId, task.inputData) : null);

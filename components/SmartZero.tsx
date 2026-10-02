@@ -30,6 +30,7 @@ import {
   Sun,
   Trash2,
   TreePine,
+  Trophy,
   Undo2,
   Variable,
   Volume2,
@@ -40,9 +41,11 @@ import {
 import SemanticCanvas from "./SemanticCanvas";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import NotesPanel from "./NotesPanel";
+import Link from "next/link";
 import { applyAction, initialCanvas, replay } from "../engine/core";
 import { lessonFromId, getDynamicLesson, SUPPORTED_LESSONS } from "../engine/lessons";
 import { useWorkspaceStore, generateWorkspaceTitle } from "../stores/workspaceStore";
+import { useAuthStore } from "../stores/authStore";
 import {
   FeatherlessNarrationController,
   getConciseStepNarration,
@@ -105,6 +108,12 @@ export default function SmartZero() {
   useEffect(() => {
     rehydrateFromStorage();
   }, [rehydrateFromStorage]);
+
+  /* ── Auth State & Session Initialization ── */
+  const { isAuthenticated, profile, role, initialize: initAuth } = useAuthStore();
+  useEffect(() => {
+    initAuth();
+  }, [initAuth]);
 
   /* ── Active Workspace is the Single Source of Truth (Reactive Selector) ── */
   const activeWs = useWorkspaceStore(
@@ -1022,6 +1031,18 @@ export default function SmartZero() {
           >
             Teach
           </button>
+          <Link
+            href="/contests"
+            className={`px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
+              isDark
+                ? "text-[#A0A6C2] hover:bg-[#1E1E2E] hover:text-white"
+                : "text-[#6B6F8A] hover:bg-[#F2F2EE] hover:text-[#232946]"
+            }`}
+            title="Browse SmartZero Contests"
+          >
+            <Trophy size={13} className="text-[#FBBF24]" />
+            <span>Contests</span>
+          </Link>
         </nav>
 
         <div className="flex-1" />
@@ -1067,11 +1088,45 @@ export default function SmartZero() {
           </button>
         </div>
 
-        <div
-          title="SmartZero Student"
-          className="w-8 h-8 rounded-full bg-[#ECEBFF] text-[#5B5FEF] flex items-center justify-center text-[12px] font-bold"
-        >
-          SZ
+        {/* Auth / Profile Actions */}
+        <div className="flex items-center gap-2">
+          {isAuthenticated && (role === "admin" || role === "super_admin") && (
+            <Link
+              href="/admin"
+              className={`h-8 px-2.5 rounded-xl border flex items-center gap-1.5 text-[11.5px] font-medium transition-colors ${
+                isDark
+                  ? "bg-[#1E1E2E] border-[#373A58] text-[#A5B4FC] hover:bg-[#282942]"
+                  : "bg-[#EEF0FD] border-[#D4D7F9] text-[#5B5FEF] hover:bg-[#E5E8FC]"
+              }`}
+              title="Open Admin Dashboard"
+            >
+              <span>Admin</span>
+            </Link>
+          )}
+
+          {isAuthenticated ? (
+            <Link
+              href="/profile"
+              title={`Signed in as ${profile?.full_name || profile?.email || "Student"} (${role})`}
+              className="w-8 h-8 rounded-full bg-[#ECEBFF] text-[#5B5FEF] hover:ring-2 hover:ring-[#5B5FEF] flex items-center justify-center text-[11px] font-bold transition-all shadow-sm"
+            >
+              {(profile?.full_name || profile?.display_name || profile?.email || "SZ")
+                .slice(0, 2)
+                .toUpperCase()}
+            </Link>
+          ) : (
+            <Link
+              href="/login"
+              title="Sign in to SmartZero"
+              className={`h-8 px-2.5 rounded-xl border flex items-center gap-1 text-[11.5px] font-medium transition-colors ${
+                isDark
+                  ? "bg-[#1E1E2E] border-[#373A58] text-[#E0E7FF] hover:bg-[#282942]"
+                  : "bg-[#F2F2EE] border-[#E7E7E2] text-[#4A4E68] hover:bg-[#E5E5E0]"
+              }`}
+            >
+              <span>Sign In</span>
+            </Link>
+          )}
         </div>
       </header>
 

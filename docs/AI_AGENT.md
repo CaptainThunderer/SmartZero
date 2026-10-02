@@ -96,40 +96,51 @@ Each solver generates a complete `ProblemSolutionPlan`:
 
 ---
 
-## 5. Model Routing & Featherless AI Integration (`ai/modelRouter.ts`)
+## 5. AI Gateway & Multi-Provider Abstraction (`ai/index.ts`)
 
-SmartZero routes queries to [Featherless AI](https://featherless.ai/) using an OpenAI-compatible API client:
+SmartZero 2.0 routes AI requests through a unified, provider-agnostic **AI Gateway** (`ai/index.ts`). Application routes and components communicate exclusively with the `AIProvider` contract, never directly with specific external vendors:
 
 ```mermaid
 flowchart TD
-    REQ[Client Request] --> CAT{Task Category}
+    APP[SmartZero Feature / API Route] --> GW["AI Gateway: resolveProvider()"]
     
-    CAT -->|TEXT_PROBLEM_SOLVING / DSA_REASONING| M_REASON["Primary: zai-org/GLM-5.3-Flash"]
-    CAT -->|CODE_GENERATION / DEBUGGING| M_CODE["Primary: Qwen/Qwen3-32B"]
-    CAT -->|VISION / DIAGRAM| M_VIS["Primary: Qwen/Qwen2.5-VL-7B-Instruct"]
+    GW -->|AI_PROVIDER=gemini| GEM["Gemini Provider (ai/providers/gemini.ts)"]
+    GW -->|AI_PROVIDER=openrouter| OR["OpenRouter Provider (ai/providers/openrouter.ts)"]
+    GW -->|AI_PROVIDER=featherless| FL["Featherless Provider (ai/featherless.ts)"]
+    GW -->|Missing key / Network error / Offline| DET["Deterministic Fallback Engine (ai/fallback.ts)"]
     
-    M_REASON -->|Fail / Timeout 25s| FB1["Secondary: Qwen/Qwen3-32B"]
-    FB1 -->|Fail / Timeout| FB2["Tertiary: allura-org/GLM4-9B-Neon-v2"]
-    FB2 -->|Fail / Offline| LOCAL["Local Deterministic Rule Engine"]
-    
-    M_CODE -->|Fail / Timeout 25s| FB3["Secondary: Darkknight535/Moonlight-L3-15B"]
-    FB3 -->|Fail / Offline| LOCAL
+    GEM -->|Error / Timeout / 429| DET
+    OR -->|Error / Timeout / 429| DET
+    FL -->|Error / Timeout / 429| DET
 ```
 
-### Dynamic Model Discovery
-On initialization, `ai/modelRouter.ts` queries the Featherless catalog (`${BASE_URL}/models`):
-- Filters out gated models and models exceeding context length constraints.
-- Caches available models in-memory for 1 hour (`CACHE_TTL_MS = 3600000`).
-- If discovery fails (e.g. offline or DNS failure), uses `DEFAULT_KNOWN_MODELS` catalog.
+### Supported Providers:
+1. **Google Gemini (`gemini`)**:
+   - Primary candidate for free-tier usage.
+   - Configured via `GEMINI_API_KEY` and `AI_MODEL` (defaults to `gemini-2.5-flash`).
+2. **OpenRouter (`openrouter`)**:
+   - Supports free community models (e.g. `meta-llama/llama-3.3-70b-instruct:free`).
+   - Configured via `OPENROUTER_API_KEY` and `AI_MODEL`.
+3. **Featherless AI (`featherless`)**:
+   - Preserves task-based model routing (`zai-org/GLM-5.3-Flash`, `Qwen/Qwen3-32B`).
+   - Configured via `FEATHERLESS_API_KEY`, `FEATHERLESS_MODEL`, and `FEATHERLESS_BASE_URL`.
+4. **Deterministic Local Engine (`deterministic` / `fallback`)**:
+   - 100% offline, deterministic rule engine backed by `agent/nlu.ts`, `agent/problemSolver.ts`, and `engine/lessons.ts`.
+
+### Provider Selection Logic:
+- Set `AI_PROVIDER=gemini` | `openrouter` | `featherless` | `deterministic` in `.env.local`.
+- If `AI_PROVIDER` is unset, the gateway automatically selects the first provider with a configured API key in order: Gemini → OpenRouter → Featherless.
+- If no external key is configured, or if `SMARTZERO_ENABLE_LIVE_AI=false`, the deterministic fallback engine is activated automatically.
 
 ---
 
-## 6. Deterministic Fallback Provider (`ai/provider.ts`)
+## 6. Deterministic Fallback Engine (`ai/fallback.ts`)
 
-If `SMARTZERO_ENABLE_LIVE_AI=false`, or if `FEATHERLESS_API_KEY` is not provided, SmartZero activates `DeterministicFallbackProvider`:
+When an external provider is unavailable or fails due to network timeout or rate limits, the `resilient()` gateway wrapper immediately activates `fallbackProvider`:
 - Emits fully structured responses conforming strictly to `AIResponseSchema` and `DSATaskSchema`.
 - Leverages the canonical registry in `engine/registry.ts` and the 42 solvers in `agent/problemSolver.ts`.
-- Guarantees that hackathon evaluation, continuous integration, and local demonstrations never fail due to API outages or token limits.
+- Guarantees that hackathon evaluation, CI testing, and offline local development never fail.
+- Output correctness is guaranteed deterministically: **AI decides WHAT to teach; the engine decides HOW to execute.**
 
 ---
 

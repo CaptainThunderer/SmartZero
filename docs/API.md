@@ -9,7 +9,7 @@
 SmartZero exposes five RESTful route handlers under `app/api/`. All endpoints:
 - Run server-side in Node.js runtime.
 - Strictly validate request bodies using Zod schemas (`ai/schemas.ts`).
-- Securely access `FEATHERLESS_API_KEY` without exposing keys to the browser.
+- Securely access configured AI provider API keys (`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `FEATHERLESS_API_KEY`) server-side without exposing keys to the browser.
 - Automatically fall back to deterministic rule engines or timer progression upon network timeout or API error.
 
 | Endpoint | Method | Input Contract | Response Contract | Typical Latency |
