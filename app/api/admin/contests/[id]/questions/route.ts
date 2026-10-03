@@ -7,8 +7,12 @@ import {
   reorderContestQuestions,
 } from "@/lib/contest/service";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 
-async function verifyAdminAuth() {
+async function verifyAdminAuth(req: Request) {
+  const authUser = await getAuthenticatedUser(req);
+  if (authUser && authUser.role !== "student") return true;
+
   const supabase = await createSupabaseServerClient();
   if (!supabase) return true; // Local dev fallback
 
@@ -29,10 +33,10 @@ async function verifyAdminAuth() {
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const isAuthorized = await verifyAdminAuth();
+  const isAuthorized = await verifyAdminAuth(req);
   if (!isAuthorized) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 403 });
   }
@@ -46,7 +50,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const isAuthorized = await verifyAdminAuth();
+  const isAuthorized = await verifyAdminAuth(req);
   if (!isAuthorized) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 403 });
   }
@@ -109,7 +113,7 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const isAuthorized = await verifyAdminAuth();
+  const isAuthorized = await verifyAdminAuth(req);
   if (!isAuthorized) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 403 });
   }

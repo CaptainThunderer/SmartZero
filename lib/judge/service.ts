@@ -81,7 +81,12 @@ export async function saveCodingSubmission(params: {
     if (error) {
       throw new Error(`Database error saving coding submission: ${error.message}`);
     }
-    return (data as CodingSubmission) || sub;
+    const finalSub = (data as CodingSubmission) || sub;
+    const key = `${params.contest_id}:${params.user_id}`;
+    const list = memorySubmissions.get(key) || [];
+    list.unshift(finalSub);
+    memorySubmissions.set(key, list);
+    return finalSub;
   }
 
   const key = `${params.contest_id}:${params.user_id}`;
@@ -116,6 +121,71 @@ export async function saveCodingSubmission(params: {
 }
 
 /**
+ * Saves draft code for student autosave without running judge.
+ */
+export async function saveCodingDraft(params: {
+  contest_id: string;
+  user_id: string;
+  question_id: string;
+  language: CodingLanguage;
+  code: string;
+}): Promise<{ success: boolean; error: string | null }> {
+  const now = new Date().toISOString();
+  const sub: CodingSubmission = {
+    id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    contest_id: params.contest_id,
+    user_id: params.user_id,
+    question_id: params.question_id,
+    language: params.language,
+    code: params.code,
+    verdict: "DRAFT",
+    score: 0,
+    test_cases_passed: 0,
+    total_test_cases: 0,
+    execution_time_ms: 0,
+    memory_kb: 0,
+    compile_output: "",
+    submitted_at: now,
+  };
+
+  const key = `${params.contest_id}:${params.user_id}`;
+  const list = memorySubmissions.get(key) || [];
+  const existingIdx = list.findIndex(
+    (s) => s.question_id === params.question_id && s.language === params.language && s.verdict === "DRAFT"
+  );
+  if (existingIdx >= 0) {
+    list[existingIdx] = sub;
+  } else {
+    list.unshift(sub);
+  }
+  memorySubmissions.set(key, list);
+
+  const supabase = await createSupabaseServerClient();
+  if (supabase) {
+    try {
+      await supabase.from("coding_submissions").insert({
+        contest_id: sub.contest_id,
+        user_id: sub.user_id,
+        question_id: sub.question_id,
+        language: sub.language,
+        code: sub.code,
+        verdict: "DRAFT",
+        score: 0,
+        test_cases_passed: 0,
+        total_test_cases: 0,
+        execution_time_ms: 0,
+        memory_kb: 0,
+        compile_output: "",
+      });
+    } catch {
+      // Fallback
+    }
+  }
+
+  return { success: true, error: null };
+}
+
+/**
  * Retrieves contestant submission history for a contest question.
  */
 export async function getStudentSubmissions(
@@ -124,12 +194,34 @@ export async function getStudentSubmissions(
   question_id?: string
 ): Promise<CodingSubmission[]> {
   const key = `${contest_id}:${user_id}`;
-  const list = memorySubmissions.get(key) || [];
+  let list = memorySubmissions.get(key);
 
-  if (question_id) {
-    return list.filter((s) => s.question_id === question_id);
+  if (!list || list.length === 0) {
+    const supabase = await createSupabaseServerClient();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from("coding_submissions")
+          .select("*")
+          .eq("contest_id", contest_id)
+          .eq("user_id", user_id)
+          .order("submitted_at", { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          list = data as CodingSubmission[];
+          memorySubmissions.set(key, list);
+        }
+      } catch {
+        // Fall back
+      }
+    }
   }
-  return list;
+
+  const result = list || [];
+  if (question_id) {
+    return result.filter((s) => s.question_id === question_id);
+  }
+  return result;
 }
 
 export { defaultJudgeWorker, normalizeOutput, judgeQueue, judgeObservability };

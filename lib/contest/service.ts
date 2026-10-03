@@ -11,6 +11,8 @@ import type {
 } from "../../types/contest";
 import { hashPasscode, verifyPasscode, generateContestSlug } from "./crypto";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "../supabase-server";
+import { randomUUID } from "node:crypto";
+import { getStudentSubmissions } from "../judge/service";
 
 async function getSupabaseClient() {
   return createSupabaseAdminClient() || (await createSupabaseServerClient());
@@ -474,14 +476,15 @@ export async function deleteContest(
 // ─────────────────────────────────────────────────────────────
 
 export async function addMcqQuestion(params: {
+  id?: string;
   question_text?: string;
   prompt?: string;
   explanation?: string;
   difficulty?: "Easy" | "Medium" | "Hard";
-  options: { option_text: string; is_correct: boolean; sort_order?: number }[];
+  options: { id?: string; option_text: string; is_correct: boolean; sort_order?: number }[];
   created_by?: string | null;
 }): Promise<McqQuestion> {
-  const questionId = `mcq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const questionId = params.id || randomUUID();
   const text = (params.question_text || params.prompt || "").trim();
   const q: McqQuestion = {
     id: questionId,
@@ -491,7 +494,7 @@ export async function addMcqQuestion(params: {
     created_by: params.created_by || null,
     created_at: new Date().toISOString(),
     options: params.options.map((opt, i) => ({
-      id: `opt-${questionId}-${i}`,
+      id: opt.id || randomUUID(),
       question_id: questionId,
       option_text: opt.option_text.trim(),
       is_correct: opt.is_correct,
@@ -500,10 +503,41 @@ export async function addMcqQuestion(params: {
   };
 
   memoryStore.mcqQuestions.set(q.id, q);
+
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase.from("mcq_questions").upsert({
+        id: q.id,
+        question_text: q.question_text,
+        explanation: q.explanation,
+        difficulty: q.difficulty,
+        created_by: q.created_by,
+      });
+
+      if (q.options && q.options.length > 0) {
+        await supabase.from("mcq_options").upsert(
+          q.options.map((opt) => ({
+            id: opt.id,
+            question_id: q.id,
+            option_text: opt.option_text,
+            is_correct: opt.is_correct,
+            sort_order: opt.sort_order,
+          }))
+        );
+      }
+    } catch (err) {
+      if (isProduction()) {
+        throw new Error(`Database error adding MCQ question: ${(err as Error).message}`);
+      }
+    }
+  }
+
   return q;
 }
 
 export async function addCodingQuestion(params: {
+  id?: string;
   title: string;
   description: string;
   input_format?: string;
@@ -513,6 +547,7 @@ export async function addCodingQuestion(params: {
   time_limit_ms?: number;
   memory_limit_mb?: number;
   test_cases: {
+    id?: string;
     input: string;
     expected_output: string;
     is_hidden?: boolean;
@@ -521,7 +556,7 @@ export async function addCodingQuestion(params: {
   }[];
   created_by?: string | null;
 }): Promise<CodingQuestion> {
-  const questionId = `code-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const questionId = params.id || randomUUID();
   const q: CodingQuestion = {
     id: questionId,
     title: params.title.trim(),
@@ -535,7 +570,7 @@ export async function addCodingQuestion(params: {
     created_by: params.created_by || null,
     created_at: new Date().toISOString(),
     test_cases: params.test_cases.map((tc, i) => ({
-      id: `tc-${questionId}-${i}`,
+      id: tc.id || randomUUID(),
       question_id: questionId,
       input: tc.input,
       expected_output: tc.expected_output,
@@ -547,10 +582,102 @@ export async function addCodingQuestion(params: {
   };
 
   memoryStore.codingQuestions.set(q.id, q);
+
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase.from("coding_questions").upsert({
+        id: q.id,
+        title: q.title,
+        description: q.description,
+        input_format: q.input_format,
+        output_format: q.output_format,
+        constraints: q.constraints,
+        difficulty: q.difficulty,
+        time_limit_ms: q.time_limit_ms,
+        memory_limit_mb: q.memory_limit_mb,
+        created_by: q.created_by,
+      });
+
+      if (q.test_cases && q.test_cases.length > 0) {
+        await supabase.from("coding_test_cases").upsert(
+          q.test_cases.map((tc) => ({
+            id: tc.id,
+            question_id: q.id,
+            input: tc.input,
+            expected_output: tc.expected_output,
+            is_hidden: tc.is_hidden,
+            is_sample: tc.is_sample,
+            weight: tc.weight,
+            sort_order: tc.sort_order,
+          }))
+        );
+      }
+    } catch (err) {
+      if (isProduction()) {
+        throw new Error(`Database error adding coding question: ${(err as Error).message}`);
+      }
+    }
+  }
+
   return q;
 }
 
+export async function getMcqQuestionRaw(
+  questionId: string
+): Promise<McqQuestion | null> {
+  const local = memoryStore.mcqQuestions.get(questionId);
+  if (local && local.options && local.options.length > 0) return local;
+
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data: qData } = await supabase
+        .from("mcq_questions")
+        .select("*, options:mcq_options(*)")
+        .eq("id", questionId)
+        .maybeSingle();
+      if (qData) {
+        if (Array.isArray(qData.options)) {
+          qData.options.sort((a: { sort_order?: number }, b: { sort_order?: number }) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+        }
+        memoryStore.mcqQuestions.set(questionId, qData as McqQuestion);
+        return qData as McqQuestion;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+  return local || null;
+}
+
+export async function getCodingQuestionRaw(
+  questionId: string
+): Promise<CodingQuestion | null> {
+  const local = memoryStore.codingQuestions.get(questionId);
+  if (local && local.test_cases && local.test_cases.length > 0) return local;
+
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data } = await supabase
+        .from("coding_questions")
+        .select("*, test_cases:coding_test_cases(*)")
+        .eq("id", questionId)
+        .maybeSingle();
+      if (data) {
+        memoryStore.codingQuestions.set(questionId, data as CodingQuestion);
+        return data as CodingQuestion;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+  return local || null;
+}
+
 export async function linkQuestionToContest(params: {
+  id?: string;
   contest_id: string;
   question_id: string;
   question_type: "mcq" | "coding";
@@ -558,8 +685,12 @@ export async function linkQuestionToContest(params: {
   marks?: number;
   negative_marks?: number;
 }): Promise<ContestQuestion> {
+  const cqId = params.id || randomUUID();
+  const mcqDetails = params.question_type === "mcq" ? (memoryStore.mcqQuestions.get(params.question_id) || (await getMcqQuestionRaw(params.question_id))) : undefined;
+  const codingDetails = params.question_type === "coding" ? (memoryStore.codingQuestions.get(params.question_id) || (await getCodingQuestionRaw(params.question_id))) : undefined;
+
   const cq: ContestQuestion = {
-    id: `cq-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: cqId,
     contest_id: params.contest_id,
     question_id: params.question_id,
     question_type: params.question_type,
@@ -567,14 +698,37 @@ export async function linkQuestionToContest(params: {
     marks: params.marks ?? 1,
     negative_marks: params.negative_marks ?? 0,
     created_at: new Date().toISOString(),
-    mcq_details: params.question_type === "mcq" ? memoryStore.mcqQuestions.get(params.question_id) : undefined,
-    coding_details: params.question_type === "coding" ? memoryStore.codingQuestions.get(params.question_id) : undefined,
+    mcq_details: mcqDetails || undefined,
+    coding_details: codingDetails || undefined,
   };
 
   const list = memoryStore.contestQuestions.get(params.contest_id) || [];
-  list.push(cq);
+  const existingIdx = list.findIndex((x) => x.question_id === params.question_id);
+  if (existingIdx >= 0) {
+    list[existingIdx] = cq;
+  } else {
+    list.push(cq);
+  }
   list.sort((a, b) => a.sort_order - b.sort_order);
   memoryStore.contestQuestions.set(params.contest_id, list);
+
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase.from("contest_questions").upsert({
+        contest_id: params.contest_id,
+        question_id: params.question_id,
+        question_type: params.question_type,
+        sort_order: params.sort_order ?? 0,
+        marks: params.marks ?? 1,
+        negative_marks: params.negative_marks ?? 0,
+      }, { onConflict: "contest_id,question_id" });
+    } catch (err) {
+      if (isProduction()) {
+        throw new Error(`Database error linking question: ${(err as Error).message}`);
+      }
+    }
+  }
 
   return cq;
 }
@@ -583,7 +737,56 @@ export async function getContestQuestions(
   contestId: string,
   forRole: "admin" | "student" = "student"
 ): Promise<ContestQuestion[]> {
-  const rawList = memoryStore.contestQuestions.get(contestId) || [];
+  let list = memoryStore.contestQuestions.get(contestId);
+
+  // If memoryStore is empty, attempt to hydrate from Supabase
+  if (!list || list.length === 0) {
+    const supabase = await getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data: cqRows, error } = await supabase
+          .from("contest_questions")
+          .select("*")
+          .eq("contest_id", contestId)
+          .order("sort_order", { ascending: true });
+
+        if (!error && cqRows && cqRows.length > 0) {
+          const hydrated: ContestQuestion[] = [];
+          for (const row of cqRows) {
+            let mcq_details: McqQuestion | undefined;
+            let coding_details: CodingQuestion | undefined;
+
+            if (row.question_type === "mcq") {
+              const mcq = await getMcqQuestionRaw(row.question_id);
+              if (mcq) mcq_details = mcq;
+            } else if (row.question_type === "coding") {
+              const codeQ = await getCodingQuestionRaw(row.question_id);
+              if (codeQ) coding_details = codeQ;
+            }
+
+            hydrated.push({
+              id: row.id,
+              contest_id: row.contest_id,
+              question_id: row.question_id,
+              question_type: row.question_type,
+              sort_order: row.sort_order ?? 0,
+              marks: Number(row.marks ?? 1),
+              negative_marks: Number(row.negative_marks ?? 0),
+              created_at: row.created_at || new Date().toISOString(),
+              mcq_details,
+              coding_details,
+            });
+          }
+          list = hydrated;
+          memoryStore.contestQuestions.set(contestId, hydrated);
+        }
+      } catch {
+        // Fall back to memoryStore
+      }
+    }
+  }
+
+  const rawList = list || [];
 
   if (forRole === "student") {
     return rawList.map(sanitizeQuestionForStudent);
@@ -608,32 +811,23 @@ export async function reorderContestQuestions(
   });
 
   memoryStore.contestQuestions.set(contestId, reordered);
-  return reordered;
-}
-
-export async function getCodingQuestionRaw(
-  questionId: string
-): Promise<CodingQuestion | null> {
-  const local = memoryStore.codingQuestions.get(questionId);
-  if (local) return local;
 
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
-      const { data } = await supabase
-        .from("coding_questions")
-        .select("*, test_cases:coding_test_cases(*)")
-        .eq("id", questionId)
-        .single();
-      if (data) {
-        memoryStore.codingQuestions.set(questionId, data as CodingQuestion);
-        return data as CodingQuestion;
+      for (const q of reordered) {
+        await supabase
+          .from("contest_questions")
+          .update({ sort_order: q.sort_order })
+          .eq("contest_id", contestId)
+          .eq("question_id", q.question_id);
       }
     } catch {
       // Ignore
     }
   }
-  return null;
+
+  return reordered;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -946,11 +1140,17 @@ export async function recordMcqAnswer(params: {
         selected_option_id: params.selected_option_id,
         is_marked_for_review: params.is_marked_for_review ?? false,
         updated_at: new Date().toISOString(),
-      }).select().single();
+      }, { onConflict: "contest_id,user_id,question_id" }).select().single();
       if (error) {
         return { answer: null, error: `Database error recording answer: ${error.message}` };
       }
-      return { answer: data as McqAnswer, error: null };
+      const ansObj = data as McqAnswer;
+      const key = `${params.contest_id}:${params.user_id}`;
+      const list = memoryStore.answers.get(key) || [];
+      const exIdx = list.findIndex((a) => a.question_id === params.question_id);
+      if (exIdx >= 0) list[exIdx] = ansObj; else list.push(ansObj);
+      memoryStore.answers.set(key, list);
+      return { answer: ansObj, error: null };
     } catch (err) {
       return { answer: null, error: (err as Error).message || "Database connection failure." };
     }
@@ -993,7 +1193,7 @@ export async function recordMcqAnswer(params: {
         selected_option_id: params.selected_option_id,
         is_marked_for_review: params.is_marked_for_review ?? false,
         updated_at: now,
-      });
+      }, { onConflict: "contest_id,user_id,question_id" });
     } catch {
       // Fallback
     }
@@ -1039,8 +1239,8 @@ export async function calculateStudentMcqScore(
   const contest = await getContestById(contest_id);
   if (!contest) return { totalScore: 0, answeredCount: 0, correctCount: 0, incorrectCount: 0 };
 
-  const questions = memoryStore.contestQuestions.get(contest_id) || [];
-  const answers = memoryStore.answers.get(`${contest_id}:${user_id}`) || [];
+  const questions = await getContestQuestions(contest_id, "admin");
+  const answers = await getStudentAnswers(contest_id, user_id);
   const answerMap = new Map(answers.map((a) => [a.question_id, a.selected_option_id]));
 
   let totalScore = 0;
@@ -1054,25 +1254,51 @@ export async function calculateStudentMcqScore(
     if (!selectedOptId) continue;
 
     answeredCount++;
-    const mcq = memoryStore.mcqQuestions.get(cq.question_id);
+    const mcq = cq.mcq_details || (await getMcqQuestionRaw(cq.question_id));
     const correctOpt = mcq?.options?.find((o) => o.is_correct);
 
     if (correctOpt && correctOpt.id === selectedOptId) {
       correctCount++;
-      totalScore += cq.marks;
+      totalScore += Number(cq.marks ?? 1);
     } else {
       incorrectCount++;
       if (contest.negative_marking) {
-        totalScore -= cq.negative_marks || contest.default_negative_mark || 0;
+        totalScore -= Number(cq.negative_marks || contest.default_negative_mark || 0);
       }
     }
   }
 
-  return { totalScore, answeredCount, correctCount, incorrectCount };
+  return { totalScore: Math.max(0, totalScore), answeredCount, correctCount, incorrectCount };
 }
 
 /**
- * Finalizes exam submission, deterministically calculates total score,
+ * Server calculates coding score deterministically from best submission per question.
+ */
+export async function calculateStudentCodingScore(
+  contest_id: string,
+  user_id: string
+): Promise<{ totalScore: number; submittedCount: number }> {
+  const submissions = await getStudentSubmissions(contest_id, user_id);
+  const maxScorePerQuestion = new Map<string, number>();
+
+  for (const sub of submissions) {
+    if (sub.verdict === "DRAFT") continue;
+    const currentMax = maxScorePerQuestion.get(sub.question_id) ?? 0;
+    if (sub.score > currentMax) {
+      maxScorePerQuestion.set(sub.question_id, sub.score);
+    }
+  }
+
+  let totalScore = 0;
+  for (const score of maxScorePerQuestion.values()) {
+    totalScore += score;
+  }
+
+  return { totalScore, submittedCount: maxScorePerQuestion.size };
+}
+
+/**
+ * Finalizes exam submission, deterministically calculates total score (MCQ + Coding),
  * and updates participant status to 'submitted'.
  */
 export async function submitContestExam(params: {
@@ -1115,16 +1341,25 @@ export async function submitContestExam(params: {
       participant.status === "finalized")
   ) {
     // Already submitted — return existing score
-    const existingScore = await calculateStudentMcqScore(params.contest_id, params.user_id);
+    const existingMcq = await calculateStudentMcqScore(params.contest_id, params.user_id);
+    const existingCoding = await calculateStudentCodingScore(params.contest_id, params.user_id);
     return {
       success: true,
       participant,
-      score: existingScore,
+      score: {
+        totalScore: participant.score ?? (existingMcq.totalScore + existingCoding.totalScore),
+        answeredCount: existingMcq.answeredCount + existingCoding.submittedCount,
+        correctCount: existingMcq.correctCount,
+        incorrectCount: existingMcq.incorrectCount,
+      },
       error: "Exam has already been submitted.",
     };
   }
 
-  const scoreResult = await calculateStudentMcqScore(params.contest_id, params.user_id);
+  const mcqScoreResult = await calculateStudentMcqScore(params.contest_id, params.user_id);
+  const codingScoreResult = await calculateStudentCodingScore(params.contest_id, params.user_id);
+  const totalScore = mcqScoreResult.totalScore + codingScoreResult.totalScore;
+
   const now = new Date().toISOString();
   const isAuto =
     params.reason === "integrity_violation" ||
@@ -1134,7 +1369,7 @@ export async function submitContestExam(params: {
 
   if (participant) {
     participant.status = nextStatus;
-    participant.score = scoreResult.totalScore;
+    participant.score = totalScore;
     participant.completed_at = now;
     participant.submission_reason = params.reason || "manual";
     if (params.violations_count !== undefined) {
@@ -1150,7 +1385,7 @@ export async function submitContestExam(params: {
         .from("contest_participants")
         .update({
           status: nextStatus,
-          score: scoreResult.totalScore,
+          score: totalScore,
           completed_at: now,
           submission_reason: params.reason || "manual",
           violations_count: params.violations_count || 0,
@@ -1165,7 +1400,12 @@ export async function submitContestExam(params: {
   return {
     success: true,
     participant,
-    score: scoreResult,
+    score: {
+      totalScore,
+      answeredCount: mcqScoreResult.answeredCount + codingScoreResult.submittedCount,
+      correctCount: mcqScoreResult.correctCount,
+      incorrectCount: mcqScoreResult.incorrectCount,
+    },
     error: null,
   };
 }

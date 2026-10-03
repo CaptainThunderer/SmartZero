@@ -33,7 +33,7 @@ async function run() {
   testAssert(detectFormat("questions.json") === "json", "Detects JSON");
   testAssert(detectFormat("quiz_export.CSV") === "csv", "Detects CSV (case-insensitive)");
   testAssert(detectFormat("question_bank.xlsx") === "xlsx", "Detects XLSX");
-  testAssert(detectFormat("legacy_sheet.xls") === "xlsx", "Detects XLS");
+  testAssert(detectFormat("legacy_sheet.xls") === "xls", "Detects XLS");
   testAssert(detectFormat("questions.docx") === "unsupported", "Rejects unsupported format (.docx)");
 
   // ── 2. JSON Import Parsing & Validation ──
@@ -129,6 +129,36 @@ coding,Fibonacci Number,,,,,,5
   const xlsxValidation = validateImportQuestions(parsedXlsxRows, "xlsx");
   testAssert(xlsxValidation.validQuestions.length === 2, "Both XLSX questions validated successfully");
   testAssert(xlsxValidation.validQuestions[1].type === "coding", "Second question is coding problem");
+
+  // ── 4b. XLS (BIFF8) Import Parsing & Validation ──
+  console.log("\n── 4b. XLS (BIFF8) Import Parsing & Validation ──");
+  const xlsBuffer = XLSX.write(xlsxWorkbook, { type: "buffer", bookType: "biff8" });
+  const parsedXlsRows = parseRawFile("xls", xlsBuffer);
+  testAssert(parsedXlsRows.length === 2, "XLS parses 2 rows from worksheet");
+  const xlsValidation = validateImportQuestions(parsedXlsRows, "xls");
+  testAssert(xlsValidation.validQuestions.length === 2, "Both XLS questions validated successfully");
+
+  // Spreadsheet Hidden Test Case Parsing
+  const spreadsheetWithHidden = [
+    {
+      type: "coding",
+      title: "Sum Problem",
+      description: "Sum of A and B",
+      sample_input: "1 2",
+      sample_output: "3",
+      hidden_input: "10 20",
+      hidden_output: "30",
+      marks: 10,
+    },
+  ];
+  const hiddenValidated = validateImportQuestions(spreadsheetWithHidden, "csv");
+  testAssert(hiddenValidated.validQuestions.length === 1, "Question with hidden cases validated");
+  if (hiddenValidated.validQuestions[0].type === "coding") {
+    const tcs = hiddenValidated.validQuestions[0].test_cases;
+    testAssert(tcs.length === 2, "Found both sample and hidden test case in spreadsheet");
+    testAssert(tcs[0].is_sample === true && tcs[0].is_hidden === false, "First is sample test case");
+    testAssert(tcs[1].is_sample === false && tcs[1].is_hidden === true, "Second is hidden test case");
+  }
 
   // ── 5. Validation Diagnostics (Missing fields, invalid marks, duplicates) ──
   console.log("\n── 5. Validation Diagnostics & Error Pinpointing ──");

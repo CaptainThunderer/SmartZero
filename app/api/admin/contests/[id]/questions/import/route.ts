@@ -6,8 +6,12 @@ import {
   persistImportedQuestions,
 } from "@/lib/contest/importer";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 
-async function verifyAdminAuth() {
+async function verifyAdminAuth(req: Request) {
+  const authUser = await getAuthenticatedUser(req);
+  if (authUser && authUser.role !== "student") return true;
+
   const supabase = await createSupabaseServerClient();
   if (!supabase) return true; // Local dev fallback
 
@@ -31,7 +35,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const isAuthorized = await verifyAdminAuth();
+  const isAuthorized = await verifyAdminAuth(req);
   if (!isAuthorized) {
     return NextResponse.json({ error: "Unauthorized. Admin privileges required." }, { status: 403 });
   }
@@ -80,7 +84,7 @@ export async function POST(
 
       if (format === "unsupported") {
         return NextResponse.json(
-          { error: "Unsupported file extension. Only .json, .csv, and .xlsx are supported." },
+          { error: "Unsupported file extension. Only .json, .csv, .xlsx, and .xls are supported." },
           { status: 400 }
         );
       }

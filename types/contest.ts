@@ -155,7 +155,8 @@ export type CodingVerdict =
   | "TLE"
   | "MLE"
   | "SYSTEM_ERROR"
-  | "JUDGE_UNAVAILABLE";
+  | "JUDGE_UNAVAILABLE"
+  | "DRAFT";
 
 export type CodingLanguage =
   | "python"

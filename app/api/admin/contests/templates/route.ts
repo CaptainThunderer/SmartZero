@@ -70,6 +70,8 @@ const SPREADSHEET_ROWS = [
     correct_answer: "A",
     sample_input: "",
     sample_output: "",
+    hidden_input: "",
+    hidden_output: "",
     constraints: "",
     input_format: "",
     output_format: "",
@@ -90,6 +92,8 @@ const SPREADSHEET_ROWS = [
     correct_answer: "",
     sample_input: "4 7",
     sample_output: "11",
+    hidden_input: "100 200",
+    hidden_output: "300",
     constraints: "-10^9 <= A, B <= 10^9",
     input_format: "Two integers A and B separated by space.",
     output_format: "Single integer A + B.",
@@ -135,5 +139,19 @@ export async function GET(req: Request) {
     });
   }
 
-  return NextResponse.json({ error: "Unsupported format. Use ?format=json, csv, or xlsx." }, { status: 400 });
+  if (format === "xls") {
+    const worksheet = XLSX.utils.json_to_sheet(SPREADSHEET_ROWS);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Questions");
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "biff8" });
+
+    return new NextResponse(buffer, {
+      headers: {
+        "Content-Type": "application/vnd.ms-excel",
+        "Content-Disposition": 'attachment; filename="smartzero_questions_template.xls"',
+      },
+    });
+  }
+
+  return NextResponse.json({ error: "Unsupported format. Use ?format=json, csv, xlsx, or xls." }, { status: 400 });
 }

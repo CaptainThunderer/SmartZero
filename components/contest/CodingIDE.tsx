@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import {
   Play,
@@ -14,6 +14,7 @@ import {
   Terminal,
   RotateCcw,
   Code2,
+  Check,
 } from "lucide-react";
 import type {
   CodingQuestion,
@@ -75,6 +76,10 @@ export default function CodingIDE({
   const [lastSubmission, setLastSubmission] = useState<CodingSubmission | null>(null);
   const [submissionsHistory, setSubmissionsHistory] = useState<CodingSubmission[]>([]);
 
+  // Draft Autosave State
+  const [draftStatus, setDraftStatus] = useState<"IDLE" | "SAVING" | "SAVED" | "RETRYING" | "SAVE_FAILED">("IDLE");
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Synchronize code with cache when question changes
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -96,11 +101,68 @@ export default function CodingIDE({
           setSubmissionsHistory(data.submissions);
           if (data.submissions.length > 0) {
             setLastSubmission(data.submissions[0]);
+            if (typeof window !== "undefined") {
+              const cached = localStorage.getItem(`smartzero_code_${slug}_${questionId}_${language}`);
+              if (!cached && data.submissions[0].code) {
+                setCode(data.submissions[0].code);
+                if (data.submissions[0].language) {
+                  setLanguage(data.submissions[0].language);
+                }
+              }
+            }
           }
         }
       })
       .catch(() => {});
-  }, [slug, questionId, userId]);
+  }, [slug, questionId, userId, language]);
+
+  // Debounced Draft Autosave to Server
+  useEffect(() => {
+    if (!code || code === STARTER_TEMPLATES[language]) return;
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      setDraftStatus("SAVING");
+      let attempts = 0;
+      let success = false;
+      while (attempts < 3 && !success) {
+        attempts++;
+        try {
+          const res = await fetch(`/api/contest/${slug}/coding/save`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question_id: questionId,
+              language,
+              code,
+              user_id: userId || "demo-student-user",
+            }),
+          });
+          if (res.ok) {
+            success = true;
+            setDraftStatus("SAVED");
+            break;
+          }
+        } catch {
+          // Retry
+        }
+        if (!success && attempts < 3) {
+          setDraftStatus("RETRYING");
+          await new Promise((r) => setTimeout(r, 600 * attempts));
+        }
+      }
+      if (!success) {
+        setDraftStatus("SAVE_FAILED");
+      }
+    }, 1200);
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [code, language, questionId, slug, userId]);
 
   const handleLanguageChange = (newLang: CodingLanguage) => {
     // Save current language code
@@ -337,6 +399,27 @@ export default function CodingIDE({
           </div>
 
           <div className="flex items-center gap-2">
+            <div className="text-[11px] font-mono flex items-center gap-1.5 mr-1">
+              {draftStatus === "SAVING" ? (
+                <>
+                  <Loader2 size={11} className="animate-spin text-[#A5B4FC]" />
+                  <span className="text-[#A5B4FC]">Draft saving...</span>
+                </>
+              ) : draftStatus === "SAVED" ? (
+                <>
+                  <Check size={11} className="text-emerald-400" />
+                  <span className="text-emerald-400">Draft saved</span>
+                </>
+              ) : draftStatus === "RETRYING" ? (
+                <>
+                  <Loader2 size={11} className="animate-spin text-amber-400" />
+                  <span className="text-amber-400">Retrying draft...</span>
+                </>
+              ) : draftStatus === "SAVE_FAILED" ? (
+                <span className="text-rose-400">Draft unsaved</span>
+              ) : null}
+            </div>
+
             <button
               onClick={handleResetCode}
               title="Reset starter template"

@@ -1,0 +1,4 @@
+type,question_text,title,description,difficulty,marks,negative_marks,explanation,option_a,option_b,option_c,option_d,correct_answer,sample_input,sample_output,hidden_input,hidden_output,constraints,input_format,output_format
+mcq,What is the time complexity of searching in a balanced BST?,,,Easy,2,0.5,"In a balanced BST with N nodes, the height is O(log N).",O(log N),O(N),O(1),O(N log N),A,,,,,,,
+mcq,Which of the following data structures operates on a First-In-First-Out (FIFO) basis?,,,Easy,2,0,A Queue processes elements in FIFO order.,Queue,Stack,Binary Tree,Priority Queue,A,,,,,,,
+coding,,Two Sum Problem,"Given two space-separated integers A and B on standard input, output their sum (A + B).",Easy,10,0,,,,,,,4 7,11,100 200,300,"-10^9 <= A, B <= 10^9",Two integers A and B separated by space.,Single integer A + B.

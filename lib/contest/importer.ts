@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 import { addMcqQuestion, addCodingQuestion, linkQuestionToContest } from "./service";
 import type { ContestQuestion, QuestionDifficulty } from "../../types/contest";
 
-export type ImportFormat = "json" | "csv" | "xlsx" | "unsupported";
+export type ImportFormat = "json" | "csv" | "xlsx" | "xls" | "unsupported";
 
 export interface ParsedImportMcq {
   type: "mcq";
@@ -57,7 +57,8 @@ export function detectFormat(filename: string): ImportFormat {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".json")) return "json";
   if (lower.endsWith(".csv")) return "csv";
-  if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) return "xlsx";
+  if (lower.endsWith(".xlsx")) return "xlsx";
+  if (lower.endsWith(".xls")) return "xls";
   return "unsupported";
 }
 
@@ -81,7 +82,7 @@ export function parseRawFile(format: ImportFormat, buffer: Buffer): Record<strin
     }
   }
 
-  if (format === "csv" || format === "xlsx") {
+  if (format === "csv" || format === "xlsx" || format === "xls") {
     try {
       const workbook = XLSX.read(buffer, { type: "buffer" });
       const firstSheetName = workbook.SheetNames[0];
@@ -94,7 +95,7 @@ export function parseRawFile(format: ImportFormat, buffer: Buffer): Record<strin
     }
   }
 
-  throw new Error("Unsupported file format. Please upload JSON, CSV, or XLSX.");
+  throw new Error("Unsupported file format. Please upload JSON, CSV, XLSX, or XLS.");
 }
 
 /**
@@ -300,6 +301,19 @@ export function validateImportQuestions(
             is_sample: true,
             is_hidden: false,
             weight: 1,
+          });
+        }
+
+        // Flat spreadsheet hidden test case columns
+        const hiddenIn = String(row.hidden_input || row.hidden_test_input || "").trim();
+        const hiddenOut = String(row.hidden_output || row.hidden_test_output || "").trim();
+        if (hiddenIn || hiddenOut) {
+          testCases.push({
+            input: hiddenIn,
+            expected_output: hiddenOut,
+            is_sample: false,
+            is_hidden: true,
+            weight: 2,
           });
         }
       }

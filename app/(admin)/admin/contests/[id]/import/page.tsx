@@ -166,6 +166,14 @@ export default function ContestQuestionImportPage({
               <FileSpreadsheet size={13} className="text-indigo-600 dark:text-indigo-400" />
               <span>Excel (XLSX)</span>
             </a>
+            <a
+              href="/api/admin/contests/templates?format=xls"
+              download="smartzero_questions_template.xls"
+              className="px-3 py-1.5 rounded-lg border border-[var(--card-border)] hover:border-[#5B5FEF]/50 bg-[var(--card)] hover:bg-[var(--subtle)] text-[var(--ink)] text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            >
+              <FileSpreadsheet size={13} className="text-teal-600 dark:text-teal-400" />
+              <span>Excel (XLS)</span>
+            </a>
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, use, useCallback } from "react";
+import React, { useEffect, useState, use, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -67,8 +67,10 @@ export default function LiveContestExamPage({
     Record<string, { option_id: string | null; is_marked: boolean }>
   >({});
 
-  // Autosave status
-  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
+  // Autosave status (authoritative sequencing and bounded retry)
+  const [saveStatus, setSaveStatus] = useState<"IDLE" | "SAVING" | "SAVED" | "RETRYING" | "SAVE_FAILED">("SAVED");
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
+  const saveSeqRef = useRef<Record<string, number>>({});
 
   // Authoritative Timer state
   const [secondsRemaining, setSecondsRemaining] = useState<number>(3600);
@@ -312,6 +314,69 @@ export default function LiveContestExamPage({
     }
   };
 
+  // Robust Authoritative Answer Persistence with Sequencing and Bounded Retry
+  const persistAnswer = async (
+    questionId: string,
+    selectedOptionId: string | null,
+    isMarked: boolean
+  ) => {
+    if (submitted) return;
+
+    // Sequence protection: track monotonically increasing sequence per question
+    const currentSeq = (saveSeqRef.current[questionId] || 0) + 1;
+    saveSeqRef.current[questionId] = currentSeq;
+
+    setSaveStatus("SAVING");
+    setSaveErrorMessage(null);
+
+    let attempts = 0;
+    let success = false;
+
+    while (attempts < 3 && !success) {
+      attempts++;
+      try {
+        const res = await fetch(`/api/contest/${slug}/answer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question_id: questionId,
+            selected_option_id: selectedOptionId,
+            is_marked_for_review: isMarked,
+            user_id: user?.id || "demo-student-user",
+          }),
+        });
+
+        if (res.ok) {
+          success = true;
+          break;
+        }
+      } catch {
+        // Network error during attempt
+      }
+
+      // If a newer save request was fired for this question during the network call, abort immediately
+      if (saveSeqRef.current[questionId] !== currentSeq) {
+        return;
+      }
+
+      if (!success && attempts < 3) {
+        setSaveStatus("RETRYING");
+        await new Promise((r) => setTimeout(r, 500 * attempts));
+      }
+    }
+
+    // Only apply final status if this response corresponds to the latest user action
+    if (saveSeqRef.current[questionId] === currentSeq) {
+      if (success) {
+        setSaveStatus("SAVED");
+        setSaveErrorMessage(null);
+      } else {
+        setSaveStatus("SAVE_FAILED");
+        setSaveErrorMessage("Unable to save your answer. Please check your connection and try again.");
+      }
+    }
+  };
+
   // Autosave single option selection
   const handleSelectOption = async (questionId: string, optionId: string) => {
     if (submitted) return;
@@ -321,28 +386,7 @@ export default function LiveContestExamPage({
     const updated = { ...current, option_id: nextOptionId };
 
     setAnswers((prev) => ({ ...prev, [questionId]: updated }));
-    setSaveStatus("saving");
-
-    try {
-      const res = await fetch(`/api/contest/${slug}/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question_id: questionId,
-          selected_option_id: nextOptionId,
-          is_marked_for_review: updated.is_marked,
-          user_id: user?.id || "demo-student-user",
-        }),
-      });
-
-      if (res.ok) {
-        setSaveStatus("saved");
-      } else {
-        setSaveStatus("error");
-      }
-    } catch {
-      setSaveStatus("error");
-    }
+    await persistAnswer(questionId, nextOptionId, updated.is_marked);
   };
 
   // Toggle Mark for Review
@@ -354,28 +398,7 @@ export default function LiveContestExamPage({
     const updated = { ...current, is_marked: nextReview };
 
     setAnswers((prev) => ({ ...prev, [questionId]: updated }));
-    setSaveStatus("saving");
-
-    try {
-      const res = await fetch(`/api/contest/${slug}/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question_id: questionId,
-          selected_option_id: current.option_id,
-          is_marked_for_review: nextReview,
-          user_id: user?.id || "demo-student-user",
-        }),
-      });
-
-      if (res.ok) {
-        setSaveStatus("saved");
-      } else {
-        setSaveStatus("error");
-      }
-    } catch {
-      setSaveStatus("error");
-    }
+    await persistAnswer(questionId, current.option_id, nextReview);
   };
 
   // Clear current question selection
@@ -386,28 +409,7 @@ export default function LiveContestExamPage({
     const updated = { ...current, option_id: null };
 
     setAnswers((prev) => ({ ...prev, [questionId]: updated }));
-    setSaveStatus("saving");
-
-    try {
-      const res = await fetch(`/api/contest/${slug}/answer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question_id: questionId,
-          selected_option_id: null,
-          is_marked_for_review: current.is_marked,
-          user_id: user?.id || "demo-student-user",
-        }),
-      });
-
-      if (res.ok) {
-        setSaveStatus("saved");
-      } else {
-        setSaveStatus("error");
-      }
-    } catch {
-      setSaveStatus("error");
-    }
+    await persistAnswer(questionId, null, current.is_marked);
   };
 
   // Format time HH:MM:SS
@@ -661,18 +663,25 @@ export default function LiveContestExamPage({
               <span>Q {currentIndex + 1} of {totalCount}</span>
               <span>•</span>
               <span className="flex items-center gap-1">
-                {saveStatus === "saving" ? (
+                {saveStatus === "SAVING" ? (
                   <>
                     <Loader2 size={10} className="animate-spin text-[#A5B4FC]" />
                     <span className="text-[#A5B4FC]">Saving...</span>
                   </>
-                ) : saveStatus === "saved" ? (
+                ) : saveStatus === "SAVED" ? (
                   <>
                     <Check size={10} className="text-emerald-400" />
                     <span className="text-emerald-400">Saved</span>
                   </>
+                ) : saveStatus === "RETRYING" ? (
+                  <>
+                    <Loader2 size={10} className="animate-spin text-amber-400" />
+                    <span className="text-amber-400">Retrying save...</span>
+                  </>
+                ) : saveStatus === "SAVE_FAILED" ? (
+                  <span className="text-rose-400">Save failed</span>
                 ) : (
-                  <span className="text-amber-400">Autosave retry...</span>
+                  <span className="text-[#A0A6C2]">Ready</span>
                 )}
               </span>
             </div>
@@ -738,6 +747,18 @@ export default function LiveContestExamPage({
             ) : (
               <div className="max-w-3xl w-full mx-auto p-6 sm:p-8 flex-1 flex flex-col justify-between overflow-y-auto">
                 <div className="space-y-6">
+                  {saveErrorMessage && (
+                    <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center justify-between">
+                      <span>{saveErrorMessage}</span>
+                      <button
+                        onClick={() => setSaveErrorMessage(null)}
+                        className="text-[11px] underline text-rose-400 hover:text-rose-200 ml-2 shrink-0"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+
                   {/* Question Info Header */}
                   <div className="flex items-center justify-between pb-4 border-b border-[#27273D]">
                     <div className="flex items-center gap-2.5">
