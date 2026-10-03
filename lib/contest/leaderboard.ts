@@ -17,7 +17,8 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
  */
 export async function getContestLeaderboard(
   contestId: string,
-  currentUserId?: string
+  currentUserId?: string,
+  scope: "student" | "admin" = "student"
 ): Promise<{
   leaderboard: LeaderboardEntry[];
   currentUserRank: number | null;
@@ -97,24 +98,34 @@ export async function getContestLeaderboard(
 
     // Display Name resolution
     let displayName = p.user_profile?.full_name || p.user_profile?.email || `Contestant ${p.user_id.slice(-4)}`;
-    if (isCurrent) {
+    if (isCurrent && scope === "student") {
       displayName = "YOU";
     }
 
+    const entryItem: Omit<LeaderboardEntry, "rank"> = {
+      participant_id: p.id,
+      user_id: p.user_id,
+      display_name: displayName,
+      avatar_url: null,
+      total_score: totalScore,
+      solved_count: solvedCount,
+      total_questions: totalQuestions,
+      effective_time_seconds: effectiveTimeSec,
+      formatted_time: formattedTime,
+      submission_status: p.status,
+      is_current_user: isCurrent,
+    };
+
+    if (scope === "admin") {
+      entryItem.email = p.user_profile?.email;
+      entryItem.student_id = p.user_profile?.student_id;
+      entryItem.college = p.user_profile?.college;
+      entryItem.last_activity = new Date(latestSubmissionTime).toISOString();
+      entryItem.violations_count = p.violations_count || 0;
+    }
+
     entries.push({
-      entry: {
-        participant_id: p.id,
-        user_id: p.user_id,
-        display_name: displayName,
-        avatar_url: null,
-        total_score: totalScore,
-        solved_count: solvedCount,
-        total_questions: totalQuestions,
-        effective_time_seconds: effectiveTimeSec,
-        formatted_time: formattedTime,
-        submission_status: p.status,
-        is_current_user: isCurrent,
-      },
+      entry: entryItem,
       latestTimestamp: latestSubmissionTime,
     });
   }

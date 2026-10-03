@@ -200,12 +200,17 @@ export interface LeaderboardEntry {
   user_id: string;
   display_name: string;
   avatar_url?: string | null;
+  email?: string | null;
+  student_id?: string | null;
+  college?: string | null;
   total_score: number;
   solved_count: number;
   total_questions: number;
   effective_time_seconds: number;
   formatted_time: string;
   submission_status: ParticipantStatus;
+  last_activity?: string;
+  violations_count?: number;
   is_current_user: boolean;
 }
 

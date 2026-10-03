@@ -11,7 +11,7 @@ export interface StudentSessionPayload {
   full_name: string;
   student_id: string;
   college: string;
-  role: "student";
+  role: UserRole;
   iat: number;
   exp: number;
 }
@@ -21,7 +21,7 @@ export interface AuthenticatedUser {
   email: string;
   fullName: string;
   role: UserRole;
-  source: "student_session" | "supabase_auth";
+  source: "student_session" | "supabase_auth" | "staff_session";
   profile?: {
     student_id?: string;
     college?: string;
@@ -98,10 +98,13 @@ function base64UrlDecode(str: string): string {
  */
 export function createStudentSessionToken(
   data: {
-    sub: string;
+    sub?: string;
+    userId?: string;
     email: string;
     full_name?: string;
+    fullName?: string;
     student_id?: string;
+    studentId?: string;
     college?: string;
   },
   expiresInSeconds: number = DEFAULT_EXPIRATION_SECONDS
@@ -114,11 +117,15 @@ export function createStudentSessionToken(
     typ: "JWT",
   };
 
+  const sub = (data.sub || data.userId || "").trim();
+  const fullName = (data.full_name || data.fullName || "").trim();
+  const studentId = (data.student_id || data.studentId || "").trim();
+
   const payload: StudentSessionPayload = {
-    sub: data.sub,
+    sub,
     email: data.email.toLowerCase().trim(),
-    full_name: (data.full_name || "").trim(),
-    student_id: (data.student_id || "").trim(),
+    full_name: fullName,
+    student_id: studentId,
     college: (data.college || "").trim(),
     role: "student",
     iat: now,
@@ -176,7 +183,8 @@ export function verifyStudentSessionToken(token: string): StudentSessionPayload 
       return null; // Expired
     }
 
-    if (payload.role !== "student" || !payload.sub || !payload.email) {
+    const validRoles: UserRole[] = ["student", "admin", "super_admin", "contest_admin"];
+    if (!validRoles.includes(payload.role) || !payload.sub || !payload.email) {
       return null; // Invalid claims
     }
 
@@ -184,6 +192,50 @@ export function verifyStudentSessionToken(token: string): StudentSessionPayload 
   } catch {
     return null;
   }
+}
+
+/**
+ * Creates a cryptographically signed HMAC-SHA256 session token for staff / administrators.
+ * Used for server-authoritative staff API access and automated testing.
+ */
+export function createStaffSessionToken(
+  data: {
+    userId: string;
+    email: string;
+    role: "super_admin" | "admin" | "contest_admin";
+    fullName?: string;
+  },
+  expiresInSeconds: number = DEFAULT_EXPIRATION_SECONDS
+): string {
+  const secret = getServerSecret();
+  const now = Math.floor(Date.now() / 1000);
+
+  const header = {
+    alg: "HS256",
+    typ: "JWT",
+  };
+
+  const payload: StudentSessionPayload = {
+    sub: data.userId.trim(),
+    email: data.email.toLowerCase().trim(),
+    full_name: (data.fullName || "Staff Member").trim(),
+    student_id: "",
+    college: "",
+    role: data.role,
+    iat: now,
+    exp: now + expiresInSeconds,
+  };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signatureInput = `${encodedHeader}.${encodedPayload}`;
+
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(signatureInput)
+    .digest("base64url");
+
+  return `${signatureInput}.${signature}`;
 }
 
 /**
@@ -250,8 +302,8 @@ export async function getAuthenticatedUser(req?: Request): Promise<Authenticated
         userId: studentSession.sub,
         email: studentSession.email,
         fullName: studentSession.full_name,
-        role: "student",
-        source: "student_session",
+        role: studentSession.role as UserRole,
+        source: studentSession.role === "student" ? "student_session" : "staff_session",
         profile: {
           student_id: studentSession.student_id,
           college: studentSession.college,

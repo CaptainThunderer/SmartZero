@@ -42,87 +42,32 @@ export async function POST(req: Request) {
 
   let profile: UserProfile | null = null;
 
-  // 1. Attempt Supabase PostgreSQL persistence (using admin or server client)
+  // 1. Attempt Supabase PostgreSQL persistence via register_student RPC
   const supabase = createSupabaseAdminClient() || (await createSupabaseServerClient());
 
   if (supabase) {
     try {
-      // Check if profile already exists for this email
-      const { data: existing } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("email", email)
-        .maybeSingle();
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("register_student", {
+        p_full_name: fullName,
+        p_email: email,
+        p_student_id: studentId,
+        p_college: college,
+      });
 
-      if (existing) {
-        // Update existing student details
-        const { data: updated, error: updateErr } = await supabase
-          .from("profiles")
-          .update({
-            full_name: fullName,
-            display_name: fullName,
-            student_id: studentId || existing.student_id,
-            college: college || existing.college,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id)
-          .select()
-          .single();
-
-        if (!updateErr && updated) {
-          profile = {
-            id: updated.id,
-            email: updated.email,
-            full_name: updated.full_name,
-            display_name: updated.display_name || updated.full_name,
-            student_id: updated.student_id,
-            college: updated.college,
-            avatar_url: updated.avatar_url,
-            role: "student",
-            created_at: updated.created_at,
-            updated_at: updated.updated_at,
-          };
-        }
-      } else {
-        // Provision new student profile in PostgreSQL
-        const newId = crypto.randomUUID();
-        const { data: created, error: insertErr } = await supabase
-          .from("profiles")
-          .insert({
-            id: newId,
-            email,
-            full_name: fullName,
-            display_name: fullName,
-            student_id: studentId,
-            college,
-            account_status: "verified",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .select()
-          .single();
-
-        if (!insertErr && created) {
-          // Provision default student role in user_roles
-          await supabase.from("user_roles").upsert({
-            user_id: newId,
-            role: "student",
-          });
-
-          profile = {
-            id: created.id,
-            email: created.email,
-            full_name: created.full_name,
-            display_name: created.display_name || created.full_name,
-            student_id: created.student_id,
-            college: created.college,
-            avatar_url: created.avatar_url,
-            role: "student",
-            account_status: "verified",
-            created_at: created.created_at,
-            updated_at: created.updated_at,
-          };
-        }
+      if (!rpcErr && rpcData) {
+        profile = {
+          id: rpcData.id,
+          email: rpcData.email,
+          full_name: rpcData.full_name,
+          display_name: rpcData.display_name || rpcData.full_name,
+          student_id: rpcData.student_id || "",
+          college: rpcData.college || "",
+          avatar_url: null,
+          role: "student",
+          account_status: "verified",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
       }
     } catch {
       // Fall through to memory store if database is offline or unreachable

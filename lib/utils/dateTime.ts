@@ -62,6 +62,17 @@ export function localDatetimeToIso(localStr: string): string {
 }
 
 /**
+ * Converts a UTC ISO-8601 string (e.g. from Supabase timestamptz) back to
+ * a local 'YYYY-MM-DDTHH:mm' string suitable for datetime-local inputs.
+ */
+export function isoToLocalDatetime(iso: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return "";
+  return formatLocalDatetime(date);
+}
+
+/**
  * Validates whether end_at is strictly after start_at and duration is positive.
  */
 export function validateContestSchedule(

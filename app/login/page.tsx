@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Sparkles, Mail, Lock, Loader2, AlertCircle, ArrowLeft, User, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 
+import { ThemeToggle } from "../../components/ThemeToggle";
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -18,6 +20,7 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
     initialize();
@@ -39,17 +42,20 @@ function LoginForm() {
     e.preventDefault();
     if (!email) {
       setErrorMsg("Please enter your email address.");
+      setErrorCode("EMAIL_REQUIRED");
       return;
     }
 
     setSubmitting(true);
     setErrorMsg(null);
+    setErrorCode(null);
 
     if (mode === "student") {
       const res = await signInWithRegisteredEmail(email.trim());
       setSubmitting(false);
       if (!res.success) {
-        setErrorMsg(res.error || "No student record found. Please register first.");
+        setErrorMsg(res.error || "No student profile found for this email. Please register an account first.");
+        setErrorCode(res.code || "STUDENT_NOT_FOUND");
       } else {
         if (redirectParam && redirectParam !== "/") {
           router.push(redirectParam);
@@ -60,6 +66,7 @@ function LoginForm() {
     } else {
       if (!password) {
         setErrorMsg("Please enter your password for admin sign in.");
+        setErrorCode("PASSWORD_REQUIRED");
         setSubmitting(false);
         return;
       }
@@ -67,6 +74,7 @@ function LoginForm() {
       setSubmitting(false);
       if (res.error) {
         setErrorMsg(res.error);
+        setErrorCode("AUTH_FAILED");
       } else {
         if (redirectParam && redirectParam !== "/") {
           router.push(redirectParam);
@@ -79,14 +87,17 @@ function LoginForm() {
 
   return (
     <div className="w-full max-w-md">
-      {/* Back link */}
-      <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 text-xs text-[#6B6F8A] dark:text-[#A0A6C2] hover:text-[#5B5FEF] dark:hover:text-[#A5B4FC] mb-6 transition-colors"
-      >
-        <ArrowLeft size={14} />
-        <span>Back to SmartZero Learn</span>
-      </Link>
+      {/* Top navigation with ThemeToggle */}
+      <div className="flex items-center justify-between mb-6">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-xs text-[#6B6F8A] dark:text-[#A0A6C2] hover:text-[#5B5FEF] dark:hover:text-[#A5B4FC] transition-colors"
+        >
+          <ArrowLeft size={14} />
+          <span>Back to SmartZero Learn</span>
+        </Link>
+        <ThemeToggle />
+      </div>
 
       {/* Card */}
       <div className="bg-white dark:bg-[#181824] border border-[#E7E7E2] dark:border-[#27273D] rounded-2xl p-8 shadow-sm">
@@ -110,6 +121,7 @@ function LoginForm() {
             onClick={() => {
               setMode("student");
               setErrorMsg(null);
+              setErrorCode(null);
             }}
             className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
               mode === "student"
@@ -125,6 +137,7 @@ function LoginForm() {
             onClick={() => {
               setMode("admin");
               setErrorMsg(null);
+              setErrorCode(null);
             }}
             className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors ${
               mode === "admin"
@@ -137,18 +150,51 @@ function LoginForm() {
           </button>
         </div>
 
-        {/* Informative notice for student access */}
-        {mode === "student" && (
+        {/* Informative notice */}
+        {mode === "student" ? (
           <div className="mb-4 p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/50 dark:border-indigo-900/30 text-[11px] text-indigo-800 dark:text-indigo-300">
-            Enter the email address you registered with to continue. No password required for student access.
+            Enter the email address you registered as a student. No password required.
+          </div>
+        ) : (
+          <div className="mb-4 p-2.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200/50 dark:border-purple-900/30 text-[11px] text-purple-800 dark:text-purple-300">
+            Sign in with your authorized staff credentials.
           </div>
         )}
 
         {/* Error Banner */}
         {errorMsg && (
-          <div className="mb-6 p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-400">
-            <AlertCircle size={16} className="shrink-0 mt-0.5" />
-            <span>{errorMsg}</span>
+          <div className="mb-6 p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-xs text-red-700 dark:text-red-400">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <span className="leading-relaxed">{errorMsg}</span>
+            </div>
+            {errorCode === "STAFF_ACCOUNT_DETECTED" && (
+              <div className="mt-2.5 pt-2 border-t border-red-200/50 dark:border-red-900/40 flex items-center justify-between">
+                <span className="text-[11px] text-red-600 dark:text-red-400">Staff or Admin account?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("admin");
+                    setErrorMsg(null);
+                    setErrorCode(null);
+                  }}
+                  className="text-xs font-semibold text-[#5B5FEF] dark:text-[#A5B4FC] hover:underline cursor-pointer"
+                >
+                  Switch to Admin / Staff →
+                </button>
+              </div>
+            )}
+            {errorCode === "STUDENT_NOT_FOUND" && (
+              <div className="mt-2.5 pt-2 border-t border-red-200/50 dark:border-red-900/40 flex items-center justify-between">
+                <span className="text-[11px] text-red-600 dark:text-red-400">Need to create an account?</span>
+                <Link
+                  href="/signup"
+                  className="text-xs font-semibold text-[#5B5FEF] dark:text-[#A5B4FC] hover:underline"
+                >
+                  Register Student Account →
+                </Link>
+              </div>
+            )}
           </div>
         )}
 
@@ -207,7 +253,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-2.5 rounded-xl bg-[#5B5FEF] hover:bg-[#4D51E0] disabled:opacity-50 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-sm transition-colors mt-2"
+            className="w-full py-2.5 rounded-xl bg-[#5B5FEF] hover:bg-[#4D51E0] disabled:opacity-50 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-sm transition-colors mt-2 cursor-pointer"
           >
             {submitting ? (
               <>
@@ -215,7 +261,7 @@ function LoginForm() {
                 <span>Signing in...</span>
               </>
             ) : (
-              <span>{mode === "student" ? "Continue as Student" : "Sign In with Password"}</span>
+              <span>{mode === "student" ? "Continue as Student" : "Sign in to Staff Portal"}</span>
             )}
           </button>
         </form>

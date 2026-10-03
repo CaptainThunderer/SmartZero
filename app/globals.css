@@ -1,11 +1,27 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --ink: #232946;
   --muted: #6b6f8a;
   --line: #e7e7e2;
   --accent: #5b5fef;
   --paper: #fafaf8;
+  --card: #ffffff;
+  --card-border: #e7e7e2;
+  --subtle: #f4f4f0;
+}
+
+html.dark {
+  --ink: #f1f5f9;
+  --muted: #9498b3;
+  --line: #27273d;
+  --accent: #5b5fef;
+  --paper: #12121a;
+  --card: #181824;
+  --card-border: #27273d;
+  --subtle: #1e1e2e;
 }
 
 * { box-sizing: border-box; }

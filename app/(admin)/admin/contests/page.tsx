@@ -75,20 +75,22 @@ export default function ContestsListPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((c) => (
-            <Link
+            <div
               key={c.id}
-              href={`/admin/contests/${c.id}`}
               className="p-5 rounded-2xl bg-[#181824] border border-[#27273D] hover:border-[#5B5FEF]/50 transition-all flex flex-col justify-between space-y-4 group"
             >
               <div>
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="font-semibold text-sm group-hover:text-[#A5B4FC] transition-colors leading-snug">
+                  <Link
+                    href={`/admin/contests/${c.id}`}
+                    className="font-semibold text-sm group-hover:text-[#A5B4FC] text-white transition-colors leading-snug"
+                  >
                     {c.title}
-                  </div>
+                  </Link>
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0 ${
                       c.status === "LIVE"
-                        ? "bg-emerald-500/20 text-emerald-400"
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1"
                         : c.status === "PUBLISHED" || c.status === "UPCOMING"
                         ? "bg-blue-500/20 text-blue-400"
                         : c.status === "DRAFT"
@@ -96,7 +98,10 @@ export default function ContestsListPage() {
                         : "bg-gray-500/20 text-gray-400"
                     }`}
                   >
-                    {c.status}
+                    {c.status === "LIVE" && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    )}
+                    <span>{c.status}</span>
                   </span>
                 </div>
 
@@ -119,7 +124,50 @@ export default function ContestsListPage() {
                   <span>Slug: {c.slug}</span>
                 </div>
               </div>
-            </Link>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center gap-2">
+                {c.status === "LIVE" ? (
+                  <>
+                    <Link
+                      href={`/admin/contests/${c.id}/leaderboard`}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors shadow-sm"
+                    >
+                      <Trophy size={13} className="text-amber-300" />
+                      <span>Live Leaderboard</span>
+                    </Link>
+                    <Link
+                      href={`/admin/contests/${c.id}`}
+                      className="inline-flex items-center justify-center py-2 px-3 rounded-xl border border-[#27273D] hover:bg-[#1E1E2E] text-[#A0A6C2] hover:text-white text-xs font-semibold transition-colors"
+                    >
+                      Manage
+                    </Link>
+                  </>
+                ) : c.status === "ENDED" ? (
+                  <>
+                    <Link
+                      href={`/admin/contests/${c.id}`}
+                      className="flex-1 inline-flex items-center justify-center py-2 px-3 rounded-xl border border-[#27273D] hover:bg-[#1E1E2E] text-white text-xs font-semibold transition-colors"
+                    >
+                      Manage
+                    </Link>
+                    <Link
+                      href={`/admin/contests/${c.id}/analytics`}
+                      className="inline-flex items-center justify-center py-2 px-3 rounded-xl border border-[#27273D] hover:bg-[#1E1E2E] text-[#A5B4FC] text-xs font-semibold transition-colors"
+                    >
+                      Analytics
+                    </Link>
+                  </>
+                ) : (
+                  <Link
+                    href={`/admin/contests/${c.id}`}
+                    className="w-full inline-flex items-center justify-center py-2 px-3 rounded-xl bg-[#252646] hover:bg-[#32345d] text-[#A5B4FC] text-xs font-semibold transition-colors"
+                  >
+                    Manage Contest
+                  </Link>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}

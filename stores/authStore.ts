@@ -9,10 +9,10 @@ interface AuthActions {
     email: string;
     student_id?: string;
     college?: string;
-  }) => Promise<{ success: boolean; profile?: UserProfile; error?: string }>;
+  }) => Promise<{ success: boolean; profile?: UserProfile; error?: string; code?: string }>;
   signInWithRegisteredEmail: (
     email: string
-  ) => Promise<{ success: boolean; profile?: UserProfile; error?: string }>;
+  ) => Promise<{ success: boolean; profile?: UserProfile; error?: string; code?: string }>;
   signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>;
   signUpWithPassword: (
     email: string,
@@ -284,9 +284,26 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         body: JSON.stringify(details),
       });
 
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        return { success: false, error: data.error || "Failed to register student." };
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        return {
+          success: false,
+          error:
+            res.status >= 500
+              ? "Registration server error. Please try again."
+              : "Unable to parse server response.",
+          code: "SERVER_ERROR",
+        };
+      }
+
+      if (!res.ok || data?.error) {
+        return {
+          success: false,
+          error: data?.error || "Failed to register student account.",
+          code: data?.code || "REGISTRATION_FAILED",
+        };
       }
 
       const prof: UserProfile = data.profile;
@@ -315,10 +332,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       });
 
       return { success: true, profile: prof };
-    } catch (err: unknown) {
+    } catch {
       return {
         success: false,
-        error: err instanceof Error ? err.message : "Network error during registration.",
+        error: "Network connection error during registration. Please check your internet connection.",
+        code: "NETWORK_ERROR",
       };
     }
   },
@@ -328,12 +346,33 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const res = await fetch("/api/auth/student-access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
 
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        return { success: false, error: data.error || "No student record found for this email." };
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        return {
+          success: false,
+          error:
+            res.status >= 500
+              ? "Authentication server error. Please try again."
+              : "Unable to parse server response.",
+          code: "SERVER_ERROR",
+        };
+      }
+
+      if (!res.ok || data?.error) {
+        return {
+          success: false,
+          error:
+            data?.error ||
+            (res.status === 404
+              ? "No student profile found for this email. Please register an account first."
+              : "Authentication failed."),
+          code: data?.code || (res.status === 404 ? "STUDENT_NOT_FOUND" : "AUTH_FAILED"),
+        };
       }
 
       const prof: UserProfile = data.profile;
@@ -362,10 +401,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       });
 
       return { success: true, profile: prof };
-    } catch (err: unknown) {
+    } catch {
       return {
         success: false,
-        error: err instanceof Error ? err.message : "Network error during sign in.",
+        error: "Network connection error. Please check your internet connection.",
+        code: "NETWORK_ERROR",
       };
     }
   },

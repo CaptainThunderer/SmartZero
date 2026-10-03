@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Sparkles, Mail, User, School, IdCard, Loader2, AlertCircle, ArrowLeft, CheckCircle2, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 
+import { ThemeToggle } from "../../components/ThemeToggle";
+
 export default function SignUpPage() {
   const router = useRouter();
   const { registerStudent, isAuthenticated, isLoading, initialize } = useAuthStore();
@@ -61,14 +63,17 @@ export default function SignUpPage() {
   return (
     <div className="min-h-screen flex flex-col justify-center items-center px-4 py-12 bg-[#FAFAF8] dark:bg-[#12121A] text-[#232946] dark:text-[#F1F5F9] transition-colors">
       <div className="w-full max-w-md">
-        {/* Back link */}
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-xs text-[#6B6F8A] dark:text-[#A0A6C2] hover:text-[#5B5FEF] dark:hover:text-[#A5B4FC] mb-6 transition-colors"
-        >
-          <ArrowLeft size={14} />
-          <span>Back to SmartZero Learn</span>
-        </Link>
+        {/* Top navigation with ThemeToggle */}
+        <div className="flex items-center justify-between mb-6">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 text-xs text-[#6B6F8A] dark:text-[#A0A6C2] hover:text-[#5B5FEF] dark:hover:text-[#A5B4FC] transition-colors"
+          >
+            <ArrowLeft size={14} />
+            <span>Back to SmartZero Learn</span>
+          </Link>
+          <ThemeToggle />
+        </div>
 
         {/* Card */}
         <div className="bg-white dark:bg-[#181824] border border-[#E7E7E2] dark:border-[#27273D] rounded-2xl p-8 shadow-sm">

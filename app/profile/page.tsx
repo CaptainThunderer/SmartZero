@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 import { AuthGuard } from "../../components/auth/AuthGuard";
+import { ThemeToggle } from "../../components/ThemeToggle";
 import { getSupabaseBrowser } from "@/lib/supabase";
 
 function ProfileContent() {
@@ -138,6 +139,8 @@ function ProfileContent() {
           </Link>
 
           <div className="flex items-center gap-2">
+            <ThemeToggle />
+
             <Link
               href="/dashboard"
               className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-[#E7E7E2] dark:border-[#27273D] hover:bg-black/5 dark:hover:bg-white/5 font-medium transition-colors"

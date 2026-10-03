@@ -8,7 +8,7 @@ export async function GET(
   const { slug } = await params;
   const contest = await getContestBySlug(slug);
 
-  if (!contest) {
+  if (!contest || contest.status === "DRAFT") {
     return NextResponse.json({ error: "Contest not found." }, { status: 404 });
   }
 

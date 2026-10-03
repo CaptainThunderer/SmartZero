@@ -10,7 +10,11 @@ import type {
   AntiCheatSettings,
 } from "../../types/contest";
 import { hashPasscode, verifyPasscode, generateContestSlug } from "./crypto";
-import { createSupabaseServerClient } from "../supabase-server";
+import { createSupabaseServerClient, createSupabaseAdminClient } from "../supabase-server";
+
+async function getSupabaseClient() {
+  return createSupabaseAdminClient() || (await createSupabaseServerClient());
+}
 
 // Fallback in-memory store for local testing and environments without Supabase credentials
 const memoryStore = {
@@ -162,7 +166,7 @@ export async function createContest(params: {
     updated_at: now,
   };
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data, error } = await supabase
@@ -211,7 +215,7 @@ export async function createContest(params: {
 }
 
 export async function getContestById(id: string): Promise<Contest | null> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data, error } = await supabase.from("contests").select("*").eq("id", id).maybeSingle();
@@ -237,7 +241,7 @@ export async function getContestById(id: string): Promise<Contest | null> {
 }
 
 export async function getContestBySlug(slug: string): Promise<Contest | null> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data, error } = await supabase.from("contests").select("*").eq("slug", slug).maybeSingle();
@@ -264,7 +268,7 @@ export async function getContestBySlug(slug: string): Promise<Contest | null> {
 }
 
 export async function listContests(filters?: { status?: ContestStatus }): Promise<Contest[]> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       let query = supabase.from("contests").select("*").order("created_at", { ascending: false });
@@ -306,7 +310,7 @@ export async function getContestQuestionCounts(
   }
 
   // Supabase check if available
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data, error } = await supabase
@@ -333,7 +337,7 @@ export async function getContestParticipantCount(contestId: string): Promise<num
     return memParts.length;
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { count, error } = await supabase
@@ -395,7 +399,7 @@ export async function updateContest(id: string, updates: Partial<Contest>): Prom
     updated_at: new Date().toISOString(),
   };
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       await supabase.from("contests").update(updates).eq("id", id);
@@ -436,7 +440,7 @@ export async function deleteContest(
     }
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       // Cascading cleanup of dependent tables
@@ -613,7 +617,7 @@ export async function getCodingQuestionRaw(
   const local = memoryStore.codingQuestions.get(questionId);
   if (local) return local;
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data } = await supabase
@@ -640,6 +644,7 @@ export async function registerContestParticipant(params: {
   contest_id: string;
   user_id: string;
   passcode: string;
+  user_profile?: ContestParticipant["user_profile"];
 }): Promise<{ participant: ContestParticipant | null; error: string | null }> {
   const contest = await getContestById(params.contest_id);
   if (!contest) {
@@ -666,10 +671,11 @@ export async function registerContestParticipant(params: {
     joined_at: new Date().toISOString(),
     status: "registered",
     score: 0,
+    user_profile: params.user_profile,
   };
 
   if (isProduction()) {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await getSupabaseClient();
     if (!supabase) {
       return { participant: null, error: "Production database unavailable: Supabase client could not be initialized." };
     }
@@ -692,7 +698,7 @@ export async function registerContestParticipant(params: {
   list.push(p);
   memoryStore.participants.set(params.contest_id, list);
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       await supabase.from("contest_participants").insert({
@@ -717,7 +723,7 @@ export async function getParticipant(
   const local = list.find((p) => p.user_id === user_id);
   if (local) return local;
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data } = await supabase
@@ -738,24 +744,23 @@ export async function getParticipant(
   return null;
 }
 
-export async function listParticipants(contest_id: string): Promise<ContestParticipant[]> {
-  const list = memoryStore.participants.get(contest_id) || [];
-  if (list.length > 0) return list;
-
-  const supabase = await createSupabaseServerClient();
+export async function listParticipants(contest_id: string, forceFresh: boolean = false): Promise<ContestParticipant[]> {
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data } = await supabase
         .from("contest_participants")
         .select("*, user_profile:profiles(full_name, email, student_id, college)")
         .eq("contest_id", contest_id);
-      if (data) {
+      if (data && data.length > 0) {
+        memoryStore.participants.set(contest_id, data as ContestParticipant[]);
         return data as ContestParticipant[];
       }
     } catch {
-      // Ignore
+      // Fall through to memory store
     }
   }
+  const list = memoryStore.participants.get(contest_id) || [];
   return list;
 }
 
@@ -787,7 +792,7 @@ export async function recordMcqAnswer(params: {
   }
 
   if (isProduction()) {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await getSupabaseClient();
     if (!supabase) {
       return { answer: null, error: "Production database unavailable: Supabase client could not be initialized." };
     }
@@ -836,7 +841,7 @@ export async function recordMcqAnswer(params: {
   }
 
   // Supabase sync if configured
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       await supabase.from("mcq_answers").upsert({
@@ -863,7 +868,7 @@ export async function getStudentAnswers(
   const local = memoryStore.answers.get(key);
   if (local && local.length > 0) return local;
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data } = await supabase
@@ -945,7 +950,7 @@ export async function submitContestExam(params: {
   }
 
   if (isProduction()) {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await getSupabaseClient();
     if (!supabase) {
       return { success: false, participant: null, score: null, error: "Production database unavailable: Supabase client could not be initialized." };
     }
@@ -993,7 +998,7 @@ export async function submitContestExam(params: {
   }
 
   // Supabase update if available
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       await supabase
@@ -1051,7 +1056,7 @@ export async function startContestExam(params: {
     participant.started_at = now;
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       await supabase
@@ -1142,7 +1147,7 @@ export async function startNewAttempt(params: {
     participant.violations_count = 0;
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       await supabase
@@ -1177,7 +1182,7 @@ export async function assignContestAdmin(params: {
     memoryStore.adminAssignments.set(params.contest_id, list);
   }
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       await supabase.from("contest_admin_assignments").upsert(
@@ -1203,7 +1208,7 @@ export async function removeContestAdmin(contest_id: string, admin_id: string): 
     list.filter((id) => id !== admin_id)
   );
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       await supabase
@@ -1221,7 +1226,7 @@ export async function removeContestAdmin(contest_id: string, admin_id: string): 
 
 export async function getContestAdminIds(contest_id: string): Promise<string[]> {
   const list = memoryStore.adminAssignments.get(contest_id) || [];
-  const supabase = await createSupabaseServerClient();
+  const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data } = await supabase

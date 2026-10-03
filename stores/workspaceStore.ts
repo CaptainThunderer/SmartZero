@@ -26,6 +26,9 @@ function getStorage(): Storage | null {
   if (typeof window !== "undefined" && window.localStorage) {
     return window.localStorage;
   }
+  if (typeof globalThis !== "undefined" && (globalThis as any).localStorage) {
+    return (globalThis as any).localStorage;
+  }
   return null;
 }
 
@@ -236,7 +239,16 @@ function loadPersistedState(): {
     if (!storage) return null;
 
     const themeRaw = storage.getItem(STORAGE_THEME_KEY);
-    const theme: AppTheme = themeRaw === "dark" ? "dark" : "light";
+    let theme: AppTheme = "light";
+    if (themeRaw === "dark" || themeRaw === "light") {
+      theme = themeRaw;
+    } else if (
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
+      theme = "dark";
+    }
 
     const workspacesRaw = storage.getItem(STORAGE_WORKSPACES_KEY);
     const activeIdRaw = storage.getItem(STORAGE_ACTIVE_ID_KEY);
@@ -391,7 +403,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           isHydrated: true,
         });
       } else {
-        set({ isHydrated: true });
+        let currentTheme: AppTheme = "light";
+        if (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) {
+          currentTheme = "dark";
+        }
+        applyDocumentTheme(currentTheme);
+        set({ theme: currentTheme, isHydrated: true });
       }
     } catch (err) {
       console.warn("Failed to rehydrate SmartZero workspace store:", err);
@@ -646,12 +663,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   /* ── Theme Actions ── */
   setTheme: (theme: AppTheme) => {
+    applyDocumentTheme(theme);
     set({ theme, isHydrated: true });
     persistTheme(theme);
   },
 
   toggleTheme: () => {
     const nextTheme: AppTheme = get().theme === "dark" ? "light" : "dark";
+    applyDocumentTheme(nextTheme);
     set({ theme: nextTheme, isHydrated: true });
     persistTheme(nextTheme);
   },

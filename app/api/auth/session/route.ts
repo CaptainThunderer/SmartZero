@@ -16,6 +16,8 @@ export async function GET(req: Request) {
         full_name: user.fullName,
         role: user.role,
         source: user.source,
+        student_id: user.profile?.student_id,
+        college: user.profile?.college,
       },
     },
     { status: 200 }

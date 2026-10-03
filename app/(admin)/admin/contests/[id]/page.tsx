@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, use } from "react";
+import React, { useEffect, useState, use, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -20,8 +20,16 @@ import {
   UserX,
   AlertTriangle,
   X,
+  Trophy,
+  Pencil,
+  Save,
+  RotateCcw,
+  Sparkles,
+  ShieldAlert,
+  CheckCircle,
 } from "lucide-react";
 import type { Contest, ContestQuestion } from "../../../../../types/contest";
+import { isoToLocalDatetime, addMinutesToLocalDatetime, localDatetimeToIso } from "@/lib/utils/dateTime";
 
 export default function ContestDetailPage({
   params,
@@ -48,6 +56,57 @@ export default function ContestDetailPage({
   const [slugConfirmation, setSlugConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Live Rankings Slide-Over Drawer
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [drawerLeaderboard, setDrawerLeaderboard] = useState<any[]>([]);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+
+  // Edit Contest Modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuccess, setEditSuccess] = useState(false);
+  const [showLiveConfirm, setShowLiveConfirm] = useState(false);
+  const [pendingEditPayload, setPendingEditPayload] = useState<Record<string, unknown> | null>(null);
+
+  // Edit form fields
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editStartAt, setEditStartAt] = useState("");
+  const [editEndAt, setEditEndAt] = useState("");
+  const [editDuration, setEditDuration] = useState(60);
+  const [editIsEndAtManual, setEditIsEndAtManual] = useState(false);
+  const [editInstructions, setEditInstructions] = useState("");
+  const [editFullscreen, setEditFullscreen] = useState(true);
+  const [editAutoSubmit, setEditAutoSubmit] = useState(true);
+  const [editMaxViolations, setEditMaxViolations] = useState(3);
+  const [editAllowRetake, setEditAllowRetake] = useState(false);
+  const [editMaxAttempts, setEditMaxAttempts] = useState(1);
+  const [editNegativeMarking, setEditNegativeMarking] = useState(false);
+  const [editDefaultNegativeMark, setEditDefaultNegativeMark] = useState(0.25);
+
+  const fetchDrawerLeaderboard = useCallback(async () => {
+    setDrawerLoading(true);
+    try {
+      const res = await fetch(`/api/admin/contests/${id}/leaderboard`);
+      const data = await res.json();
+      if (data.leaderboard) {
+        setDrawerLeaderboard(data.leaderboard);
+      }
+    } catch {
+      // Ignore
+    } finally {
+      setDrawerLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (!showDrawer) return;
+    fetchDrawerLeaderboard();
+    const timer = setInterval(fetchDrawerLeaderboard, 4000);
+    return () => clearInterval(timer);
+  }, [showDrawer, fetchDrawerLeaderboard]);
 
   useEffect(() => {
     Promise.all([
@@ -161,6 +220,140 @@ export default function ContestDetailPage({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
+  const openEditModal = () => {
+    if (!contest) return;
+    setEditTitle(contest.title);
+    setEditDescription(contest.description || "");
+    setEditStartAt(isoToLocalDatetime(contest.start_at));
+    setEditEndAt(isoToLocalDatetime(contest.end_at));
+    setEditDuration(contest.duration_minutes);
+    setEditIsEndAtManual(false);
+    setEditInstructions(contest.instructions || "");
+    setEditFullscreen(contest.fullscreen_required ?? true);
+    setEditAutoSubmit(contest.auto_submit_on_violation ?? true);
+    setEditMaxViolations(contest.max_violations ?? 3);
+    setEditAllowRetake(contest.allow_retake ?? false);
+    setEditMaxAttempts(contest.max_attempts ?? 1);
+    setEditNegativeMarking(contest.negative_marking ?? false);
+    setEditDefaultNegativeMark(contest.default_negative_mark ?? 0.25);
+    setEditError(null);
+    setEditSuccess(false);
+    setShowEditModal(true);
+  };
+
+  const handleEditStartAtChange = (newStart: string) => {
+    setEditStartAt(newStart);
+    if (!editIsEndAtManual && newStart) {
+      setEditEndAt(addMinutesToLocalDatetime(newStart, editDuration));
+    }
+  };
+
+  const handleEditDurationChange = (newDuration: number) => {
+    setEditDuration(newDuration);
+    if (!editIsEndAtManual && editStartAt) {
+      setEditEndAt(addMinutesToLocalDatetime(editStartAt, newDuration));
+    }
+  };
+
+  const handleEditEndAtChange = (newEnd: string) => {
+    setEditEndAt(newEnd);
+    setEditIsEndAtManual(true);
+  };
+
+  const handleEditResetEndAt = () => {
+    setEditIsEndAtManual(false);
+    if (editStartAt) {
+      setEditEndAt(addMinutesToLocalDatetime(editStartAt, editDuration));
+    }
+  };
+
+  const buildEditPayload = (): Record<string, unknown> | null => {
+    if (!contest) return null;
+    const payload: Record<string, unknown> = {};
+    const status = contest.status;
+    const isEnded = status === "ENDED" || status === "FINAL_RESULTS";
+
+    if (editTitle.trim() !== contest.title) payload.title = editTitle.trim();
+    if (editDescription.trim() !== (contest.description || "")) payload.description = editDescription.trim();
+    if (editInstructions !== (contest.instructions || "")) payload.instructions = editInstructions;
+
+    if (!isEnded) {
+      const newStartIso = localDatetimeToIso(editStartAt);
+      const newEndIso = localDatetimeToIso(editEndAt);
+      if (newStartIso && newStartIso !== contest.start_at) payload.start_at = newStartIso;
+      if (newEndIso && newEndIso !== contest.end_at) payload.end_at = newEndIso;
+      if (editDuration !== contest.duration_minutes) payload.duration_minutes = editDuration;
+
+      if (editFullscreen !== (contest.fullscreen_required ?? true)) payload.fullscreen_required = editFullscreen;
+      if (editAutoSubmit !== (contest.auto_submit_on_violation ?? true)) payload.auto_submit_on_violation = editAutoSubmit;
+      if (editMaxViolations !== (contest.max_violations ?? 3)) payload.max_violations = editMaxViolations;
+      if (editAllowRetake !== (contest.allow_retake ?? false)) payload.allow_retake = editAllowRetake;
+      if (editMaxAttempts !== (contest.max_attempts ?? 1)) payload.max_attempts = editMaxAttempts;
+      if (editNegativeMarking !== (contest.negative_marking ?? false)) payload.negative_marking = editNegativeMarking;
+      if (editDefaultNegativeMark !== (contest.default_negative_mark ?? 0.25)) payload.default_negative_mark = editDefaultNegativeMark;
+    }
+
+    return Object.keys(payload).length > 0 ? payload : null;
+  };
+
+  const submitEdit = async (payload: Record<string, unknown>) => {
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const res = await fetch(`/api/admin/contests/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setEditError(data.error || "Failed to update contest.");
+      } else {
+        setContest(data.contest);
+        setEditSuccess(true);
+        setTimeout(() => {
+          setShowEditModal(false);
+          setEditSuccess(false);
+        }, 1200);
+      }
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : "Network error.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const handleEditSubmit = () => {
+    const payload = buildEditPayload();
+    if (!payload) {
+      setEditError("No changes detected.");
+      return;
+    }
+    if (!editTitle.trim()) {
+      setEditError("Title cannot be empty.");
+      return;
+    }
+
+    const isLive = contest?.status === "LIVE";
+    const hasScheduleChanges = payload.end_at !== undefined || payload.duration_minutes !== undefined;
+
+    if (isLive && hasScheduleChanges) {
+      setPendingEditPayload(payload);
+      setShowLiveConfirm(true);
+    } else {
+      submitEdit(payload);
+    }
+  };
+
+  const confirmLiveEdit = () => {
+    if (pendingEditPayload) {
+      submitEdit(pendingEditPayload);
+    }
+    setShowLiveConfirm(false);
+    setPendingEditPayload(null);
+  };
+
+
   if (loading) {
     return (
       <div className="h-64 flex items-center justify-center">
@@ -197,6 +390,35 @@ export default function ContestDetailPage({
         </Link>
 
         <div className="flex items-center gap-2">
+          {contest.status === "LIVE" && (
+            <>
+              <button
+                onClick={() => setShowDrawer(true)}
+                className="px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-950/30 hover:bg-emerald-900/40 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+              >
+                <Trophy size={13} className="text-amber-300" />
+                <span>Rankings</span>
+              </button>
+              <Link
+                href={`/admin/contests/${id}/leaderboard`}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+              >
+                <Trophy size={13} className="text-amber-300" />
+                <span>Live Leaderboard</span>
+              </Link>
+            </>
+          )}
+
+          {contest.status === "ENDED" && (
+            <Link
+              href={`/admin/contests/${id}/leaderboard`}
+              className="px-3.5 py-1.5 rounded-xl border border-[#27273D] hover:bg-[#1E1E2E] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            >
+              <Trophy size={13} className="text-amber-300" />
+              <span>Final Leaderboard</span>
+            </Link>
+          )}
+
           {contest.status === "DRAFT" && (
             <button
               onClick={handlePublish}
@@ -207,6 +429,14 @@ export default function ContestDetailPage({
               <span>Publish Contest</span>
             </button>
           )}
+
+          <button
+            onClick={openEditModal}
+            className="px-3.5 py-1.5 rounded-xl border border-[#27273D] hover:bg-[#1E1E2E] text-[var(--ink)] text-xs font-semibold flex items-center gap-1.5 transition-colors"
+          >
+            <Pencil size={13} />
+            <span>Edit Contest</span>
+          </button>
 
           <button
             onClick={() => {
@@ -231,6 +461,43 @@ export default function ContestDetailPage({
 
       {/* Main Details Card */}
       <div className="bg-[#181824] border border-[#27273D] rounded-2xl p-6 sm:p-8 space-y-6">
+        {/* Prominent Live Leaderboard Banner */}
+        {contest.status === "LIVE" && (
+          <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950/40 via-[#181824] to-[#181824] border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-amber-300 shrink-0">
+                <Trophy size={20} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-white">Contest is Currently LIVE</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                </div>
+                <p className="text-xs text-[#A0A6C2]">
+                  Monitor live participant submissions, realtime scores, penalty times, and ranking shifts.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowDrawer(true)}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-emerald-500/40 bg-emerald-950/40 hover:bg-emerald-900/40 text-emerald-300 text-xs font-semibold transition-all shrink-0"
+              >
+                <Trophy size={13} className="text-amber-300" />
+                <span>🏆 Live Rankings</span>
+              </button>
+              <Link
+                href={`/admin/contests/${id}/leaderboard`}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md shrink-0"
+              >
+                <Trophy size={14} className="text-amber-300" />
+                <span>Open Full Leaderboard</span>
+              </Link>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-6 border-b border-[#27273D]">
           <div>
             <div className="flex items-center gap-2.5 mb-1.5">
@@ -477,6 +744,304 @@ export default function ContestDetailPage({
               >
                 {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                 <span>Confirm & Delete</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EDIT CONTEST MODAL ── */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-2xl max-w-2xl w-full flex flex-col shadow-2xl max-h-[90vh]">
+            {/* Header */}
+            <div className="p-5 border-b border-[var(--line)] flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Pencil size={18} className="text-[var(--accent)]" />
+                <h3 className="text-base font-bold text-[var(--ink)]">Edit Contest</h3>
+              </div>
+              <button onClick={() => setShowEditModal(false)} className="text-[var(--muted)] hover:text-[var(--ink)]">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="p-5 overflow-y-auto space-y-6 flex-1">
+              {editError && (
+                <div className="p-3 rounded-xl bg-red-950/40 border border-red-900/50 text-xs text-red-400 flex items-center gap-2">
+                  <AlertCircle size={15} className="shrink-0" />
+                  <span>{editError}</span>
+                </div>
+              )}
+              {editSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-900/50 text-xs text-emerald-400 flex items-center gap-2">
+                  <CheckCircle size={15} className="shrink-0" />
+                  <span>Contest updated successfully!</span>
+                </div>
+              )}
+
+              {(contest?.status === "ENDED" || contest?.status === "FINAL_RESULTS") && (
+                <div className="p-3 rounded-xl bg-blue-950/30 border border-blue-900/40 text-blue-300 text-xs">
+                  <strong>This contest has ended.</strong> Only basic information can be edited. Historical timing and policies are immutable.
+                </div>
+              )}
+
+              {contest?.status === "LIVE" && (
+                <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-900/40 text-amber-300 text-xs">
+                  <strong>Contest is currently LIVE.</strong> Schedule changes will affect active participants. Start time cannot be modified.
+                </div>
+              )}
+
+              {/* Basic Info */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Contest Title</label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] focus:outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Description</label>
+                  <textarea
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] focus:outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Instructions (Optional)</label>
+                  <textarea
+                    value={editInstructions}
+                    onChange={(e) => setEditInstructions(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] focus:outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+              </div>
+
+              {/* Schedule (Disabled if ended) */}
+              {contest?.status !== "ENDED" && contest?.status !== "FINAL_RESULTS" && (
+                <div className="space-y-4 pt-4 border-t border-[var(--line)]">
+                  <h4 className="text-sm font-bold text-[var(--ink)] flex items-center gap-2">
+                    <Calendar size={14} className="text-[var(--accent)]" /> Schedule
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Start Time (Local)</label>
+                      <input
+                        type="datetime-local"
+                        value={editStartAt}
+                        onChange={(e) => handleEditStartAtChange(e.target.value)}
+                        disabled={contest?.status === "LIVE"}
+                        className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Duration (Minutes)</label>
+                      <input
+                        type="number"
+                        value={editDuration}
+                        onChange={(e) => handleEditDurationChange(Number(e.target.value))}
+                        min={1}
+                        max={1440}
+                        className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] focus:outline-none focus:border-[var(--accent)]"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-semibold text-[var(--muted)]">End Time (Local)</label>
+                        {editIsEndAtManual && (
+                          <button onClick={handleEditResetEndAt} className="text-[10px] flex items-center gap-1 text-[var(--accent)] hover:underline">
+                            <RotateCcw size={10} /> Reset to auto-calc
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="datetime-local"
+                        value={editEndAt}
+                        onChange={(e) => handleEditEndAtChange(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] focus:outline-none focus:border-[var(--accent)]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Policies (Disabled if ended) */}
+              {contest?.status !== "ENDED" && contest?.status !== "FINAL_RESULTS" && (
+                <div className="space-y-4 pt-4 border-t border-[var(--line)]">
+                  <h4 className="text-sm font-bold text-[var(--ink)] flex items-center gap-2">
+                    <Shield size={14} className="text-[var(--accent)]" /> Security & Policies
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="flex items-center gap-2 text-xs text-[var(--ink)]">
+                      <input type="checkbox" checked={editFullscreen} onChange={(e) => setEditFullscreen(e.target.checked)} className="rounded border-[var(--line)] bg-[var(--subtle)]" />
+                      Require Fullscreen
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-[var(--ink)]">
+                      <input type="checkbox" checked={editAutoSubmit} onChange={(e) => setEditAutoSubmit(e.target.checked)} className="rounded border-[var(--line)] bg-[var(--subtle)]" />
+                      Auto-Submit on Violations
+                    </label>
+                    {editAutoSubmit && (
+                      <div>
+                        <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Max Violations</label>
+                        <input type="number" value={editMaxViolations} onChange={(e) => setEditMaxViolations(Number(e.target.value))} min={1} max={10} className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)]" />
+                      </div>
+                    )}
+                    <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="flex items-center gap-2 text-xs text-[var(--ink)]">
+                        <input type="checkbox" checked={editAllowRetake} onChange={(e) => setEditAllowRetake(e.target.checked)} className="rounded border-[var(--line)] bg-[var(--subtle)]" />
+                        Allow Retakes
+                      </label>
+                      {editAllowRetake && (
+                        <div>
+                          <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Max Attempts</label>
+                          <input type="number" value={editMaxAttempts} onChange={(e) => setEditMaxAttempts(Number(e.target.value))} min={1} max={10} className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)]" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="flex items-center gap-2 text-xs text-[var(--ink)]">
+                        <input type="checkbox" checked={editNegativeMarking} onChange={(e) => setEditNegativeMarking(e.target.checked)} className="rounded border-[var(--line)] bg-[var(--subtle)]" />
+                        Negative Marking
+                      </label>
+                      {editNegativeMarking && (
+                        <div>
+                          <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Default Negative Mark</label>
+                          <input type="number" step="0.25" value={editDefaultNegativeMark} onChange={(e) => setEditDefaultNegativeMark(Number(e.target.value))} min={0} max={5} className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)]" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-[var(--line)] flex justify-end gap-3 shrink-0">
+              <button onClick={() => setShowEditModal(false)} disabled={editSaving} className="px-4 py-2 rounded-xl border border-[var(--line)] text-xs font-semibold text-[var(--muted)] hover:text-[var(--ink)] transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleEditSubmit} disabled={editSaving || !buildEditPayload()} className="px-4 py-2 rounded-xl bg-[#5B5FEF] hover:bg-[#4D51E0] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50">
+                {editSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                <span>Save Changes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LIVE CONFIRMATION DIALOG ── */}
+      {showLiveConfirm && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-2xl max-w-sm w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <ShieldAlert size={20} />
+              </div>
+              <h3 className="text-base font-bold text-[var(--ink)]">Extend Live Contest?</h3>
+            </div>
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              This contest is currently live. Your changes will affect the server-authoritative end time for all active participants.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button onClick={() => { setShowLiveConfirm(false); setPendingEditPayload(null); }} className="px-4 py-2 rounded-xl border border-[var(--line)] text-xs font-semibold text-[var(--muted)] hover:text-[var(--ink)] transition-colors">
+                Cancel
+              </button>
+              <button onClick={confirmLiveEdit} className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors">
+                <CheckCircle size={13} />
+                <span>Confirm Change</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LIVE RANKINGS SLIDE-OVER DRAWER ── */}
+      {showDrawer && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-[#181824] border-l border-[#27273D] h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
+            {/* Header */}
+            <div className="p-4 border-b border-[#27273D] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Trophy size={18} className="text-amber-400" />
+                <h3 className="font-bold text-sm text-white">Live Rankings</h3>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase bg-emerald-500/20 text-emerald-400">
+                  LIVE
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/admin/contests/${id}/leaderboard`}
+                  className="text-xs text-[#5B5FEF] hover:underline"
+                >
+                  Full View ↗
+                </Link>
+                <button
+                  onClick={() => setShowDrawer(false)}
+                  className="p-1 rounded-lg text-[#6B6F8A] hover:text-white hover:bg-[#27273D] transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {drawerLoading && drawerLeaderboard.length === 0 ? (
+                <div className="h-48 flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-[#5B5FEF]" />
+                </div>
+              ) : drawerLeaderboard.length === 0 ? (
+                <div className="p-8 text-center text-xs text-[#A0A6C2]">
+                  No participants yet in this contest.
+                </div>
+              ) : (
+                drawerLeaderboard.map((entry) => (
+                  <div
+                    key={entry.participant_id}
+                    className="p-3 rounded-xl bg-[#12121A] border border-[#27273D] flex items-center justify-between text-xs"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="font-mono font-bold text-[#A5B4FC] w-6 text-center">
+                        #{entry.rank}
+                      </span>
+                      <div>
+                        <div className="font-semibold text-white leading-tight">
+                          {entry.display_name}
+                        </div>
+                        <div className="text-[10px] text-[#6B6F8A]">
+                          {entry.student_id ? `ID: ${entry.student_id} • ` : ""}
+                          {entry.solved_count}/{entry.total_questions} solved
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="font-mono font-bold text-emerald-400">
+                        {entry.total_score} pts
+                      </div>
+                      <div className="text-[10px] text-[#A0A6C2] font-mono">
+                        {entry.formatted_time}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 border-t border-[#27273D] bg-[#12121A]/50 flex items-center justify-between text-[11px] text-[#6B6F8A]">
+              <span>Auto-refreshing every 4s</span>
+              <button
+                onClick={() => setShowDrawer(false)}
+                className="text-xs text-[#A0A6C2] hover:text-white"
+              >
+                Close Drawer
               </button>
             </div>
           </div>
