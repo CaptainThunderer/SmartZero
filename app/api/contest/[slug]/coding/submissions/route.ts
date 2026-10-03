@@ -31,8 +31,18 @@ export async function GET(
   const userId = identityCheck.authoritativeUserId;
   const submissions = await getStudentSubmissions(contest.id, userId, questionId);
 
+  const isAnonymous = contest.leaderboard_visibility === "ANONYMOUS";
+  const isAdmin = authUser.role === "admin" || authUser.role === "super_admin" || authUser.role === "contest_admin";
+
+  const sanitizedSubmissions = (isAnonymous && !isAdmin)
+    ? submissions.map((s) => {
+        const { score: _score, ...rest } = s;
+        return rest;
+      })
+    : submissions;
+
   return NextResponse.json({
     success: true,
-    submissions,
+    submissions: sanitizedSubmissions,
   });
 }

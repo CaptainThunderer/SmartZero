@@ -426,6 +426,7 @@ except Exception as e:
 
   try {
     process.env.SMARTZERO_JUDGE_MODE = "production";
+    process.env.SMARTZERO_DOCKER_AVAILABLE = "false";
     clearSandboxRunnerCache();
 
     const prodRunner = await getSandboxRunner();
@@ -491,6 +492,7 @@ except Exception as e:
 
     // ── 22. Local Mode: Development Sandbox Allowed Without Docker ──
     console.log("\n── 22. Local Mode: Development Sandbox Allowed Without Docker ──");
+    delete process.env.SMARTZERO_DOCKER_AVAILABLE;
     process.env.SMARTZERO_JUDGE_MODE = "local";
     clearSandboxRunnerCache();
 
@@ -521,6 +523,7 @@ except Exception as e:
   } finally {
     process.env.SMARTZERO_JUDGE_MODE = origJudgeMode;
     (process.env as Record<string, string | undefined>).NODE_ENV = origNodeEnv;
+    delete process.env.SMARTZERO_DOCKER_AVAILABLE;
     clearSandboxRunnerCache();
   }
 

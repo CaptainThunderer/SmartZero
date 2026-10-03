@@ -28,7 +28,7 @@ import { getSupabaseBrowser } from "@/lib/supabase";
 
 function ProfileContent() {
   const router = useRouter();
-  const { profile, role, updateProfile, signOut } = useAuthStore();
+  const { profile, role, updateProfile, signOut, user, refreshProfile } = useAuthStore();
 
   const [fullName, setFullName] = useState("");
   const [studentId, setStudentId] = useState("");
@@ -92,13 +92,20 @@ function ProfileContent() {
         return;
       }
 
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+        data: { must_change_password: false },
+      });
       if (error) {
         setPasswordMsg({ type: "error", text: error.message });
       } else {
-        setPasswordMsg({ type: "success", text: "Password successfully updated!" });
+        setPasswordMsg({
+          type: "success",
+          text: "Password successfully updated! Your temporary staff password has been replaced.",
+        });
         setNewPassword("");
         setConfirmPassword("");
+        await refreshProfile();
       }
     } catch (err: unknown) {
       setPasswordMsg({
@@ -318,6 +325,15 @@ function ProfileContent() {
                 Security & Password Update
               </h2>
             </div>
+
+            {Boolean(user?.user_metadata?.must_change_password) && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-center gap-2.5">
+                <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>
+                  Your account is currently using the temporary staff password. Please change your password to secure your staff account.
+                </span>
+              </div>
+            )}
 
             {passwordMsg && (
               <div

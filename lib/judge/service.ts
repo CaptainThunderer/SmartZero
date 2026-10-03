@@ -129,9 +129,12 @@ export async function saveCodingDraft(params: {
   question_id: string;
   language: CodingLanguage;
   code: string;
+  seq?: number;
+  timestamp?: number;
 }): Promise<{ success: boolean; error: string | null }> {
   const now = new Date().toISOString();
-  const sub: CodingSubmission = {
+  const incomingTimestamp = params.timestamp || Date.now();
+  const sub: CodingSubmission & { seq?: number; timestamp?: number } = {
     id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     contest_id: params.contest_id,
     user_id: params.user_id,
@@ -146,6 +149,8 @@ export async function saveCodingDraft(params: {
     memory_kb: 0,
     compile_output: "",
     submitted_at: now,
+    seq: params.seq,
+    timestamp: incomingTimestamp,
   };
 
   const key = `${params.contest_id}:${params.user_id}`;
@@ -154,6 +159,14 @@ export async function saveCodingDraft(params: {
     (s) => s.question_id === params.question_id && s.language === params.language && s.verdict === "DRAFT"
   );
   if (existingIdx >= 0) {
+    const existing = list[existingIdx] as any;
+    // Latest-write-wins check: ignore older delayed draft packets
+    if (params.seq !== undefined && existing.seq !== undefined && existing.seq > params.seq) {
+      return { success: true, error: null }; // Stale request ignored
+    }
+    if (params.timestamp !== undefined && existing.timestamp !== undefined && existing.timestamp > incomingTimestamp) {
+      return { success: true, error: null }; // Stale request ignored
+    }
     list[existingIdx] = sub;
   } else {
     list.unshift(sub);
@@ -225,4 +238,6 @@ export async function getStudentSubmissions(
 }
 
 export { defaultJudgeWorker, normalizeOutput, judgeQueue, judgeObservability };
+export { judgeWorkerClient, JudgeWorkerClient, JudgeUnavailableError } from "./client";
+export { priorityJudgeQueue, PriorityJudgeQueue } from "./queue/priorityQueue";
 export { STARTER_TEMPLATES } from "./templates";

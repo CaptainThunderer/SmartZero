@@ -1,0 +1,26 @@
+# ==============================================================================
+# SMARTZERO 2.0 — RENDER FREE CLOUD DEPLOYMENT BLUEPRINT (₹0)
+# Web Service Deployment Configuration for Dedicated Judge Worker
+# ==============================================================================
+
+services:
+  - type: web
+    name: smartzero-judge-worker
+    runtime: docker
+    dockerfilePath: ./deploy/judge-worker/Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon # or frankfurt / singapore
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: NODE_ENV
+        value: production
+      - key: SMARTZERO_JUDGE_MODE
+        value: local
+      - key: SMARTZERO_JUDGE_CONCURRENCY
+        value: 3
+      - key: JUDGE_WORKER_SECRET
+        generateValue: true

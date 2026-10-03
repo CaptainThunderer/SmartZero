@@ -87,5 +87,7 @@ export async function PATCH(
   return NextResponse.json({
     success: true,
     user: result.user,
+    provisioned: result.provisioned,
+    temporary_password: result.temporary_password,
   });
 }

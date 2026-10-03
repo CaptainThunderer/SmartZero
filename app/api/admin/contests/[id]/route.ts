@@ -151,6 +151,11 @@ export async function PATCH(
         const dnm = Number(body.default_negative_mark);
         if (dnm >= 0 && dnm <= 5) safeUpdates.default_negative_mark = dnm;
       }
+      if (body.leaderboard_visibility !== undefined) {
+        if (body.leaderboard_visibility === "PUBLIC" || body.leaderboard_visibility === "ANONYMOUS") {
+          safeUpdates.leaderboard_visibility = body.leaderboard_visibility;
+        }
+      }
     }
 
     // ── Status Changes (publish) ──

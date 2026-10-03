@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { getPublicContestSummaries } from "@/lib/contest/service";
+import { getPublicContestSummaries, getStudentParticipations } from "@/lib/contest/service";
 import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 
 export async function GET(req: Request) {
@@ -91,15 +91,27 @@ export async function GET(req: Request) {
     }
   }
 
-  // Derive stats
+  if (participants.length === 0) {
+    participants = (await getStudentParticipations(userId)) as any;
+  }
+
+  // Map recent contest summaries
+  const contestMap = new Map(publicContests.map((c) => [c.id, c]));
+
+  // Derive stats (only include non-anonymous contests for student score aggregates)
   const contestsParticipated = participants.length;
   const completedContests = participants.filter(
     (p) => p.status === "submitted" || p.status === "auto_submitted" || p.status === "finalized"
   );
 
-  const totalScore = completedContests.reduce((acc, p) => acc + (p.score || 0), 0);
-  const averageScore = completedContests.length > 0 ? Math.round(totalScore / completedContests.length) : 0;
-  const highestScore = completedContests.length > 0 ? Math.max(...completedContests.map((p) => p.score || 0)) : 0;
+  const scorableCompletedContests = completedContests.filter((p) => {
+    const details = contestMap.get(p.contest_id);
+    return details?.leaderboard_visibility !== "ANONYMOUS";
+  });
+
+  const totalScore = scorableCompletedContests.reduce((acc, p) => acc + (p.score || 0), 0);
+  const averageScore = scorableCompletedContests.length > 0 ? Math.round(totalScore / scorableCompletedContests.length) : 0;
+  const highestScore = scorableCompletedContests.length > 0 ? Math.max(...scorableCompletedContests.map((p) => p.score || 0)) : 0;
 
   const totalSubmissions = submissions.length;
   const acceptedSolutions = submissions.filter((s) => s.verdict === "Accepted").length;
@@ -110,21 +122,23 @@ export async function GET(req: Request) {
     languageBreakdown[lang] = (languageBreakdown[lang] || 0) + 1;
   });
 
-  // Map recent contest summaries
-  const contestMap = new Map(publicContests.map((c) => [c.id, c]));
   const recentContests = participants.map((p) => {
     const details = contestMap.get(p.contest_id);
-    return {
+    const isAnon = details?.leaderboard_visibility === "ANONYMOUS";
+    const item: Record<string, unknown> = {
       contest_id: p.contest_id,
       title: details?.title || "Assessment",
       slug: details?.slug || p.contest_id,
       status: p.status,
-      score: p.score || 0,
       attempt_number: p.attempt_number || 1,
       completed_at: p.completed_at || p.started_at,
       violations_count: p.violations_count || 0,
       contest_status: details?.status || "LIVE",
     };
+    if (!isAnon) {
+      item.score = p.score || 0;
+    }
+    return item;
   });
 
   // Practice Recommendations

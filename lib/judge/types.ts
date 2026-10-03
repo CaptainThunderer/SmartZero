@@ -42,4 +42,56 @@ export interface JudgeExecutionSummary {
   test_case_results: TestCaseVerdictResult[];
 }
 
+/**
+ * Deterministic Judge Worker Job Request Contract (Section A3)
+ */
+export interface JudgeWorkerJobRequest {
+  job_id: string;
+  submission_id: string;
+  contest_id: string;
+  question_id: string;
+  language: CodingLanguage;
+  source_code: string;
+  execution_mode: "run" | "submit";
+  test_cases: JudgeTestCase[];
+  time_limit_ms: number;
+  memory_limit_mb: number;
+  total_marks?: number;
+}
+
+/**
+ * Sanitized test case result for browser delivery.
+ * CRITICAL SECURITY GUARANTEE: Never exposes hidden test input/output or worker internals.
+ */
+export interface SafeTestCaseResult {
+  index: number;
+  passed: boolean;
+  verdict: CodingVerdict;
+  execution_time_ms: number;
+  memory_kb?: number;
+  is_sample: boolean;
+  input?: string;          // ONLY present if is_sample === true
+  expected_output?: string;// ONLY present if is_sample === true
+  actual_output?: string;  // ONLY present if is_sample === true
+  error?: string;          // ONLY present if is_sample === true
+}
+
+/**
+ * Deterministic Judge Worker Job Response Contract (Section A3)
+ */
+export interface JudgeWorkerJobResponse {
+  job_id: string;
+  submission_id: string;
+  status: "COMPLETED" | "FAILED" | "TIMEOUT" | "ERROR";
+  verdict: CodingVerdict;
+  passed_tests: number;
+  total_tests: number;
+  score: number;
+  max_score: number;
+  execution_time_ms: number;
+  memory_used_mb: number;
+  compile_output?: string;
+  test_results: SafeTestCaseResult[];
+}
+
 export type { CodingSubmission, TestCaseVerdictResult, CodingLanguage, CodingVerdict };

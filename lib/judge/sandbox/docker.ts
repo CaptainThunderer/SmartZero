@@ -11,6 +11,9 @@ export class DockerSandboxRunner implements ISandboxRunner {
   private dockerAvailable = false;
 
   async isAvailable(): Promise<boolean> {
+    if (process.env.SMARTZERO_DOCKER_AVAILABLE === "false") {
+      return false;
+    }
     if (this.dockerChecked) {
       return this.dockerAvailable;
     }

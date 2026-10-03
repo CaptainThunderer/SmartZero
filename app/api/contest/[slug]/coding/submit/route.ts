@@ -9,14 +9,15 @@ import {
   submitContestExam,
 } from "@/lib/contest/service";
 import {
-  defaultJudgeWorker,
   saveCodingSubmission,
-  judgeQueue,
+  judgeWorkerClient,
+  JudgeUnavailableError,
   judgeObservability,
 } from "@/lib/judge/service";
 import { JUDGE_RESOURCE_LIMITS } from "@/lib/judge/config";
 import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 import type { CodingLanguage } from "@/types/contest";
+import type { JudgeExecutionSummary, JudgeTestCase } from "@/lib/judge/types";
 
 export async function POST(
   req: Request,
@@ -109,58 +110,109 @@ export async function POST(
     return NextResponse.json({ error: "Coding question not found." }, { status: 404 });
   }
 
-  // Idempotency token from headers or body
-  const idempotencyKey =
-    req.headers.get("x-idempotency-key") ||
-    body.idempotency_key ||
-    `idem-${contest.id}-${userId}-${body.question_id}-${Date.now()}`;
+  // Authoritative marks lookup from contest configuration
+  const contestQuestions = await getContestQuestions(contest.id, "admin");
+  const contestQLink = contestQuestions.find(
+    (cq) => cq.question_id === body.question_id && cq.question_type === "coding"
+  );
+  const totalMarks = contestQLink ? contestQLink.marks : 20;
 
   const submissionId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
   judgeObservability.recordJobEnqueued();
 
-  // Enqueue submission job into durable queue
-  const job = await judgeQueue.enqueue({
-    jobId,
-    submissionId,
-    contestId: contest.id,
-    questionId: body.question_id,
-    userId,
-    language: body.language,
-    code: body.code,
-    priority: 10,
-    idempotencyKey,
-  });
+  const testCases: JudgeTestCase[] = (rawQuestion.test_cases || []).map((tc) => ({
+    id: tc.id,
+    input: tc.input,
+    expected_output: tc.expected_output || "",
+    weight: tc.weight || 1,
+    is_sample: !!tc.is_sample,
+    is_hidden: !tc.is_sample,
+  }));
 
-  // Authoritative Worker Execution:
-  // Dequeue and process job with authoritative DB test case retrieval
-  const dequeuedJob = await judgeQueue.dequeue();
-  const targetJob = dequeuedJob && dequeuedJob.jobId === job.jobId ? dequeuedJob : job;
+  try {
+    const jobResponse = await judgeWorkerClient.executeJob({
+      job_id: jobId,
+      submission_id: submissionId,
+      contest_id: contest.id,
+      question_id: body.question_id,
+      language: body.language,
+      source_code: body.code,
+      execution_mode: "submit",
+      test_cases: testCases,
+      time_limit_ms: rawQuestion.time_limit_ms,
+      memory_limit_mb: rawQuestion.memory_limit_mb,
+      total_marks: totalMarks,
+    });
 
-  const judgeSummary = await defaultJudgeWorker.processJob(targetJob);
+    const judgeSummary: JudgeExecutionSummary = {
+      verdict: jobResponse.verdict,
+      score: jobResponse.score,
+      test_cases_passed: jobResponse.passed_tests,
+      total_test_cases: jobResponse.total_tests,
+      execution_time_ms: jobResponse.execution_time_ms,
+      memory_kb: jobResponse.memory_used_mb * 1024,
+      compile_output: jobResponse.compile_output || "",
+      test_case_results: jobResponse.test_results.map((tr) => ({
+        test_case_id: `tc-${tr.index}`,
+        verdict: tr.verdict,
+        execution_time_ms: tr.execution_time_ms,
+        memory_kb: tr.memory_kb,
+        is_sample: tr.is_sample,
+        input: tr.input,
+        expected_output: tr.expected_output,
+        actual_output: tr.actual_output,
+        error: tr.error,
+      })),
+    };
 
-  // Save submission record to Supabase / memory store
-  const submission = await saveCodingSubmission({
-    contest_id: contest.id,
-    user_id: userId,
-    question_id: body.question_id,
-    language: body.language,
-    code: body.code,
-    summary: judgeSummary,
-  });
+    // Save submission record to Supabase / memory store
+    const submission = await saveCodingSubmission({
+      contest_id: contest.id,
+      user_id: userId,
+      question_id: body.question_id,
+      language: body.language,
+      code: body.code,
+      summary: judgeSummary,
+    });
 
-  // Update participant status & score if in exam
-  if (participant) {
-    if (participant.status === "registered") {
+    // Update participant status if in exam
+    if (participant && participant.status === "registered") {
       participant.status = "in_exam";
     }
-    // Update participant score with submission score if higher
-    participant.score = (participant.score || 0) + judgeSummary.score;
-  }
 
-  return NextResponse.json({
-    success: true,
-    submission,
-  });
+    const isAnonymous = contest.leaderboard_visibility === "ANONYMOUS";
+    const isAdmin = authUser.role === "admin" || authUser.role === "super_admin" || authUser.role === "contest_admin";
+
+    // In ANONYMOUS mode, sanitize submission to hide awarded contest points/score from student
+    let clientSubmission: Partial<typeof submission> = submission;
+    if (isAnonymous && !isAdmin) {
+      const { score: _score, ...restSubmission } = submission;
+      clientSubmission = restSubmission;
+    }
+
+    return NextResponse.json({
+      success: true,
+      submission: clientSubmission,
+    });
+  } catch (err: unknown) {
+    if (err instanceof JudgeUnavailableError || (err as any)?.code === "JUDGE_UNAVAILABLE") {
+      return NextResponse.json(
+        {
+          code: "JUDGE_UNAVAILABLE",
+          error: "Judge service is temporarily unavailable. Your submission was not scored. Please try again.",
+        },
+        { status: 503 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        code: "SYSTEM_ERROR",
+        error: "Judge service is temporarily unavailable. Your submission was not scored. Please try again.",
+      },
+      { status: 500 }
+    );
+  }
 }

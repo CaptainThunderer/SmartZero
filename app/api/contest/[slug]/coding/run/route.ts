@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getContestBySlug, getCodingQuestionRaw, getParticipant, getEffectiveAttemptDeadline } from "@/lib/contest/service";
-import { defaultJudgeWorker } from "@/lib/judge/service";
+import { judgeWorkerClient, JudgeUnavailableError } from "@/lib/judge/service";
 import { JUDGE_RESOURCE_LIMITS } from "@/lib/judge/config";
 import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 import type { CodingLanguage } from "@/types/contest";
@@ -88,17 +88,53 @@ export async function POST(
     });
   }
 
-  const judgeSummary = await defaultJudgeWorker.executeTestCases({
-    code: body.code,
-    language: body.language,
-    testCases: sampleTestCases,
-    timeLimitMs: rawQuestion.time_limit_ms,
-    memoryLimitMb: rawQuestion.memory_limit_mb,
-    totalMarks: 0, // Interactive Run has no impact on contest marks
-  });
+  const jobId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-  return NextResponse.json({
-    success: true,
-    summary: judgeSummary,
-  });
+  try {
+    const jobResponse = await judgeWorkerClient.executeJob({
+      job_id: jobId,
+      submission_id: `run-sub-${jobId}`,
+      contest_id: contest.id,
+      question_id: body.question_id,
+      language: body.language,
+      source_code: body.code,
+      execution_mode: "run",
+      test_cases: sampleTestCases,
+      time_limit_ms: rawQuestion.time_limit_ms,
+      memory_limit_mb: rawQuestion.memory_limit_mb,
+      total_marks: 0, // Interactive Run has no impact on contest marks
+    });
+
+    return NextResponse.json({
+      success: true,
+      summary: {
+        verdict: jobResponse.verdict,
+        score: 0,
+        test_cases_passed: jobResponse.passed_tests,
+        total_test_cases: jobResponse.total_tests,
+        execution_time_ms: jobResponse.execution_time_ms,
+        memory_kb: jobResponse.memory_used_mb * 1024,
+        compile_output: jobResponse.compile_output || "",
+        test_case_results: jobResponse.test_results,
+      },
+    });
+  } catch (err: unknown) {
+    if (err instanceof JudgeUnavailableError || (err as any)?.code === "JUDGE_UNAVAILABLE") {
+      return NextResponse.json(
+        {
+          code: "JUDGE_UNAVAILABLE",
+          error: "Code execution service is temporarily unavailable.",
+        },
+        { status: 503 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        code: "SYSTEM_ERROR",
+        error: "Code execution service is temporarily unavailable.",
+      },
+      { status: 500 }
+    );
+  }
 }

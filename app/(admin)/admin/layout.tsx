@@ -3,12 +3,15 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles, Trophy, Plus, ArrowLeft, Shield, Users } from "lucide-react";
+import { Sparkles, Trophy, Plus, ArrowLeft, Shield, Users, AlertTriangle } from "lucide-react";
 import { AuthGuard } from "../../../components/auth/AuthGuard";
 import { ThemeToggle } from "../../../components/ThemeToggle";
+import { useAuthStore } from "../../../stores/authStore";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user } = useAuthStore();
+  const mustChangePassword = !!user?.user_metadata?.must_change_password;
 
   const navLinks = [
     { href: "/admin", label: "Overview", icon: Shield },
@@ -79,6 +82,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </Link>
           </div>
         </header>
+
+        {/* Temporary Staff Password Notification Banner (Section B8) */}
+        {mustChangePassword && (
+          <div className="bg-amber-500/10 border-b border-amber-500/30 px-6 py-2.5 flex items-center justify-between text-xs text-amber-700 dark:text-amber-300">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>
+                Your account is using the temporary staff password. Please change your password from Profile → Security.
+              </span>
+            </div>
+            <Link
+              href="/profile#security"
+              className="px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-500 text-white font-semibold transition-colors shrink-0 ml-4"
+            >
+              Change Password
+            </Link>
+          </div>
+        )}
 
         {/* Content Body */}
         <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">{children}</main>

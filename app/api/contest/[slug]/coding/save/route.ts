@@ -26,6 +26,8 @@ export async function POST(
     code?: string;
     language?: CodingLanguage;
     user_id?: string;
+    seq?: number;
+    timestamp?: number;
   };
 
   try {
@@ -77,6 +79,8 @@ export async function POST(
     question_id: body.question_id,
     language: body.language,
     code: body.code,
+    seq: body.seq,
+    timestamp: body.timestamp,
   });
 
   return NextResponse.json({

@@ -91,7 +91,9 @@ export async function GET(
           attempt_number: participant.attempt_number || 1,
           started_at: participant.started_at,
           completed_at: participant.completed_at,
-          score: participant.score,
+          score: (contest.leaderboard_visibility === "ANONYMOUS" && (!authUser || authUser.role === "student"))
+            ? undefined
+            : participant.score,
           violations_count: participant.violations_count || 0,
           submission_reason: participant.submission_reason,
         }

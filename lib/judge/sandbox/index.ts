@@ -49,6 +49,14 @@ export async function getSandboxRunner(): Promise<ISandboxRunner> {
     return cachedRunner;
   }
 
+  // When running inside a dedicated containerized worker (Docker/gVisor),
+  // the container boundary itself isolates the processes.
+  if (process.env.SMARTZERO_CONTAINER_WORKER === "true") {
+    cachedRunner = subprocessRunner;
+    lastMode = currentMode;
+    return cachedRunner;
+  }
+
   if (currentMode === "production") {
     const isDockerAvail = await dockerRunner.isAvailable();
     if (isDockerAvail) {

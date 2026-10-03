@@ -152,7 +152,20 @@ export default function AdminUsersPage() {
         setUsers(prevUsers);
         setStatusMsg({ type: "error", text: data.error || "Failed to update role." });
       } else {
-        setStatusMsg({ type: "success", text: `Role successfully updated to "${nextRole}".` });
+        if (data.provisioned && (nextRole === "admin" || nextRole === "contest_admin")) {
+          const roleLabel = nextRole === "admin" ? "Admin" : "Contest Admin";
+          setStatusMsg({
+            type: "success",
+            text: `✓ ${roleLabel} access granted. ✓ Staff account provisioned. Initial password: ${data.temporary_password || "123456"}`,
+          });
+        } else if (nextRole === "student") {
+          setStatusMsg({
+            type: "success",
+            text: "✓ Role updated to Student. Staff authorization and contest assignments removed.",
+          });
+        } else {
+          setStatusMsg({ type: "success", text: `Role successfully updated to "${nextRole}".` });
+        }
         fetchUsers();
       }
     } catch (err: unknown) {

@@ -8,6 +8,7 @@ import type {
   McqAnswer,
   PublicContestSummary,
   AntiCheatSettings,
+  LeaderboardVisibility,
 } from "../../types/contest";
 import { hashPasscode, verifyPasscode, generateContestSlug } from "./crypto";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "../supabase-server";
@@ -125,6 +126,7 @@ export async function createContest(params: {
   fullscreen_required?: boolean;
   auto_submit_on_violation?: boolean;
   max_violations?: number;
+  leaderboard_visibility?: LeaderboardVisibility;
   allow_retake?: boolean;
   max_attempts?: number;
   anti_cheat_settings?: AntiCheatSettings;
@@ -149,6 +151,7 @@ export async function createContest(params: {
     instructions: params.instructions || "Read instructions carefully before starting.",
     negative_marking: !!params.negative_marking,
     default_negative_mark: params.default_negative_mark || 0,
+    leaderboard_visibility: params.leaderboard_visibility || "PUBLIC",
     fullscreen_required: params.fullscreen_required ?? true,
     auto_submit_on_violation: params.auto_submit_on_violation ?? true,
     max_violations: params.max_violations ?? 1,
@@ -186,6 +189,7 @@ export async function createContest(params: {
           instructions: contest.instructions,
           negative_marking: contest.negative_marking,
           default_negative_mark: contest.default_negative_mark,
+          leaderboard_visibility: contest.leaderboard_visibility,
           fullscreen_required: contest.fullscreen_required,
           auto_submit_on_violation: contest.auto_submit_on_violation,
           max_violations: contest.max_violations,
@@ -384,6 +388,7 @@ export async function getPublicContestSummaries(): Promise<PublicContestSummary[
         max_attempts: c.max_attempts ?? 1,
         question_counts: counts,
         participant_count: participantCount,
+        leaderboard_visibility: c.leaderboard_visibility || "PUBLIC",
       };
     })
   );
@@ -1079,6 +1084,29 @@ export async function listParticipants(contest_id: string, forceFresh: boolean =
   }
   const list = memoryStore.participants.get(contest_id) || [];
   return list;
+}
+
+export async function getStudentParticipations(userId: string): Promise<ContestParticipant[]> {
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("contest_participants")
+        .select("*")
+        .eq("user_id", userId);
+      if (!error && data) {
+        return data as ContestParticipant[];
+      }
+    } catch {
+      // Fall through to memory store
+    }
+  }
+  const result: ContestParticipant[] = [];
+  for (const list of memoryStore.participants.values()) {
+    const found = list.find((p) => p.user_id === userId);
+    if (found) result.push(found);
+  }
+  return result;
 }
 
 // ─────────────────────────────────────────────────────────────

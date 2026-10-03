@@ -3,7 +3,13 @@ import type {
   CodingVerdict,
   TestCaseVerdictResult,
 } from "@/types/contest";
-import type { JudgeExecutionSummary, JudgeTestCase } from "../types";
+import type {
+  JudgeExecutionSummary,
+  JudgeTestCase,
+  JudgeWorkerJobRequest,
+  JudgeWorkerJobResponse,
+  SafeTestCaseResult,
+} from "../types";
 import type { SubmissionJob, IJudgeQueue } from "../queue/types";
 import { executeInSandbox } from "../sandbox";
 import { judgeQueue } from "../queue/queue";
@@ -250,6 +256,53 @@ export class JudgeWorker {
     } finally {
       judgeObservability.recordWorkerEnd();
     }
+  }
+
+  /**
+   * Deterministic Worker Job Execution implementing Section A3 Contract.
+   */
+  async executeJob(request: JudgeWorkerJobRequest): Promise<JudgeWorkerJobResponse> {
+    const summary = await this.executeTestCases({
+      code: request.source_code,
+      language: request.language,
+      testCases: request.test_cases,
+      timeLimitMs: request.time_limit_ms,
+      memoryLimitMb: request.memory_limit_mb,
+      totalMarks: request.total_marks ?? (request.execution_mode === "run" ? 0 : 20),
+    });
+
+    const safeResults: SafeTestCaseResult[] = summary.test_case_results.map((tc, idx) => {
+      const item: SafeTestCaseResult = {
+        index: idx + 1,
+        passed: tc.verdict === "Accepted",
+        verdict: tc.verdict,
+        execution_time_ms: tc.execution_time_ms,
+        memory_kb: tc.memory_kb,
+        is_sample: tc.is_sample,
+      };
+      if (tc.is_sample) {
+        item.input = tc.input;
+        item.expected_output = tc.expected_output;
+        item.actual_output = tc.actual_output;
+        item.error = tc.error;
+      }
+      return item;
+    });
+
+    return {
+      job_id: request.job_id,
+      submission_id: request.submission_id,
+      status: summary.verdict === "SYSTEM_ERROR" ? "FAILED" : "COMPLETED",
+      verdict: summary.verdict,
+      passed_tests: summary.test_cases_passed,
+      total_tests: summary.total_test_cases,
+      score: request.execution_mode === "run" ? 0 : summary.score,
+      max_score: request.execution_mode === "run" ? 0 : (request.total_marks ?? 20),
+      execution_time_ms: summary.execution_time_ms,
+      memory_used_mb: Math.round(summary.memory_kb / 1024),
+      compile_output: summary.compile_output,
+      test_results: safeResults,
+    };
   }
 
   /**

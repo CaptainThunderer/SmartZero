@@ -251,5 +251,7 @@ export async function PATCH(req: Request) {
     success: true,
     ...result.user,
     target_user_id: result.user?.id,
+    provisioned: result.provisioned,
+    temporary_password: result.temporary_password,
   });
 }

@@ -140,6 +140,7 @@ async function runTests() {
     console.log("\n── 7. Production Mode: Judge Fail-Closed Guard ──");
     (process.env as any).NODE_ENV = "production";
     process.env.SMARTZERO_JUDGE_MODE = "production";
+    process.env.SMARTZERO_DOCKER_AVAILABLE = "false";
     clearSandboxRunnerCache();
 
     const prodRunner = await getSandboxRunner();
@@ -171,6 +172,7 @@ async function runTests() {
     (process.env as any).NODE_ENV = originalEnv;
     process.env.SMARTZERO_FORCE_MEMORY_FALLBACK = originalForce;
     delete process.env.SMARTZERO_JUDGE_MODE;
+    delete process.env.SMARTZERO_DOCKER_AVAILABLE;
     clearSandboxRunnerCache();
   }
 }

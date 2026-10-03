@@ -79,6 +79,9 @@ export default function CodingIDE({
   // Draft Autosave State
   const [draftStatus, setDraftStatus] = useState<"IDLE" | "SAVING" | "SAVED" | "RETRYING" | "SAVE_FAILED">("IDLE");
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const draftSeqRef = useRef<number>(0);
+  const isRunningRef = useRef<boolean>(false);
+  const isSubmittingRef = useRef<boolean>(false);
 
   // Synchronize code with cache when question changes
   useEffect(() => {
@@ -116,7 +119,7 @@ export default function CodingIDE({
       .catch(() => {});
   }, [slug, questionId, userId, language]);
 
-  // Debounced Draft Autosave to Server
+  // Debounced Draft Autosave to Server with monotonic sequence protection
   useEffect(() => {
     if (!code || code === STARTER_TEMPLATES[language]) return;
 
@@ -125,6 +128,7 @@ export default function CodingIDE({
     }
 
     saveTimeoutRef.current = setTimeout(async () => {
+      const currentSeq = ++draftSeqRef.current;
       setDraftStatus("SAVING");
       let attempts = 0;
       let success = false;
@@ -139,22 +143,28 @@ export default function CodingIDE({
               language,
               code,
               user_id: userId || "demo-student-user",
+              seq: currentSeq,
+              timestamp: Date.now(),
             }),
           });
           if (res.ok) {
             success = true;
-            setDraftStatus("SAVED");
+            if (currentSeq === draftSeqRef.current) {
+              setDraftStatus("SAVED");
+            }
             break;
           }
         } catch {
           // Retry
         }
         if (!success && attempts < 3) {
-          setDraftStatus("RETRYING");
+          if (currentSeq === draftSeqRef.current) {
+            setDraftStatus("RETRYING");
+          }
           await new Promise((r) => setTimeout(r, 600 * attempts));
         }
       }
-      if (!success) {
+      if (!success && currentSeq === draftSeqRef.current) {
         setDraftStatus("SAVE_FAILED");
       }
     }, 1200);
@@ -210,6 +220,8 @@ export default function CodingIDE({
 
   // Run Code against Sample Test Cases
   const handleRunCode = async () => {
+    if (isRunningRef.current || isSubmittingRef.current) return;
+    isRunningRef.current = true;
     setIsRunning(true);
     setActiveTab("results");
     try {
@@ -224,18 +236,33 @@ export default function CodingIDE({
         }),
       });
       const data = await res.json();
-      if (data.summary) {
+      if (res.ok && data.summary) {
         setRunResult(data.summary);
+      } else {
+        setRunResult({
+          verdict: data.code === "JUDGE_UNAVAILABLE" ? "JUDGE_UNAVAILABLE" : "SYSTEM_ERROR",
+          execution_time_ms: 0,
+          test_case_results: [],
+          compile_output: data.error || "Code execution service is temporarily unavailable.",
+        });
       }
     } catch {
-      // Ignore
+      setRunResult({
+        verdict: "JUDGE_UNAVAILABLE",
+        execution_time_ms: 0,
+        test_case_results: [],
+        compile_output: "Code execution service is temporarily unavailable. Please check your network and retry.",
+      });
     } finally {
+      isRunningRef.current = false;
       setIsRunning(false);
     }
   };
 
   // Submit Solution for Official Judging (Hidden Test Cases)
   const handleOfficialSubmit = async () => {
+    if (isSubmittingRef.current || isRunningRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     setActiveTab("results");
     try {
@@ -250,7 +277,7 @@ export default function CodingIDE({
         }),
       });
       const data = await res.json();
-      if (data.submission) {
+      if (res.ok && data.submission) {
         setLastSubmission(data.submission);
         setSubmissionsHistory((prev) => [data.submission, ...prev]);
         setRunResult({
@@ -262,10 +289,26 @@ export default function CodingIDE({
         if (onSubmissionSuccess) {
           onSubmissionSuccess(data.submission.score);
         }
+      } else {
+        setRunResult({
+          verdict: data.code === "JUDGE_UNAVAILABLE" ? "JUDGE_UNAVAILABLE" : "SYSTEM_ERROR",
+          execution_time_ms: 0,
+          test_case_results: [],
+          compile_output:
+            data.error ||
+            "Judge service is temporarily unavailable. Your submission was not scored. Please try again.",
+        });
       }
     } catch {
-      // Ignore
+      setRunResult({
+        verdict: "JUDGE_UNAVAILABLE",
+        execution_time_ms: 0,
+        test_case_results: [],
+        compile_output:
+          "Judge service is temporarily unavailable. Your submission was not scored. Please try again.",
+      });
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -587,9 +630,15 @@ export default function CodingIDE({
                         <span className="text-[#A0A6C2] uppercase text-[10px]">
                           {sub.language}
                         </span>
-                        <span className="text-white font-bold">
-                          {sub.score} / {marks} pts
-                        </span>
+                        {sub.score !== undefined ? (
+                          <span className="text-white font-bold">
+                            {sub.score} / {marks} pts
+                          </span>
+                        ) : (
+                          <span className="text-[#A0A6C2] text-[10px]">
+                            Score Hidden
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-[10px] text-[#6B6F8A] flex items-center gap-2">
@@ -631,12 +680,22 @@ export default function CodingIDE({
                               ? "bg-emerald-950/80 text-emerald-300 border border-emerald-600/60"
                               : runResult.verdict === "Partial Accepted"
                               ? "bg-amber-950/80 text-amber-300 border border-amber-600/60"
+                              : runResult.verdict === "JUDGE_UNAVAILABLE"
+                              ? "bg-amber-950/80 text-amber-300 border border-amber-600/60"
                               : "bg-rose-950/80 text-rose-300 border border-rose-600/60"
                           }`}
                         >
-                          {runResult.verdict}
+                          {runResult.verdict === "JUDGE_UNAVAILABLE"
+                            ? "Judge Unavailable"
+                            : runResult.verdict === "TLE"
+                            ? "Time Limit Exceeded"
+                            : runResult.verdict === "MLE"
+                            ? "Memory Limit Exceeded"
+                            : runResult.verdict === "SYSTEM_ERROR"
+                            ? "System Error"
+                            : runResult.verdict}
                         </span>
-                        {lastSubmission && (
+                        {lastSubmission && lastSubmission.score !== undefined && runResult.verdict !== "JUDGE_UNAVAILABLE" && (
                           <span className="text-white font-bold">
                             Score: {lastSubmission.score} / {marks}
                           </span>
@@ -649,7 +708,13 @@ export default function CodingIDE({
 
                     {/* Compilation Error Output */}
                     {runResult.compile_output && (
-                      <div className="p-3 rounded-lg bg-rose-950/20 border border-rose-900/40 text-rose-300 text-[11px] whitespace-pre-wrap">
+                      <div
+                        className={`p-3 rounded-lg text-[11px] whitespace-pre-wrap ${
+                          runResult.verdict === "JUDGE_UNAVAILABLE"
+                            ? "bg-amber-950/20 border border-amber-900/40 text-amber-300"
+                            : "bg-rose-950/20 border border-rose-900/40 text-rose-300"
+                        }`}
+                      >
                         {runResult.compile_output}
                       </div>
                     )}

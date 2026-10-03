@@ -76,6 +76,14 @@ function LoginForm() {
         setErrorMsg(res.error);
         setErrorCode("AUTH_FAILED");
       } else {
+        const state = useAuthStore.getState();
+        if (state.role === "student") {
+          await state.signOut();
+          setErrorMsg("Access denied. This account does not have staff privileges. Please use Student Access.");
+          setErrorCode("FORBIDDEN_ROLE");
+          return;
+        }
+
         if (redirectParam && redirectParam !== "/") {
           router.push(redirectParam);
         } else {

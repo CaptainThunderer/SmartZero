@@ -38,6 +38,34 @@ export async function GET(
     );
   }
 
+  const isAnonymous = contest.leaderboard_visibility === "ANONYMOUS";
+  const isAdmin = authUser.role === "admin" || authUser.role === "super_admin" || authUser.role === "contest_admin";
+
+  if (isAnonymous && !isAdmin) {
+    const {
+      rank: _rank,
+      percentile: _percentile,
+      total_score: _total_score,
+      mcq_score: _mcq_score,
+      coding_score: _coding_score,
+      question_performance,
+      ...safeResult
+    } = result;
+
+    const sanitizedPerformance = (question_performance || []).map((qp) => {
+      const { earned_marks: _em, ...restQp } = qp;
+      return restQp;
+    });
+
+    return NextResponse.json({
+      success: true,
+      result: {
+        ...safeResult,
+        question_performance: sanitizedPerformance,
+      },
+    });
+  }
+
   return NextResponse.json({
     success: true,
     result,

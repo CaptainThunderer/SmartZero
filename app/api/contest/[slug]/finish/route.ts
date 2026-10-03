@@ -47,6 +47,22 @@ export async function POST(
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
+  const isAnonymous = contest.leaderboard_visibility === "ANONYMOUS";
+  const isAdmin = authUser.role === "admin" || authUser.role === "super_admin" || authUser.role === "contest_admin";
+
+  if (isAnonymous && !isAdmin) {
+    let sanitizedParticipant = undefined;
+    if (result.participant) {
+      const { score: _score, ...restParticipant } = result.participant;
+      sanitizedParticipant = restParticipant;
+    }
+    return NextResponse.json({
+      success: true,
+      participant: sanitizedParticipant,
+      already_submitted: result.error === "Exam has already been submitted.",
+    });
+  }
+
   return NextResponse.json({
     success: true,
     score: result.score,

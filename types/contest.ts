@@ -31,6 +31,8 @@ export interface AntiCheatSettings {
   track_context_menu?: boolean;
 }
 
+export type LeaderboardVisibility = "PUBLIC" | "ANONYMOUS";
+
 export interface Contest {
   id: string;
   title: string;
@@ -46,6 +48,7 @@ export interface Contest {
   instructions: string;
   negative_marking: boolean;
   default_negative_mark: number;
+  leaderboard_visibility?: LeaderboardVisibility;
   fullscreen_required?: boolean;
   auto_submit_on_violation?: boolean;
   max_violations?: number;
@@ -261,5 +264,6 @@ export interface PublicContestSummary {
     coding: number;
   };
   participant_count?: number;
+  leaderboard_visibility?: LeaderboardVisibility;
 }
 

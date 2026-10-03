@@ -1,0 +1,58 @@
+# ==============================================================================
+# SMARTZERO 2.0 — COLLEGE LAB / LINUX SERVER DEPLOYMENT (100% ₹0 FREE)
+# High-Capacity Dedicated Execution for 60-70 Student Live Examination
+#
+# Hardware: Any college lab PC / department server running Linux (or WSL2)
+# Cost: ₹0 / forever
+# Network: Encrypted public HTTPS via free Cloudflare Tunnel (no port forwarding)
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # 1. SmartZero Isolated Judge Worker
+  judge-worker:
+    build:
+      context: ../..
+      dockerfile: deploy/judge-worker/Dockerfile
+    container_name: smartzero-judge-worker
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - NODE_ENV=production
+      - SMARTZERO_JUDGE_MODE=local
+      - SMARTZERO_JUDGE_CONCURRENCY=6 # College hardware (4-8 cores) easily sustains 6-8 concurrent executions
+      - JUDGE_WORKER_SECRET=smartzero-judge-secret-2026
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+        reservations:
+          cpus: '1.0'
+          memory: 1024M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+
+  # 2. Cloudflare Tunnel (100% Free Public Encrypted Ingress)
+  # Run without any tunnel token for quick ephemeral tunnel:
+  # Or provide TUNNEL_TOKEN from your free Cloudflare Zero Trust dashboard for a permanent custom domain URL
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: smartzero-cloudflared-tunnel
+    restart: unless-stopped
+    depends_on:
+      - judge-worker
+    command: tunnel --no-autoupdate run
+    environment:
+      # Option A: Quick Tunnel (Ephemeral HTTPS URL logged to console)
+      # Option B: Permanent Tunnel (Set your free Cloudflare Tunnel token)
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+    network_mode: host
