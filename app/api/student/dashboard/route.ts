@@ -1,26 +1,27 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getPublicContestSummaries } from "@/lib/contest/service";
+import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 
 export async function GET(req: Request) {
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json(
+      { error: "Authentication required to view student dashboard." },
+      { status: 401 }
+    );
+  }
+
   const url = new URL(req.url);
-  let userId = url.searchParams.get("user_id");
+  const requestedUserId = url.searchParams.get("user_id");
 
-  const supabase = await createSupabaseServerClient();
-  let userEmail = "";
-  if (supabase) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      userId = user.id;
-      userEmail = user.email || "";
-    }
+  const identityCheck = validateStudentIdentity(authUser, requestedUserId);
+  if (!identityCheck.authorized) {
+    return NextResponse.json({ error: identityCheck.error }, { status: identityCheck.status || 403 });
   }
 
-  if (!userId) {
-    userId = "demo-student-user";
-  }
+  const userId = identityCheck.authoritativeUserId;
+  const userEmail = authUser.email;
 
   let profile = {
     id: userId,
@@ -53,6 +54,7 @@ export async function GET(req: Request) {
   }> = [];
 
   const publicContests = await getPublicContestSummaries();
+  const supabase = await createSupabaseServerClient();
 
   if (supabase && userId !== "demo-student-user") {
     try {

@@ -23,6 +23,8 @@ alter table public.profiles add column if not exists college text;
 alter table public.profiles add column if not exists avatar_url text;
 alter table public.profiles add column if not exists account_status text not null default 'verified' check (account_status in ('pending', 'verified', 'suspended', 'disabled'));
 alter table public.profiles add column if not exists updated_at timestamptz not null default now();
+alter table public.profiles drop constraint if exists profiles_id_fkey;
+alter table public.profiles alter column id set default gen_random_uuid();
 
 -- 2. USER ROLES TABLE
 create table if not exists public.user_roles (
@@ -76,6 +78,14 @@ create table if not exists public.contests (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Ensure all columns exist if table was already created in earlier version (idempotent)
+alter table public.contests add column if not exists fullscreen_required boolean not null default true;
+alter table public.contests add column if not exists auto_submit_on_violation boolean not null default true;
+alter table public.contests add column if not exists max_violations int not null default 1;
+alter table public.contests add column if not exists allow_retake boolean not null default false;
+alter table public.contests add column if not exists max_attempts int not null default 1;
+alter table public.contests add column if not exists anti_cheat_settings jsonb default '{"track_tab_switch": true, "track_blur": true, "track_copy": true, "track_paste": true, "track_context_menu": true}'::jsonb;
 
 -- 4.2 MCQ Questions Bank
 create table if not exists public.mcq_questions (
@@ -151,6 +161,16 @@ create table if not exists public.contest_participants (
   violations_count int not null default 0,
   unique(contest_id, user_id)
 );
+
+-- Ensure all columns and constraints exist if table was already created in earlier version (idempotent)
+alter table public.contest_participants drop constraint if exists contest_participants_status_check;
+alter table public.contest_participants add constraint contest_participants_status_check check (status in ('registered', 'ready', 'exam_started', 'in_progress', 'in_exam', 'submitted', 'auto_submitted', 'finalized'));
+alter table public.contest_participants add column if not exists attempt_number int not null default 1;
+alter table public.contest_participants add column if not exists started_at timestamptz;
+alter table public.contest_participants add column if not exists completed_at timestamptz;
+alter table public.contest_participants add column if not exists submission_reason text default 'manual';
+alter table public.contest_participants add column if not exists violations_count int not null default 0;
+alter table public.contest_participants add column if not exists auto_submitted boolean not null default false;
 
 -- 4.8 MCQ Answers / Submissions
 create table if not exists public.mcq_answers (
@@ -300,12 +320,18 @@ alter table public.mcq_answers enable row level security;
 
 -- 8. RLS POLICIES
 
--- Profiles policies
+-- Profiles policies (Strict privacy: no public enumeration)
 drop policy if exists "profiles readable by authenticated" on public.profiles;
-create policy "profiles readable by authenticated"
+drop policy if exists "profiles own insert" on public.profiles;
+drop policy if exists "profiles own select" on public.profiles;
+drop policy if exists "profiles registration insert" on public.profiles;
+drop policy if exists "profiles registration select" on public.profiles;
+
+drop policy if exists "profiles read own or admin" on public.profiles;
+create policy "profiles read own or admin"
   on public.profiles for select
   to authenticated
-  using (true);
+  using (id = auth.uid() or public.is_admin(auth.uid()));
 
 drop policy if exists "profiles own update" on public.profiles;
 create policy "profiles own update"
@@ -314,18 +340,16 @@ create policy "profiles own update"
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
-drop policy if exists "profiles own insert" on public.profiles;
-create policy "profiles own insert"
-  on public.profiles for insert
-  to authenticated
-  with check (auth.uid() = id);
-
--- User roles policies
+-- User roles policies (Strict role protection: no anonymous role assignment)
 drop policy if exists "user_roles read own" on public.user_roles;
-create policy "user_roles read own"
+drop policy if exists "user_roles registration insert" on public.user_roles;
+drop policy if exists "user_roles registration select" on public.user_roles;
+
+drop policy if exists "user_roles read own or admin" on public.user_roles;
+create policy "user_roles read own or admin"
   on public.user_roles for select
   to authenticated
-  using (auth.uid() = user_id or public.is_admin(auth.uid()));
+  using (user_id = auth.uid() or public.is_admin(auth.uid()));
 
 drop policy if exists "user_roles admin manage" on public.user_roles;
 create policy "user_roles admin manage"
@@ -333,6 +357,118 @@ create policy "user_roles admin manage"
   to authenticated
   using (public.is_super_admin(auth.uid()))
   with check (public.is_super_admin(auth.uid()));
+
+-- Secure Student Registration RPC (Forces role = 'student')
+create or replace function public.register_student(
+  p_full_name text,
+  p_email text,
+  p_student_id text default '',
+  p_college text default ''
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_profile public.profiles%rowtype;
+  v_normalized_email text;
+  v_existing_id uuid;
+begin
+  v_normalized_email := lower(trim(p_email));
+  if v_normalized_email is null or v_normalized_email = '' then
+    raise exception 'Email is required';
+  end if;
+
+  if p_full_name is null or trim(p_full_name) = '' then
+    raise exception 'Full name is required';
+  end if;
+
+  select id into v_existing_id from public.profiles where lower(trim(email)) = v_normalized_email limit 1;
+
+  if v_existing_id is not null then
+    update public.profiles set
+      full_name = trim(p_full_name),
+      display_name = trim(p_full_name),
+      student_id = coalesce(nullif(trim(p_student_id), ''), student_id),
+      college = coalesce(nullif(trim(p_college), ''), college),
+      updated_at = now()
+    where id = v_existing_id
+    returning * into v_profile;
+  else
+    insert into public.profiles (
+      id,
+      email,
+      full_name,
+      display_name,
+      student_id,
+      college,
+      account_status,
+      created_at,
+      updated_at
+    )
+    values (
+      gen_random_uuid(),
+      v_normalized_email,
+      trim(p_full_name),
+      trim(p_full_name),
+      trim(coalesce(p_student_id, '')),
+      trim(coalesce(p_college, '')),
+      'verified',
+      now(),
+      now()
+    )
+    returning * into v_profile;
+  end if;
+
+  insert into public.user_roles (user_id, role, created_at)
+  values (v_profile.id, 'student', now())
+  on conflict (user_id) do nothing;
+
+  return jsonb_build_object(
+    'id', v_profile.id,
+    'email', v_profile.email,
+    'full_name', v_profile.full_name,
+    'display_name', v_profile.display_name,
+    'student_id', v_profile.student_id,
+    'college', v_profile.college,
+    'role', 'student'
+  );
+end;
+$$;
+
+create or replace function public.get_student_by_email(
+  p_email text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_result jsonb;
+begin
+  select jsonb_build_object(
+    'id', p.id,
+    'email', p.email,
+    'full_name', p.full_name,
+    'display_name', p.display_name,
+    'student_id', p.student_id,
+    'college', p.college,
+    'account_status', p.account_status,
+    'role', coalesce(r.role, 'student')
+  ) into v_result
+  from public.profiles p
+  left join public.user_roles r on r.user_id = p.id
+  where lower(trim(p.email)) = lower(trim(p_email))
+  limit 1;
+
+  return v_result;
+end;
+$$;
+
+grant execute on function public.register_student(text, text, text, text) to anon, authenticated;
+grant execute on function public.get_student_by_email(text) to anon, authenticated;
 
 -- Learning sessions policies
 drop policy if exists "sessions own rows" on public.learning_sessions;

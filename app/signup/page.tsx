@@ -3,16 +3,15 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Sparkles, Mail, Lock, User, School, IdCard, Loader2, AlertCircle, ArrowLeft } from "lucide-react";
+import { Sparkles, Mail, User, School, IdCard, Loader2, AlertCircle, ArrowLeft, CheckCircle2, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 
 export default function SignUpPage() {
   const router = useRouter();
-  const { signUpWithPassword, isAuthenticated, isLoading, initialize } = useAuthStore();
+  const { registerStudent, isAuthenticated, isLoading, initialize } = useAuthStore();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [studentId, setStudentId] = useState("");
   const [college, setCollege] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -31,13 +30,8 @@ export default function SignUpPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password || !fullName) {
-      setErrorMsg("Please fill in full name, email, and password.");
-      return;
-    }
-
-    if (password.length < 6) {
-      setErrorMsg("Password must be at least 6 characters.");
+    if (!email || !fullName) {
+      setErrorMsg("Please fill in both full name and email address.");
       return;
     }
 
@@ -45,8 +39,9 @@ export default function SignUpPage() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    const res = await signUpWithPassword(email.trim(), password, {
+    const res = await registerStudent({
       full_name: fullName.trim(),
+      email: email.trim(),
       student_id: studentId.trim(),
       college: college.trim(),
     });
@@ -56,7 +51,7 @@ export default function SignUpPage() {
     if (res.error) {
       setErrorMsg(res.error);
     } else {
-      setSuccessMsg("Account created successfully! Redirecting...");
+      setSuccessMsg("Registration successful! Student profile saved to database. Redirecting...");
       setTimeout(() => {
         router.push("/");
       }, 1000);
@@ -78,22 +73,31 @@ export default function SignUpPage() {
         {/* Card */}
         <div className="bg-white dark:bg-[#181824] border border-[#E7E7E2] dark:border-[#27273D] rounded-2xl p-8 shadow-sm">
           {/* Header */}
-          <div className="flex flex-col items-center mb-8">
+          <div className="flex flex-col items-center mb-6">
             <div className="w-12 h-12 rounded-2xl bg-[#5B5FEF] text-white flex items-center justify-center shadow-md mb-3">
               <Sparkles size={24} />
             </div>
             <h1 className="text-2xl font-bold tracking-tight">
-              Create Smart<span className="text-[#5B5FEF]">Zero</span> Account
+              Register Smart<span className="text-[#5B5FEF]">Zero</span> Account
             </h1>
             <p className="text-xs text-[#6B6F8A] dark:text-[#A0A6C2] mt-1 text-center">
-              Join the interactive DSA visual learning & contest community
+              Student Registration • No email confirmation required
             </p>
+          </div>
+
+          {/* Database Registration Notice */}
+          <div className="mb-6 p-3 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-900/40 flex items-start gap-2.5 text-xs text-indigo-800 dark:text-indigo-300">
+            <ShieldCheck size={16} className="shrink-0 mt-0.5 text-[#5B5FEF]" />
+            <span>
+              Database Registration: Enter your details below. Your profile will be saved directly to the database without requiring email confirmation or passwords.
+            </span>
           </div>
 
           {/* Success Banner */}
           {successMsg && (
-            <div className="mb-6 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs text-emerald-700 dark:text-emerald-400">
-              {successMsg}
+            <div className="mb-6 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 size={16} className="shrink-0" />
+              <span>{successMsg}</span>
             </div>
           )}
 
@@ -147,27 +151,6 @@ export default function SignUpPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B6F8A] dark:text-[#A0A6C2] mb-1.5">
-                Password *
-              </label>
-              <div className="relative">
-                <Lock
-                  size={16}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9498B3]"
-                />
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min. 6 characters"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E7E7E2] dark:border-[#27273D] bg-[#FAFAF8] dark:bg-[#12121A] text-sm focus:outline-none focus:border-[#5B5FEF] focus:ring-1 focus:ring-[#5B5FEF] transition-all"
-                />
-              </div>
-            </div>
-
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B6F8A] dark:text-[#A0A6C2] mb-1.5">
@@ -216,7 +199,7 @@ export default function SignUpPage() {
               {submitting ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  <span>Creating Account...</span>
+                  <span>Saving Registration...</span>
                 </>
               ) : (
                 <span>Register Account</span>
@@ -226,7 +209,7 @@ export default function SignUpPage() {
 
           {/* Footer info */}
           <div className="mt-6 pt-6 border-t border-[#E7E7E2] dark:border-[#27273D] text-center text-xs text-[#6B6F8A] dark:text-[#A0A6C2]">
-            Already have an account?{" "}
+            Already registered or admin?{" "}
             <Link href="/login" className="text-[#5B5FEF] font-semibold hover:underline">
               Sign in
             </Link>

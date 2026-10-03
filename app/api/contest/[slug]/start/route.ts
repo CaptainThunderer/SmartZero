@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getContestBySlug, startContestExam } from "@/lib/contest/service";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 
 export async function POST(
   req: Request,
@@ -20,20 +20,17 @@ export async function POST(
     // optional body
   }
 
-  let userId = body.user_id;
-  const supabase = await createSupabaseServerClient();
-  if (supabase) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      userId = user.id;
-    }
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required to start exam." }, { status: 401 });
   }
 
-  if (!userId) {
-    return NextResponse.json({ error: "User ID required." }, { status: 401 });
+  const identityCheck = validateStudentIdentity(authUser, body.user_id);
+  if (!identityCheck.authorized) {
+    return NextResponse.json({ error: identityCheck.error }, { status: identityCheck.status || 403 });
   }
+
+  const userId = identityCheck.authoritativeUserId;
 
   const result = await startContestExam({
     contest_id: contest.id,

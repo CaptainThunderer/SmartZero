@@ -1,42 +1,34 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 import type { UserRole, AccountStatus } from "@/types/auth";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (authUser.role !== "admin" && authUser.role !== "super_admin") {
+    return NextResponse.json({ error: "Forbidden: Admin privileges required." }, { status: 403 });
+  }
+
+  const callerRole = authUser.role;
   const supabase = await createSupabaseServerClient();
   if (!supabase) {
     return NextResponse.json({
       users: [
         {
-          id: "demo-student-user",
-          email: "student@smartzero.edu",
-          full_name: "Demo Student",
-          role: "student",
+          id: authUser.userId,
+          email: authUser.email,
+          full_name: authUser.fullName,
+          role: authUser.role,
           account_status: "verified",
           created_at: new Date().toISOString(),
         },
       ],
+      callerRole,
     });
-  }
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  }
-
-  // Check admin role
-  const { data: roleRow } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .single();
-
-  const callerRole = roleRow?.role as UserRole | undefined;
-  if (callerRole !== "admin" && callerRole !== "super_admin") {
-    return NextResponse.json({ error: "Forbidden: Admin privileges required." }, { status: 403 });
   }
 
   // Fetch profiles and user_roles
@@ -61,28 +53,19 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) {
-    return NextResponse.json({ success: true });
-  }
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const { data: roleRow } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .single();
-
-  const callerRole = roleRow?.role as UserRole | undefined;
-  if (callerRole !== "admin" && callerRole !== "super_admin") {
+  if (authUser.role !== "admin" && authUser.role !== "super_admin") {
     return NextResponse.json({ error: "Forbidden: Admin privileges required." }, { status: 403 });
+  }
+
+  const callerRole = authUser.role;
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) {
+    return NextResponse.json({ success: true });
   }
 
   let body: {

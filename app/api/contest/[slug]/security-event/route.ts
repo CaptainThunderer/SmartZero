@@ -4,7 +4,7 @@ import {
   recordSecurityEvent,
   getParticipantSecurityEvents,
 } from "@/lib/contest/security";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 import type { SecurityEventType, SecurityEventSeverity } from "@/types/contest";
 
 export async function POST(
@@ -36,20 +36,28 @@ export async function POST(
     return NextResponse.json({ error: "event_type is required." }, { status: 400 });
   }
 
-  // Determine user
-  let userId = body.user_id || "demo-student-user";
-  const supabase = await createSupabaseServerClient();
-  if (supabase) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      userId = user.id;
-    }
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required to log security events." }, { status: 401 });
   }
 
+  const identityCheck = validateStudentIdentity(authUser, body.user_id);
+  if (!identityCheck.authorized) {
+    return NextResponse.json({ error: identityCheck.error }, { status: identityCheck.status || 403 });
+  }
+
+  const userId = identityCheck.authoritativeUserId;
   const participant = await getParticipant(contest.id, userId);
-  const participantId = body.participant_id || participant?.id || `part-${userId}`;
+
+  // Cross-user participant manipulation guard
+  if (body.participant_id && participant && body.participant_id !== participant.id && authUser.role === "student") {
+    return NextResponse.json(
+      { error: "Forbidden. Cross-user participant manipulation detected." },
+      { status: 403 }
+    );
+  }
+
+  const participantId = participant?.id || body.participant_id || `part-${userId}`;
 
   const result = await recordSecurityEvent({
     contest_id: contest.id,
@@ -82,10 +90,26 @@ export async function GET(
     return NextResponse.json({ error: "Contest not found." }, { status: 404 });
   }
 
-  const url = new URL(req.url);
-  const participantId = url.searchParams.get("participant_id") || "";
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required to view security events." }, { status: 401 });
+  }
 
-  const events = await getParticipantSecurityEvents(contest.id, participantId);
+  const url = new URL(req.url);
+  const requestedParticipantId = url.searchParams.get("participant_id") || "";
+
+  // If user is student, they may only view their own participant security events
+  if (authUser.role === "student") {
+    const ownParticipant = await getParticipant(contest.id, authUser.userId);
+    if (requestedParticipantId && ownParticipant && requestedParticipantId !== ownParticipant.id) {
+      return NextResponse.json(
+        { error: "Forbidden. You cannot view security events for other participants." },
+        { status: 403 }
+      );
+    }
+  }
+
+  const events = await getParticipantSecurityEvents(contest.id, requestedParticipantId);
 
   return NextResponse.json({
     success: true,

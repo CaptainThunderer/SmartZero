@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getContestBySlug } from "@/lib/contest/service";
 import { generateStudentPostContestAnalysis } from "@/lib/contest/postContestAI";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 
 export async function POST(
   req: Request,
@@ -14,23 +14,24 @@ export async function POST(
     return NextResponse.json({ error: "Contest not found." }, { status: 404 });
   }
 
-  let userId = "demo-student-user";
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required to generate AI analysis." }, { status: 401 });
+  }
+
+  let body: { user_id?: string } = {};
   try {
-    const body = await req.json();
-    if (body.user_id) userId = body.user_id;
+    body = await req.json();
   } catch {
     // Body optional
   }
 
-  const supabase = await createSupabaseServerClient();
-  if (supabase) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      userId = user.id;
-    }
+  const identityCheck = validateStudentIdentity(authUser, body.user_id);
+  if (!identityCheck.authorized) {
+    return NextResponse.json({ error: identityCheck.error }, { status: identityCheck.status || 403 });
   }
+
+  const userId = identityCheck.authoritativeUserId;
 
   try {
     const analysis = await generateStudentPostContestAnalysis(contest.id, userId);
@@ -61,18 +62,20 @@ export async function GET(
     return NextResponse.json({ error: "Contest not found." }, { status: 404 });
   }
 
-  const url = new URL(req.url);
-  let userId = url.searchParams.get("user_id") || "demo-student-user";
-
-  const supabase = await createSupabaseServerClient();
-  if (supabase) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      userId = user.id;
-    }
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required to view AI analysis." }, { status: 401 });
   }
+
+  const url = new URL(req.url);
+  const requestedUserId = url.searchParams.get("user_id");
+
+  const identityCheck = validateStudentIdentity(authUser, requestedUserId);
+  if (!identityCheck.authorized) {
+    return NextResponse.json({ error: identityCheck.error }, { status: identityCheck.status || 403 });
+  }
+
+  const userId = identityCheck.authoritativeUserId;
 
   try {
     const analysis = await generateStudentPostContestAnalysis(contest.id, userId);

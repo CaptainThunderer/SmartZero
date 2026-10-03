@@ -45,7 +45,7 @@ export async function callGeminiApi(
     throw new Error("GEMINI_API_KEY is not configured");
   }
 
-  const model = modelOverride || process.env.AI_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = modelOverride || process.env.AI_MODEL || process.env.GEMINI_MODEL || "gemini-1.5-flash";
   const baseUrl = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta";
   const url = `${baseUrl}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 

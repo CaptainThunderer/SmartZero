@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getContestBySlug, getCodingQuestionRaw } from "@/lib/contest/service";
 import { defaultJudgeWorker } from "@/lib/judge/service";
 import { JUDGE_RESOURCE_LIMITS } from "@/lib/judge/config";
+import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 import type { CodingLanguage } from "@/types/contest";
 import type { JudgeTestCase } from "@/lib/judge/types";
 
@@ -14,6 +15,11 @@ export async function POST(
 
   if (!contest) {
     return NextResponse.json({ error: "Contest not found." }, { status: 404 });
+  }
+
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required to run code." }, { status: 401 });
   }
 
   let body: {

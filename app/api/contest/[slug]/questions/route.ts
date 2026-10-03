@@ -6,7 +6,7 @@ import {
   computeContestStatus,
   getParticipant,
 } from "@/lib/contest/service";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 
 export async function GET(
   req: Request,
@@ -20,17 +20,20 @@ export async function GET(
   }
 
   // Determine user identity
+  const authUser = await getAuthenticatedUser(req);
   const url = new URL(req.url);
-  let userId = url.searchParams.get("user_id") || "demo-student-user";
+  const requestedUserId = url.searchParams.get("user_id");
 
-  const supabase = await createSupabaseServerClient();
-  if (supabase) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      userId = user.id;
+  let userId: string;
+  if (authUser) {
+    const identityCheck = validateStudentIdentity(authUser, requestedUserId);
+    if (!identityCheck.authorized) {
+      return NextResponse.json({ error: identityCheck.error }, { status: identityCheck.status || 403 });
     }
+    userId = identityCheck.authoritativeUserId;
+  } else {
+    // If not authenticated, allow viewing general questions if not in draft, but no personal answers
+    userId = "unauthenticated-viewer";
   }
 
   const status = computeContestStatus(contest);

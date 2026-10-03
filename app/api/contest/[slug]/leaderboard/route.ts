@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getContestBySlug } from "@/lib/contest/service";
 import { getContestLeaderboard } from "@/lib/contest/leaderboard";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 
 export async function GET(
   req: Request,
@@ -14,18 +14,8 @@ export async function GET(
     return NextResponse.json({ error: "Contest not found." }, { status: 404 });
   }
 
-  const url = new URL(req.url);
-  let userId = url.searchParams.get("user_id") || "demo-student-user";
-
-  const supabase = await createSupabaseServerClient();
-  if (supabase) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      userId = user.id;
-    }
-  }
+  const authUser = await getAuthenticatedUser(req);
+  const userId = authUser?.userId || "";
 
   const data = await getContestLeaderboard(contest.id, userId);
 

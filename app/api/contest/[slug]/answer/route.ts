@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getContestBySlug, recordMcqAnswer } from "@/lib/contest/service";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 
 export async function POST(
   req: Request,
@@ -30,17 +30,17 @@ export async function POST(
     return NextResponse.json({ error: "question_id is required." }, { status: 400 });
   }
 
-  // Determine user
-  let userId = body.user_id || "demo-student-user";
-  const supabase = await createSupabaseServerClient();
-  if (supabase) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      userId = user.id;
-    }
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required to submit answers." }, { status: 401 });
   }
+
+  const identityCheck = validateStudentIdentity(authUser, body.user_id);
+  if (!identityCheck.authorized) {
+    return NextResponse.json({ error: identityCheck.error }, { status: identityCheck.status || 403 });
+  }
+
+  const userId = identityCheck.authoritativeUserId;
 
   const result = await recordMcqAnswer({
     contest_id: contest.id,

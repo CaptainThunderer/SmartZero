@@ -4,6 +4,15 @@ import type { AuthState, UserProfile, UserRole } from "../types/auth";
 
 interface AuthActions {
   initialize: () => Promise<void>;
+  registerStudent: (details: {
+    full_name: string;
+    email: string;
+    student_id?: string;
+    college?: string;
+  }) => Promise<{ success: boolean; profile?: UserProfile; error?: string }>;
+  signInWithRegisteredEmail: (
+    email: string
+  ) => Promise<{ success: boolean; profile?: UserProfile; error?: string }>;
   signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>;
   signUpWithPassword: (
     email: string,
@@ -25,9 +34,55 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   isAuthenticated: false,
 
   initialize: async () => {
+    // Validate server session first (prevents stale or manipulated localStorage)
+    if (typeof window !== "undefined") {
+      try {
+        const sessionRes = await fetch("/api/auth/session");
+        if (sessionRes.ok) {
+          const sessionData = await sessionRes.json();
+          if (sessionData.authenticated && sessionData.user) {
+            const serverUser = sessionData.user;
+            const verifiedProfile: UserProfile = {
+              id: serverUser.id,
+              email: serverUser.email,
+              full_name: serverUser.full_name || null,
+              display_name: serverUser.full_name || null,
+              student_id: serverUser.student_id || null,
+              college: serverUser.college || null,
+              avatar_url: null,
+              role: (serverUser.role as UserRole) || "student",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            set({
+              user: {
+                id: serverUser.id,
+                email: serverUser.email,
+                user_metadata: { full_name: serverUser.full_name },
+              },
+              profile: verifiedProfile,
+              role: (serverUser.role as UserRole) || "student",
+              isAuthenticated: true,
+              isLoading: false,
+            });
+            return;
+          } else {
+            // Server has no active session; clear local cache
+            localStorage.removeItem("smartzero_student_profile");
+          }
+        }
+      } catch {
+        // Non-blocking
+      }
+    }
+
     const supabase = getSupabaseBrowser();
     if (!supabase) {
-      set({ isLoading: false, isAuthenticated: false, user: null, profile: null, role: "student" });
+      if (!get().isAuthenticated) {
+        set({ isLoading: false, isAuthenticated: false, user: null, profile: null, role: "student" });
+      } else {
+        set({ isLoading: false });
+      }
       return;
     }
 
@@ -46,8 +101,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           isAuthenticated: true,
         });
         await get().refreshProfile();
-      } else {
+      } else if (!get().isAuthenticated) {
         set({ user: null, profile: null, role: "student", isAuthenticated: false, isLoading: false });
+      } else {
+        set({ isLoading: false });
       }
 
       // Listen for auth state changes
@@ -219,7 +276,114 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     }
   },
 
+  registerStudent: async (details) => {
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(details),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        return { success: false, error: data.error || "Failed to register student." };
+      }
+
+      const prof: UserProfile = data.profile;
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("smartzero_student_profile", JSON.stringify(prof));
+        } catch {
+          // Non-blocking
+        }
+      }
+
+      set({
+        user: {
+          id: prof.id,
+          email: prof.email || undefined,
+          user_metadata: {
+            full_name: prof.full_name || undefined,
+            student_id: prof.student_id || undefined,
+            college: prof.college || undefined,
+          },
+        },
+        profile: prof,
+        role: (prof.role as UserRole) || "student",
+        isAuthenticated: true,
+        isLoading: false,
+      });
+
+      return { success: true, profile: prof };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Network error during registration.",
+      };
+    }
+  },
+
+  signInWithRegisteredEmail: async (email) => {
+    try {
+      const res = await fetch("/api/auth/student-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        return { success: false, error: data.error || "No student record found for this email." };
+      }
+
+      const prof: UserProfile = data.profile;
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("smartzero_student_profile", JSON.stringify(prof));
+        } catch {
+          // Non-blocking
+        }
+      }
+
+      set({
+        user: {
+          id: prof.id,
+          email: prof.email || undefined,
+          user_metadata: {
+            full_name: prof.full_name || undefined,
+            student_id: prof.student_id || undefined,
+            college: prof.college || undefined,
+          },
+        },
+        profile: prof,
+        role: (prof.role as UserRole) || "student",
+        isAuthenticated: true,
+        isLoading: false,
+      });
+
+      return { success: true, profile: prof };
+    } catch (err: unknown) {
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : "Network error during sign in.",
+      };
+    }
+  },
+
   signOut: async () => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("smartzero_student_profile");
+      } catch {
+        // Non-blocking
+      }
+    }
+    // Invalidate server session cookie
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Non-blocking
+    }
     const supabase = getSupabaseBrowser();
     if (supabase) {
       try {
@@ -238,29 +402,59 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   updateProfile: async (updates) => {
-    const supabase = getSupabaseBrowser();
     const currentUser = get().user;
-    if (!supabase || !currentUser) {
+    if (!currentUser) {
       return { error: "User is not logged in." };
     }
 
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", currentUser.id);
-
-      if (error) {
-        return { error: error.message };
+    // Sync localStorage if database-registered student profile exists
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("smartzero_student_profile");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const updated = { ...parsed, ...updates, updated_at: new Date().toISOString() };
+          localStorage.setItem("smartzero_student_profile", JSON.stringify(updated));
+          set({
+            profile: updated,
+            user: {
+              ...currentUser,
+              user_metadata: {
+                ...currentUser.user_metadata,
+                full_name: updated.full_name,
+                student_id: updated.student_id,
+                college: updated.college,
+              },
+            },
+          });
+        }
+      } catch {
+        // Non-blocking
       }
-
-      await get().refreshProfile();
-      return { error: null };
-    } catch (err: unknown) {
-      return { error: err instanceof Error ? err.message : "Failed to update profile." };
     }
+
+    const supabase = getSupabaseBrowser();
+    if (supabase) {
+      try {
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            ...updates,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", currentUser.id);
+
+        if (error) {
+          return { error: error.message };
+        }
+
+        await get().refreshProfile();
+        return { error: null };
+      } catch (err: unknown) {
+        return { error: err instanceof Error ? err.message : "Failed to update profile." };
+      }
+    }
+
+    return { error: null };
   },
 }));

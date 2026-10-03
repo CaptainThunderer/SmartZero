@@ -13,7 +13,7 @@ import {
   judgeObservability,
 } from "@/lib/judge/service";
 import { JUDGE_RESOURCE_LIMITS } from "@/lib/judge/config";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 import type { CodingLanguage } from "@/types/contest";
 
 export async function POST(
@@ -64,17 +64,17 @@ export async function POST(
     );
   }
 
-  // Determine user identity
-  let userId = body.user_id || "demo-student-user";
-  const supabase = await createSupabaseServerClient();
-  if (supabase) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (user) {
-      userId = user.id;
-    }
+  const authUser = await getAuthenticatedUser(req);
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required to submit code." }, { status: 401 });
   }
+
+  const identityCheck = validateStudentIdentity(authUser, body.user_id);
+  if (!identityCheck.authorized) {
+    return NextResponse.json({ error: identityCheck.error }, { status: identityCheck.status || 403 });
+  }
+
+  const userId = identityCheck.authoritativeUserId;
 
   const participant = await getParticipant(contest.id, userId);
   if (participant?.status === "submitted") {

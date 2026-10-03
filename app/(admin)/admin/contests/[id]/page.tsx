@@ -302,6 +302,34 @@ export default function ContestDetailPage({
           </div>
         </div>
 
+        {/* Assessment Policies & Anti-Cheat Summary */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div className="p-3 rounded-xl bg-[#12121A] border border-[#27273D]">
+            <span className="text-[#6B6F8A] text-[10px] uppercase font-semibold block mb-0.5">Fullscreen Policy</span>
+            <div className="font-semibold text-white">
+              {contest.fullscreen_required ? "Enforced" : "Optional"}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-[#12121A] border border-[#27273D]">
+            <span className="text-[#6B6F8A] text-[10px] uppercase font-semibold block mb-0.5">Auto-Submit</span>
+            <div className="font-semibold text-white">
+              {contest.auto_submit_on_violation ? `Yes (max ${contest.max_violations} viol.)` : "Disabled"}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-[#12121A] border border-[#27273D]">
+            <span className="text-[#6B6F8A] text-[10px] uppercase font-semibold block mb-0.5">Retake Policy</span>
+            <div className="font-semibold text-white">
+              {contest.allow_retake ? `Allowed (${contest.max_attempts} attempts)` : "Single Attempt"}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-[#12121A] border border-[#27273D]">
+            <span className="text-[#6B6F8A] text-[10px] uppercase font-semibold block mb-0.5">Negative Marking</span>
+            <div className="font-semibold text-white">
+              {contest.negative_marking ? `Yes (-${contest.default_negative_mark} pts)` : "None"}
+            </div>
+          </div>
+        </div>
+
         {/* Question Bank Summary */}
         <div className="p-5 rounded-2xl bg-[#12121A] border border-[#27273D] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
