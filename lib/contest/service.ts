@@ -1224,6 +1224,30 @@ export async function removeContestAdmin(contest_id: string, admin_id: string): 
   return true;
 }
 
+export async function clearContestAdminAssignments(admin_id: string): Promise<boolean> {
+  // Clear memoryStore
+  for (const [contestId, list] of memoryStore.adminAssignments.entries()) {
+    memoryStore.adminAssignments.set(
+      contestId,
+      list.filter((id) => id !== admin_id)
+    );
+  }
+
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase
+        .from("contest_admin_assignments")
+        .delete()
+        .eq("admin_id", admin_id);
+    } catch {
+      // Fall through
+    }
+  }
+
+  return true;
+}
+
 export async function getContestAdminIds(contest_id: string): Promise<string[]> {
   const list = memoryStore.adminAssignments.get(contest_id) || [];
   const supabase = await getSupabaseClient();

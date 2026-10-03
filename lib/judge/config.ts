@@ -120,6 +120,8 @@ export const HOST_SECRET_ENV_KEYS = [
   "JWT_SECRET",
   "AUTH_SECRET",
   "SESSION_SECRET",
+  "SMARTZERO_SESSION_SECRET",
+  "STUDENT_SESSION_SECRET",
 ] as const;
 
 export type JudgeMode = "local" | "production";

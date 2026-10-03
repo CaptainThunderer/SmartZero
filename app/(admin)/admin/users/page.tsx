@@ -48,6 +48,9 @@ interface ContestSummary {
 
 export default function AdminUsersPage() {
   const { role: callerRole } = useAuthStore();
+  const [serverCallerRole, setServerCallerRole] = useState<UserRole | null>(null);
+  const effectiveCallerRole: UserRole = serverCallerRole || callerRole || "student";
+
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [contests, setContests] = useState<ContestSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,6 +83,9 @@ export default function AdminUsersPage() {
       }
       if (data.contests) {
         setContests(data.contests);
+      }
+      if (data.callerRole) {
+        setServerCallerRole(data.callerRole);
       }
     } catch {
       // Fallback
@@ -126,6 +132,11 @@ export default function AdminUsersPage() {
   const handleUpdateRole = async (targetUserId: string, nextRole: UserRole) => {
     setUpdatingUserId(targetUserId);
     setStatusMsg(null);
+    const prevUsers = users;
+    // Optimistic update
+    setUsers((prev) =>
+      prev.map((u) => (u.id === targetUserId ? { ...u, role: nextRole } : u))
+    );
     try {
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
@@ -137,14 +148,15 @@ export default function AdminUsersPage() {
       });
       const data = await res.json();
       if (!res.ok || data.error) {
+        // Rollback on failure
+        setUsers(prevUsers);
         setStatusMsg({ type: "error", text: data.error || "Failed to update role." });
       } else {
-        setStatusMsg({ type: "success", text: `Role updated to "${nextRole}".` });
-        setUsers((prev) =>
-          prev.map((u) => (u.id === targetUserId ? { ...u, role: nextRole } : u))
-        );
+        setStatusMsg({ type: "success", text: `Role successfully updated to "${nextRole}".` });
+        fetchUsers();
       }
     } catch (err: unknown) {
+      setUsers(prevUsers);
       setStatusMsg({
         type: "error",
         text: err instanceof Error ? err.message : "Error updating role.",
@@ -272,7 +284,7 @@ export default function AdminUsersPage() {
           </p>
         </div>
 
-        {callerRole === "super_admin" && (
+        {effectiveCallerRole === "super_admin" && (
           <button
             onClick={() => {
               setIsProvisionOpen(true);
@@ -375,6 +387,13 @@ export default function AdminUsersPage() {
                   const isBusy = updatingUserId === u.id;
                   const isContestAdmin = u.role === "contest_admin";
                   const assignmentCount = u.assigned_contests?.length || 0;
+                  const isPrimarySuperAdmin = u.email.toLowerCase() === "phaneendhra2508@gmail.com";
+                  const isTargetAdminOrSuper = u.role === "admin" || u.role === "super_admin";
+                  const canEditRole =
+                    !isBusy &&
+                    !isPrimarySuperAdmin &&
+                    (effectiveCallerRole === "super_admin" ||
+                      (effectiveCallerRole === "admin" && !isTargetAdminOrSuper));
 
                   return (
                     <tr key={u.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
@@ -386,19 +405,46 @@ export default function AdminUsersPage() {
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <select
-                          value={u.role}
-                          disabled={isBusy || callerRole !== "super_admin"}
-                          onChange={(e) => handleUpdateRole(u.id, e.target.value as UserRole)}
-                          className="px-2 py-1 rounded-lg border border-[#E7E7E2] dark:border-[#27273D] bg-[#FAFAF8] dark:bg-[#12121A] text-xs font-semibold text-[#232946] dark:text-white focus:outline-none focus:border-[#5B5FEF] disabled:opacity-60"
-                        >
-                          <option value="student">Student</option>
-                          <option value="contest_admin">Contest Admin</option>
-                          <option value="admin">Admin</option>
-                          {callerRole === "super_admin" && (
-                            <option value="super_admin">Super Admin</option>
-                          )}
-                        </select>
+                        {isPrimarySuperAdmin ? (
+                          <div
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/50 text-[#4338CA] dark:text-[#A5B4FC] font-semibold text-xs"
+                            title="Primary Super Administrator account (Protected)"
+                          >
+                            <Lock size={12} className="text-[#5B5FEF]" />
+                            <span>Super Admin</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={u.role}
+                              disabled={!canEditRole}
+                              onChange={(e) => handleUpdateRole(u.id, e.target.value as UserRole)}
+                              title={
+                                !canEditRole
+                                  ? effectiveCallerRole === "admin"
+                                    ? "Administrators cannot modify peer Admins or Super Admins."
+                                    : "You do not have permission to modify this role."
+                                  : "Change user role"
+                              }
+                              className="px-2 py-1 rounded-lg border border-[#E7E7E2] dark:border-[#27273D] bg-[#FAFAF8] dark:bg-[#12121A] text-xs font-semibold text-[#232946] dark:text-white focus:outline-none focus:border-[#5B5FEF] disabled:opacity-60 cursor-pointer disabled:cursor-not-allowed"
+                            >
+                              <option value="student">Student</option>
+                              <option value="contest_admin">Contest Admin</option>
+                              {effectiveCallerRole === "super_admin" && (
+                                <>
+                                  <option value="admin">Admin</option>
+                                  <option value="super_admin">Super Admin</option>
+                                </>
+                              )}
+                              {effectiveCallerRole === "admin" && isTargetAdminOrSuper && (
+                                <option value={u.role} disabled>
+                                  {u.role === "super_admin" ? "Super Admin" : "Admin"}
+                                </option>
+                              )}
+                            </select>
+                            {isBusy && <Loader2 size={12} className="animate-spin text-[#5B5FEF]" />}
+                          </div>
+                        )}
                       </td>
 
                       <td className="py-3.5 px-4">
@@ -407,7 +453,7 @@ export default function AdminUsersPage() {
                             <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-[#4338CA] dark:text-[#A5B4FC] border border-indigo-200 dark:border-indigo-800/50">
                               {assignmentCount} {assignmentCount === 1 ? "contest" : "contests"}
                             </span>
-                            {callerRole === "super_admin" && (
+                            {(effectiveCallerRole === "super_admin" || effectiveCallerRole === "admin") && (
                               <button
                                 onClick={() => {
                                   setEditingAssignmentsUser(u);

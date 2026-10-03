@@ -327,7 +327,11 @@ export async function getAuthenticatedUser(req?: Request): Promise<Authenticated
           .eq("user_id", user.id)
           .maybeSingle();
 
-        const role = (roleData?.role as UserRole) || "admin";
+        const isPrimarySuperAdmin = user.email?.toLowerCase() === "phaneendhra2508@gmail.com";
+        const role: UserRole = (roleData?.role === "super_admin" || isPrimarySuperAdmin)
+          ? "super_admin"
+          : ((roleData?.role as UserRole) || "admin");
+
         return {
           userId: user.id,
           email: user.email || "",

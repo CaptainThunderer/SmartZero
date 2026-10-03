@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase-server";
 import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 import { assignContestAdmin, removeContestAdmin } from "@/lib/contest/service";
+import { updateUserRoleAndStatus, PRIMARY_SUPER_ADMIN_EMAIL } from "@/lib/auth/roleService";
 import type { UserRole, AccountStatus } from "@/types/auth";
 
 async function getAdminClient() {
@@ -68,12 +69,17 @@ export async function GET(req: Request) {
     .select("id, title, slug, status")
     .order("created_at", { ascending: false });
 
-  const users = (profiles || []).map((p) => ({
-    ...p,
-    account_status: (p.account_status as AccountStatus) || "verified",
-    role: (roleMap.get(p.id) as UserRole) || "student",
-    assigned_contests: assignmentsMap.get(p.id) || [],
-  }));
+  const users = (profiles || []).map((p) => {
+    const isPrimaryAdmin = p.email?.toLowerCase() === PRIMARY_SUPER_ADMIN_EMAIL.toLowerCase();
+    const dbRole = roleMap.get(p.id) as UserRole;
+    const role: UserRole = isPrimaryAdmin ? "super_admin" : (dbRole || "student");
+    return {
+      ...p,
+      account_status: (p.account_status as AccountStatus) || "verified",
+      role,
+      assigned_contests: assignmentsMap.get(p.id) || [],
+    };
+  });
 
   return NextResponse.json({
     users,
@@ -215,14 +221,8 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Forbidden: Admin privileges required." }, { status: 403 });
   }
 
-  const callerRole = authUser.role;
-  const supabase = await getAdminClient();
-  if (!supabase) {
-    return NextResponse.json({ success: true });
-  }
-
   let body: {
-    target_user_id: string;
+    target_user_id?: string;
     account_status?: AccountStatus;
     role?: UserRole;
     contest_ids?: string[];
@@ -234,66 +234,22 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  if (!body.target_user_id) {
-    return NextResponse.json({ error: "target_user_id is required." }, { status: 400 });
-  }
+  const result = await updateUserRoleAndStatus({
+    callerUserId: authUser.userId,
+    callerRole: authUser.role,
+    targetUserId: body.target_user_id || "",
+    newRole: body.role,
+    accountStatus: body.account_status,
+    contestIds: body.contest_ids,
+  });
 
-  // Enforce role hierarchy: only super_admin can set admin, super_admin, or contest_admin
-  if (body.role) {
-    if (callerRole !== "super_admin") {
-      return NextResponse.json(
-        { error: "Forbidden: Only Super Administrators can modify administrative roles." },
-        { status: 403 }
-      );
-    }
-  }
-
-  // Update profile account status if requested
-  if (body.account_status) {
-    const { error: profErr } = await supabase
-      .from("profiles")
-      .update({ account_status: body.account_status })
-      .eq("id", body.target_user_id);
-
-    if (profErr) {
-      return NextResponse.json({ error: profErr.message }, { status: 500 });
-    }
-  }
-
-  // Update role if requested
-  if (body.role) {
-    const { error: roleErr } = await supabase.from("user_roles").upsert({
-      user_id: body.target_user_id,
-      role: body.role,
-    });
-
-    if (roleErr) {
-      return NextResponse.json({ error: roleErr.message }, { status: 500 });
-    }
-
-    // Update contest assignments if contest_ids provided
-    if (body.role === "contest_admin" && Array.isArray(body.contest_ids)) {
-      // Clear existing
-      await supabase
-        .from("contest_admin_assignments")
-        .delete()
-        .eq("admin_id", body.target_user_id);
-
-      // Insert new assignments
-      for (const cid of body.contest_ids) {
-        await supabase.from("contest_admin_assignments").insert({
-          contest_id: cid,
-          admin_id: body.target_user_id,
-          assigned_by: authUser.userId,
-        });
-      }
-    }
+  if (!result.success) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
   return NextResponse.json({
     success: true,
-    target_user_id: body.target_user_id,
-    account_status: body.account_status,
-    role: body.role,
+    ...result.user,
+    target_user_id: result.user?.id,
   });
 }
