@@ -112,6 +112,10 @@ export default function LiveContestExamPage({
         setAllowRetake(data.allow_retake ?? false);
         setMaxAttempts(data.max_attempts ?? 1);
 
+        if (typeof data.seconds_remaining === "number") {
+          setSecondsRemaining(data.seconds_remaining);
+        }
+
         if (data.participant) {
           setAttemptNumber(data.participant.attempt_number || 1);
           setViolationsCount(data.participant.violations_count || 0);
@@ -152,15 +156,18 @@ export default function LiveContestExamPage({
       .finally(() => setLoading(false));
   }, [slug, user, router]);
 
-  // Sync server timer
+  // Sync server timer with user-authoritative state
   useEffect(() => {
+    const userId = user?.id || "demo-student-user";
     const sync = () => {
-      fetch(`/api/contest/${slug}/state`)
+      fetch(`/api/contest/${slug}/state?user_id=${userId}`)
         .then((r) => r.json())
         .then((data) => {
           if (data.status) {
             setContestStatus(data.status);
-            setSecondsRemaining(data.seconds_remaining);
+            if (typeof data.seconds_remaining === "number") {
+              setSecondsRemaining(data.seconds_remaining);
+            }
           }
         })
         .catch(() => {});
@@ -169,7 +176,7 @@ export default function LiveContestExamPage({
     sync();
     const interval = setInterval(sync, 10000);
     return () => clearInterval(interval);
-  }, [slug]);
+  }, [slug, user?.id]);
 
   // Handle final submission (manual or timer expiry)
   const executeSubmission = useCallback(async (reason: "manual" | "timer_expiry" | "integrity_violation" = "manual") => {
@@ -264,6 +271,9 @@ export default function LiveContestExamPage({
       const data = await res.json();
       if (data.success) {
         setExamStarted(true);
+        if (typeof data.seconds_remaining === "number") {
+          setSecondsRemaining(data.seconds_remaining);
+        }
       }
     } catch {
       setExamStarted(true);
@@ -291,6 +301,9 @@ export default function LiveContestExamPage({
         setAnswers({});
         setCurrentIndex(0);
         setViolationsCount(0);
+        if (typeof data.seconds_remaining === "number") {
+          setSecondsRemaining(data.seconds_remaining);
+        }
       }
     } catch (err) {
       console.error("Retake error", err);

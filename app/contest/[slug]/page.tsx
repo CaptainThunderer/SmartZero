@@ -63,10 +63,30 @@ export default function StudentContestPage({
       .finally(() => setLoading(false));
   }, [slug]);
 
+  // Auto-detect existing participant registration
+  useEffect(() => {
+    const currentUserId = user?.id || profile?.id;
+    if (!currentUserId || !slug) return;
+
+    fetch(`/api/contest/${slug}/questions?user_id=${currentUserId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.participant) {
+          setParticipant(d.participant);
+        }
+      })
+      .catch(() => {});
+  }, [slug, user?.id, profile?.id]);
+
   // Sync server timer periodically
   useEffect(() => {
+    const currentUserId = user?.id || profile?.id;
+    const url = currentUserId
+      ? `/api/contest/${slug}/state?user_id=${currentUserId}`
+      : `/api/contest/${slug}/state`;
+
     const syncTimer = () => {
-      fetch(`/api/contest/${slug}/state`)
+      fetch(url)
         .then((r) => r.json())
         .then((d) => {
           if (d.status) {
@@ -81,7 +101,7 @@ export default function StudentContestPage({
     syncTimer();
     const interval = setInterval(syncTimer, 4000);
     return () => clearInterval(interval);
-  }, [slug]);
+  }, [slug, user?.id, profile?.id]);
 
   // Local 1-second countdown tick
   useEffect(() => {
@@ -116,7 +136,11 @@ export default function StudentContestPage({
       setJoining(false);
 
       if (!res.ok || data.error) {
-        setErrorMsg(data.error || "Failed to join contest.");
+        const raw = data.error || "";
+        const friendly = raw.includes("duplicate key") || raw.includes("unique constraint")
+          ? "Could not start attempt. Please try again."
+          : raw || "Failed to join contest.";
+        setErrorMsg(friendly);
       } else {
         setParticipant(data.participant);
       }

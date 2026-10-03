@@ -44,5 +44,7 @@ export async function POST(
   return NextResponse.json({
     success: true,
     participant: result.participant,
+    effective_deadline: result.effectiveDeadline,
+    seconds_remaining: result.secondsRemaining,
   });
 }

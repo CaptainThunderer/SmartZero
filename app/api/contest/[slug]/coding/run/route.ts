@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getContestBySlug, getCodingQuestionRaw } from "@/lib/contest/service";
+import { getContestBySlug, getCodingQuestionRaw, getParticipant, getEffectiveAttemptDeadline } from "@/lib/contest/service";
 import { defaultJudgeWorker } from "@/lib/judge/service";
 import { JUDGE_RESOURCE_LIMITS } from "@/lib/judge/config";
 import { getAuthenticatedUser } from "@/lib/auth/studentSession";
@@ -20,6 +20,15 @@ export async function POST(
   const authUser = await getAuthenticatedUser(req);
   if (!authUser) {
     return NextResponse.json({ error: "Authentication required to run code." }, { status: 401 });
+  }
+
+  const participant = await getParticipant(contest.id, authUser.userId);
+  const deadline = getEffectiveAttemptDeadline(contest, participant);
+  if (deadline.isExpired) {
+    return NextResponse.json(
+      { error: "Exam time has expired. Submissions are closed." },
+      { status: 403 }
+    );
   }
 
   let body: {

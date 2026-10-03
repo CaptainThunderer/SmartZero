@@ -640,6 +640,45 @@ export async function getCodingQuestionRaw(
 // PARTICIPANT & PASSCODE OPERATIONS
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Authoritative Attempt Deadline:
+ * EFFECTIVE DEADLINE = min(started_at + duration_minutes, contest.end_at)
+ * Server-authoritative: client timers/clocks are never trusted.
+ */
+export function getEffectiveAttemptDeadline(
+  contest: { end_at: string; duration_minutes: number },
+  participant?: { started_at?: string | null } | null
+): {
+  effectiveDeadline: Date;
+  effectiveDeadlineIso: string;
+  isExpired: boolean;
+  secondsRemaining: number;
+} {
+  const contestEndMs = new Date(contest.end_at).getTime();
+  const nowMs = Date.now();
+
+  let effectiveEndMs = contestEndMs;
+
+  if (participant?.started_at) {
+    const startedMs = new Date(participant.started_at).getTime();
+    if (!isNaN(startedMs)) {
+      const attemptEndMs = startedMs + (contest.duration_minutes || 60) * 60 * 1000;
+      effectiveEndMs = Math.min(attemptEndMs, contestEndMs);
+    }
+  }
+
+  const effectiveDeadline = new Date(effectiveEndMs);
+  const secondsRemaining = Math.max(0, Math.floor((effectiveEndMs - nowMs) / 1000));
+  const isExpired = nowMs >= effectiveEndMs;
+
+  return {
+    effectiveDeadline,
+    effectiveDeadlineIso: effectiveDeadline.toISOString(),
+    isExpired,
+    secondsRemaining,
+  };
+}
+
 export async function registerContestParticipant(params: {
   contest_id: string;
   user_id: string;
@@ -657,11 +696,63 @@ export async function registerContestParticipant(params: {
     return { participant: null, error: "Invalid contest passcode." };
   }
 
-  // 2. Prevent duplicate participants
-  const list = memoryStore.participants.get(params.contest_id) || [];
-  const existing = list.find((p) => p.user_id === params.user_id);
+  // 2. Authoritative check for existing participant in DB & memory
+  const existing = await getParticipant(params.contest_id, params.user_id, true);
   if (existing) {
+    // If the participant is already registered or in an active exam:
+    if (
+      existing.status === "registered" ||
+      existing.status === "ready" ||
+      existing.status === "in_exam" ||
+      existing.status === "in_progress"
+    ) {
+      return { participant: existing, error: null };
+    }
+
+    // If the participant has submitted an attempt:
+    if (
+      existing.status === "submitted" ||
+      existing.status === "auto_submitted" ||
+      existing.status === "finalized"
+    ) {
+      // Retake Decision Matrix
+      const now = Date.now();
+      const contestEndMs = new Date(contest.end_at).getTime();
+      if (now >= contestEndMs || contest.status === "ENDED" || contest.status === "FINAL_RESULTS") {
+        return { participant: existing, error: "This contest has ended. No new attempts can be started." };
+      }
+
+      if (!contest.allow_retake) {
+        return { participant: existing, error: "Retakes are not allowed for this contest." };
+      }
+
+      const currentAttempt = existing.attempt_number || 1;
+      const maxAttempts = contest.max_attempts || 1;
+      if (currentAttempt >= maxAttempts) {
+        return { participant: existing, error: "You have reached the maximum number of attempts for this contest." };
+      }
+
+      // Retake is allowed: start fresh attempt on same row
+      const retakeResult = await startNewAttempt({
+        contest_id: params.contest_id,
+        user_id: params.user_id,
+      });
+
+      if (retakeResult.error) {
+        return { participant: existing, error: retakeResult.error };
+      }
+
+      return { participant: retakeResult.participant, error: null };
+    }
+
     return { participant: existing, error: null };
+  }
+
+  // 3. Prevent registrations after contest end
+  const now = Date.now();
+  const contestEndMs = new Date(contest.end_at).getTime();
+  if (now >= contestEndMs || contest.status === "ENDED" || contest.status === "FINAL_RESULTS") {
+    return { participant: null, error: "This contest has ended. New participants cannot register." };
   }
 
   const p: ContestParticipant = {
@@ -671,6 +762,7 @@ export async function registerContestParticipant(params: {
     joined_at: new Date().toISOString(),
     status: "registered",
     score: 0,
+    attempt_number: 1,
     user_profile: params.user_profile,
   };
 
@@ -685,28 +777,52 @@ export async function registerContestParticipant(params: {
         user_id: p.user_id,
         status: p.status,
         score: p.score,
+        attempt_number: 1,
       }).select().single();
       if (error) {
-        return { participant: null, error: `Database error registering participant: ${error.message}` };
+        // Gracefully recover on duplicate key / unique constraint race
+        if (
+          error.code === "23505" ||
+          error.message.includes("duplicate key") ||
+          error.message.includes("unique constraint")
+        ) {
+          const recovered = await getParticipant(params.contest_id, params.user_id, true);
+          if (recovered) {
+            return { participant: recovered, error: null };
+          }
+        }
+        return { participant: null, error: "Could not register for contest. Please try again." };
       }
       return { participant: (data as ContestParticipant) || p, error: null };
-    } catch (err) {
-      return { participant: null, error: (err as Error).message || "Database connection failure." };
+    } catch {
+      const recovered = await getParticipant(params.contest_id, params.user_id, true);
+      if (recovered) {
+        return { participant: recovered, error: null };
+      }
+      return { participant: null, error: "Database connection failure. Please try again." };
     }
   }
 
+  const list = memoryStore.participants.get(params.contest_id) || [];
   list.push(p);
   memoryStore.participants.set(params.contest_id, list);
 
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
-      await supabase.from("contest_participants").insert({
+      const { error } = await supabase.from("contest_participants").insert({
         contest_id: p.contest_id,
         user_id: p.user_id,
         status: p.status,
         score: p.score,
+        attempt_number: 1,
       });
+      if (error && (error.code === "23505" || error.message.includes("duplicate key") || error.message.includes("unique constraint"))) {
+        const recovered = await getParticipant(params.contest_id, params.user_id, true);
+        if (recovered) {
+          return { participant: recovered, error: null };
+        }
+      }
     } catch {
       // Ignore Supabase error in local dev
     }
@@ -717,11 +833,12 @@ export async function registerContestParticipant(params: {
 
 export async function getParticipant(
   contest_id: string,
-  user_id: string
+  user_id: string,
+  forceFresh: boolean = false
 ): Promise<ContestParticipant | null> {
   const list = memoryStore.participants.get(contest_id) || [];
   const local = list.find((p) => p.user_id === user_id);
-  if (local) return local;
+  if (local && !forceFresh) return local;
 
   const supabase = await getSupabaseClient();
   if (supabase) {
@@ -733,15 +850,21 @@ export async function getParticipant(
         .eq("user_id", user_id)
         .single();
       if (data) {
-        list.push(data as ContestParticipant);
+        const p = data as ContestParticipant;
+        const idx = list.findIndex((x) => x.user_id === user_id);
+        if (idx >= 0) {
+          list[idx] = p;
+        } else {
+          list.push(p);
+        }
         memoryStore.participants.set(contest_id, list);
-        return data as ContestParticipant;
+        return p;
       }
     } catch {
       // Ignore
     }
   }
-  return null;
+  return local || null;
 }
 
 export async function listParticipants(contest_id: string, forceFresh: boolean = false): Promise<ContestParticipant[]> {
@@ -783,12 +906,31 @@ export async function recordMcqAnswer(params: {
     return { answer: null, error: "Contest has ended. Submissions are closed." };
   }
 
-  const participant = await getParticipant(params.contest_id, params.user_id);
-  if (participant?.status === "submitted") {
+  const participant = await getParticipant(params.contest_id, params.user_id, true);
+  if (
+    participant?.status === "submitted" ||
+    participant?.status === "auto_submitted" ||
+    participant?.status === "finalized"
+  ) {
     return { answer: null, error: "Exam has already been submitted." };
   }
-  if (participant && participant.status === "registered") {
+
+  // Authoritative Attempt Deadline Check: min(started_at + duration, contest.end_at)
+  const deadline = getEffectiveAttemptDeadline(contest, participant);
+  if (deadline.isExpired) {
+    await submitContestExam({
+      contest_id: params.contest_id,
+      user_id: params.user_id,
+      reason: "timeout",
+    });
+    return { answer: null, error: "Exam time has expired. Submissions are closed." };
+  }
+
+  if (participant && (participant.status === "registered" || participant.status === "ready")) {
     participant.status = "in_exam";
+    if (!participant.started_at) {
+      participant.started_at = new Date().toISOString();
+    }
   }
 
   if (isProduction()) {
@@ -936,7 +1078,7 @@ export async function calculateStudentMcqScore(
 export async function submitContestExam(params: {
   contest_id: string;
   user_id: string;
-  reason?: "manual" | "timeout" | "integrity_violation";
+  reason?: "manual" | "timeout" | "timer_expiry" | "integrity_violation";
   violations_count?: number;
 }): Promise<{
   success: boolean;
@@ -956,13 +1098,12 @@ export async function submitContestExam(params: {
     }
   }
 
-  let participant = await getParticipant(params.contest_id, params.user_id);
+  let participant = await getParticipant(params.contest_id, params.user_id, true);
   if (!participant) {
-    // If participant didn't exist in memory yet (e.g. quick test or direct route), register them
     const regResult = await registerContestParticipant({
       contest_id: params.contest_id,
       user_id: params.user_id,
-      passcode: "", // Skip if already authorized in route
+      passcode: "",
     });
     participant = regResult.participant;
   }
@@ -985,7 +1126,11 @@ export async function submitContestExam(params: {
 
   const scoreResult = await calculateStudentMcqScore(params.contest_id, params.user_id);
   const now = new Date().toISOString();
-  const nextStatus = params.reason === "integrity_violation" ? "auto_submitted" : "submitted";
+  const isAuto =
+    params.reason === "integrity_violation" ||
+    params.reason === "timeout" ||
+    params.reason === "timer_expiry";
+  const nextStatus = isAuto ? "auto_submitted" : "submitted";
 
   if (participant) {
     participant.status = nextStatus;
@@ -1028,7 +1173,12 @@ export async function submitContestExam(params: {
 export async function startContestExam(params: {
   contest_id: string;
   user_id: string;
-}): Promise<{ participant: ContestParticipant | null; error: string | null }> {
+}): Promise<{
+  participant: ContestParticipant | null;
+  effectiveDeadline?: string;
+  secondsRemaining?: number;
+  error: string | null;
+}> {
   const contest = await getContestById(params.contest_id);
   if (!contest) return { participant: null, error: "Contest not found." };
 
@@ -1037,7 +1187,13 @@ export async function startContestExam(params: {
     return { participant: null, error: "Contest is not currently live." };
   }
 
-  let participant = await getParticipant(params.contest_id, params.user_id);
+  const nowMs = Date.now();
+  const contestEndMs = new Date(contest.end_at).getTime();
+  if (nowMs >= contestEndMs) {
+    return { participant: null, error: "Cannot start exam. This contest has ended." };
+  }
+
+  let participant = await getParticipant(params.contest_id, params.user_id, true);
   if (!participant) {
     return { participant: null, error: "Participant is not registered for this contest." };
   }
@@ -1056,6 +1212,17 @@ export async function startContestExam(params: {
     participant.started_at = now;
   }
 
+  // Authoritative Attempt Deadline Check
+  const deadline = getEffectiveAttemptDeadline(contest, participant);
+  if (deadline.isExpired) {
+    await submitContestExam({
+      contest_id: params.contest_id,
+      user_id: params.user_id,
+      reason: "timeout",
+    });
+    return { participant, error: "Exam time has expired." };
+  }
+
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
@@ -1072,7 +1239,12 @@ export async function startContestExam(params: {
     }
   }
 
-  return { participant, error: null };
+  return {
+    participant,
+    effectiveDeadline: deadline.effectiveDeadlineIso,
+    secondsRemaining: deadline.secondsRemaining,
+    error: null,
+  };
 }
 
 export async function canStartNewAttempt(
@@ -1084,25 +1256,60 @@ export async function canStartNewAttempt(
     return { can_retake: false, current_attempts: 0, max_attempts: 1, reason: "Contest not found." };
   }
 
+  // 1. Contest ended check
+  const now = Date.now();
+  const contestEndMs = new Date(contest.end_at).getTime();
+  if (now >= contestEndMs || contest.status === "ENDED" || contest.status === "FINAL_RESULTS") {
+    return {
+      can_retake: false,
+      current_attempts: 0,
+      max_attempts: contest.max_attempts || 1,
+      reason: "This contest has ended. No new attempts can be started.",
+    };
+  }
+
+  // 2. Policy check
   if (!contest.allow_retake) {
     return {
       can_retake: false,
       current_attempts: 1,
       max_attempts: 1,
-      reason: "Retakes are not permitted for this contest.",
+      reason: "Retakes are not allowed for this contest.",
     };
   }
 
   const maxAttempts = contest.max_attempts || 1;
-  const participant = await getParticipant(contest_id, user_id);
-  const currentAttempt = participant?.attempt_number || 1;
+  const participant = await getParticipant(contest_id, user_id, true);
+  if (!participant) {
+    return {
+      can_retake: false,
+      current_attempts: 0,
+      max_attempts: maxAttempts,
+      reason: "Participant registration not found.",
+    };
+  }
 
+  // 3. Active attempt check: must finish before retake
+  if (participant.status === "in_exam" || participant.status === "in_progress") {
+    const deadlineCheck = getEffectiveAttemptDeadline(contest, participant);
+    if (!deadlineCheck.isExpired) {
+      return {
+        can_retake: false,
+        current_attempts: participant.attempt_number || 1,
+        max_attempts: maxAttempts,
+        reason: "Your current attempt is still active. Finish it before starting a retake.",
+      };
+    }
+  }
+
+  // 4. Max attempts check
+  const currentAttempt = participant.attempt_number || 1;
   if (currentAttempt >= maxAttempts) {
     return {
       can_retake: false,
       current_attempts: currentAttempt,
       max_attempts: maxAttempts,
-      reason: `Maximum attempts limit reached (${currentAttempt}/${maxAttempts}).`,
+      reason: "You have reached the maximum number of attempts for this contest.",
     };
   }
 
@@ -1136,7 +1343,7 @@ export async function startNewAttempt(params: {
 
   const nextAttemptNum = check.current_attempts + 1;
 
-  let participant = await getParticipant(params.contest_id, params.user_id);
+  let participant = await getParticipant(params.contest_id, params.user_id, true);
   if (participant) {
     participant.attempt_number = nextAttemptNum;
     participant.status = "ready";
@@ -1150,7 +1357,18 @@ export async function startNewAttempt(params: {
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
+      // Clear old answers from database for fresh attempt
       await supabase
+        .from("mcq_answers")
+        .delete()
+        .eq("contest_id", params.contest_id)
+        .eq("user_id", params.user_id);
+    } catch {
+      // Fall through
+    }
+
+    try {
+      const { data, error } = await supabase
         .from("contest_participants")
         .update({
           attempt_number: nextAttemptNum,
@@ -1162,7 +1380,21 @@ export async function startNewAttempt(params: {
           violations_count: 0,
         })
         .eq("contest_id", params.contest_id)
-        .eq("user_id", params.user_id);
+        .eq("user_id", params.user_id)
+        .select()
+        .single();
+
+      if (!error && data) {
+        participant = data as ContestParticipant;
+        const list = memoryStore.participants.get(params.contest_id) || [];
+        const idx = list.findIndex((p) => p.user_id === params.user_id);
+        if (idx >= 0) {
+          list[idx] = participant;
+        } else {
+          list.push(participant);
+        }
+        memoryStore.participants.set(params.contest_id, list);
+      }
     } catch {
       // Fall through
     }

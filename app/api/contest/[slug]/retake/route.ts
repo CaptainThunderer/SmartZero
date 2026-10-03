@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getContestBySlug, startNewAttempt, canStartNewAttempt } from "@/lib/contest/service";
+import { getContestBySlug, startNewAttempt, canStartNewAttempt, getEffectiveAttemptDeadline } from "@/lib/contest/service";
 import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 
 export async function POST(
@@ -49,8 +49,12 @@ export async function POST(
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
+  const deadline = getEffectiveAttemptDeadline(contest, result.participant);
+
   return NextResponse.json({
     success: true,
     participant: result.participant,
+    effective_deadline: deadline.effectiveDeadlineIso,
+    seconds_remaining: deadline.secondsRemaining,
   });
 }

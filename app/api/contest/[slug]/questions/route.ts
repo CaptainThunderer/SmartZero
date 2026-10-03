@@ -5,6 +5,8 @@ import {
   getStudentAnswers,
   computeContestStatus,
   getParticipant,
+  getEffectiveAttemptDeadline,
+  submitContestExam,
 } from "@/lib/contest/service";
 import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studentSession";
 
@@ -33,7 +35,7 @@ export async function GET(
     userId = identityCheck.authoritativeUserId;
   } else {
     // If not authenticated, allow viewing general questions if not in draft, but no personal answers
-    userId = "unauthenticated-viewer";
+    userId = requestedUserId || "unauthenticated-viewer";
   }
 
   const status = computeContestStatus(contest);
@@ -50,6 +52,21 @@ export async function GET(
   // Get participant record
   const participant = await getParticipant(contest.id, userId);
 
+  // Authoritative Attempt Deadline Check
+  const deadline = getEffectiveAttemptDeadline(contest, participant);
+  if (
+    deadline.isExpired &&
+    participant &&
+    (participant.status === "in_exam" || participant.status === "in_progress")
+  ) {
+    await submitContestExam({
+      contest_id: contest.id,
+      user_id: userId,
+      reason: "timeout",
+    });
+    participant.status = "auto_submitted";
+  }
+
   return NextResponse.json({
     contest_id: contest.id,
     title: contest.title,
@@ -62,6 +79,9 @@ export async function GET(
     allow_retake: contest.allow_retake ?? false,
     max_attempts: contest.max_attempts ?? 1,
     status,
+    effective_deadline: deadline.effectiveDeadlineIso,
+    seconds_remaining: deadline.secondsRemaining,
+    is_expired: deadline.isExpired,
     questions,
     answers,
     participant: participant

@@ -5,6 +5,8 @@ import {
   getContestQuestions,
   computeContestStatus,
   getParticipant,
+  getEffectiveAttemptDeadline,
+  submitContestExam,
 } from "@/lib/contest/service";
 import {
   defaultJudgeWorker,
@@ -76,10 +78,27 @@ export async function POST(
 
   const userId = identityCheck.authoritativeUserId;
 
-  const participant = await getParticipant(contest.id, userId);
-  if (participant?.status === "submitted") {
+  const participant = await getParticipant(contest.id, userId, true);
+  if (
+    participant?.status === "submitted" ||
+    participant?.status === "auto_submitted" ||
+    participant?.status === "finalized"
+  ) {
     return NextResponse.json(
       { error: "Exam has already been finalized and submitted." },
+      { status: 403 }
+    );
+  }
+
+  const deadline = getEffectiveAttemptDeadline(contest, participant);
+  if (deadline.isExpired) {
+    await submitContestExam({
+      contest_id: contest.id,
+      user_id: userId,
+      reason: "timeout",
+    });
+    return NextResponse.json(
+      { error: "Exam time has expired. Submissions are closed." },
       { status: 403 }
     );
   }

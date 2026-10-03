@@ -124,7 +124,7 @@ export interface ContestParticipant {
   status: ParticipantStatus;
   score: number;
   attempt_number?: number;
-  submission_reason?: "manual" | "timeout" | "integrity_violation";
+  submission_reason?: "manual" | "timeout" | "timer_expiry" | "integrity_violation";
   violations_count?: number;
   user_profile?: {
     full_name: string | null;

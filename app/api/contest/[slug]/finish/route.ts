@@ -13,7 +13,11 @@ export async function POST(
     return NextResponse.json({ error: "Contest not found." }, { status: 404 });
   }
 
-  let body: { user_id?: string } = {};
+  let body: {
+    user_id?: string;
+    reason?: "manual" | "timeout" | "timer_expiry" | "integrity_violation";
+    violations_count?: number;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -35,6 +39,8 @@ export async function POST(
   const result = await submitContestExam({
     contest_id: contest.id,
     user_id: userId,
+    reason: body.reason || "manual",
+    violations_count: body.violations_count,
   });
 
   if (!result.success && result.error && result.error !== "Exam has already been submitted.") {
