@@ -63,7 +63,7 @@ export default function AdminContestAnalyticsPage({
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#12121A] text-white flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--paper)] text-[var(--ink)] flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-[#5B5FEF]" />
       </div>
     );
@@ -72,9 +72,9 @@ export default function AdminContestAnalyticsPage({
   if (errorMsg || !analytics) {
     return (
       <div className="p-8 text-center space-y-4">
-        <HelpCircle size={32} className="mx-auto text-rose-400" />
-        <h2 className="text-sm font-bold text-white">Analytics Not Found</h2>
-        <p className="text-xs text-[#A0A6C2]">{errorMsg}</p>
+        <HelpCircle size={32} className="mx-auto text-rose-500 dark:text-rose-400" />
+        <h2 className="text-sm font-bold text-[var(--ink)]">Analytics Not Found</h2>
+        <p className="text-xs text-[var(--muted)]">{errorMsg}</p>
         <Link
           href={`/admin/contests/${id}`}
           className="text-xs text-[#5B5FEF] underline"
@@ -92,15 +92,15 @@ export default function AdminContestAnalyticsPage({
         <div className="flex items-center gap-3">
           <Link
             href={`/admin/contests/${id}`}
-            className="p-1.5 rounded-lg border border-[#27273D] bg-[#181824] text-[#A0A6C2] hover:text-white transition-colors"
+            className="p-1.5 rounded-lg border border-[var(--card-border)] bg-[var(--card)] text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
           >
             <ArrowLeft size={14} />
           </Link>
           <div>
-            <h1 className="text-base font-bold text-white">
+            <h1 className="text-base font-bold text-[var(--ink)]">
               {analytics.contest_title} • Cohort Analytics
             </h1>
-            <p className="text-[11px] text-[#A0A6C2]">
+            <p className="text-[11px] text-[var(--muted)]">
               Server-authoritative contest performance intelligence
             </p>
           </div>
@@ -108,7 +108,7 @@ export default function AdminContestAnalyticsPage({
 
         <Link
           href={`/admin/contests/${id}/similarity`}
-          className="px-3.5 py-1.5 rounded-xl border border-[#27273D] bg-[#181824] hover:bg-[#202030] text-xs font-semibold text-white flex items-center gap-2 transition-colors"
+          className="px-3.5 py-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:bg-[var(--subtle)] text-xs font-semibold text-[var(--ink)] flex items-center gap-2 transition-colors"
         >
           <FileCode2 size={13} className="text-[#5B5FEF]" />
           <span>Code Similarity Review</span>
@@ -117,121 +117,121 @@ export default function AdminContestAnalyticsPage({
 
       {/* Cohort Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-[#181824] border border-[#27273D] space-y-1">
-          <div className="text-[10px] text-[#A0A6C2] uppercase font-semibold flex items-center gap-1.5">
+        <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-1">
+          <div className="text-[10px] text-[var(--muted)] uppercase font-semibold flex items-center gap-1.5">
             <Users size={12} className="text-[#5B5FEF]" />
             <span>Participants</span>
           </div>
-          <div className="text-2xl font-bold font-mono text-white">
+          <div className="text-2xl font-bold font-mono text-[var(--ink)]">
             {analytics.total_participants}
           </div>
-          <div className="text-[10px] text-[#6B6F8A]">
+          <div className="text-[10px] text-[var(--muted)]">
             {analytics.completed_count} completed ({analytics.completion_rate_percent}%)
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#181824] border border-[#27273D] space-y-1">
-          <div className="text-[10px] text-[#A0A6C2] uppercase font-semibold flex items-center gap-1.5">
-            <TrendingUp size={12} className="text-emerald-400" />
+        <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-1">
+          <div className="text-[10px] text-[var(--muted)] uppercase font-semibold flex items-center gap-1.5">
+            <TrendingUp size={12} className="text-emerald-500 dark:text-emerald-400" />
             <span>Average Score</span>
           </div>
-          <div className="text-2xl font-bold font-mono text-emerald-400">
-            {analytics.average_score} <span className="text-xs text-[#6B6F8A]">pts</span>
+          <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+            {analytics.average_score} <span className="text-xs text-[var(--muted)]">pts</span>
           </div>
-          <div className="text-[10px] text-[#6B6F8A]">
+          <div className="text-[10px] text-[var(--muted)]">
             High: {analytics.highest_score} • Low: {analytics.lowest_score}
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#181824] border border-[#27273D] space-y-1">
-          <div className="text-[10px] text-[#A0A6C2] uppercase font-semibold flex items-center gap-1.5">
-            <CheckCircle2 size={12} className="text-blue-400" />
+        <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-1">
+          <div className="text-[10px] text-[var(--muted)] uppercase font-semibold flex items-center gap-1.5">
+            <CheckCircle2 size={12} className="text-blue-500 dark:text-blue-400" />
             <span>Completion Rate</span>
           </div>
-          <div className="text-2xl font-bold font-mono text-white">
+          <div className="text-2xl font-bold font-mono text-[var(--ink)]">
             {analytics.completion_rate_percent}%
           </div>
-          <div className="text-[10px] text-[#6B6F8A]">
+          <div className="text-[10px] text-[var(--muted)]">
             Full submission confirmations
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#181824] border border-[#27273D] space-y-1">
-          <div className="text-[10px] text-[#A0A6C2] uppercase font-semibold flex items-center gap-1.5">
-            <ShieldAlert size={12} className="text-amber-400" />
+        <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-1">
+          <div className="text-[10px] text-[var(--muted)] uppercase font-semibold flex items-center gap-1.5">
+            <ShieldAlert size={12} className="text-amber-500 dark:text-amber-400" />
             <span>Integrity Events</span>
           </div>
-          <div className="text-2xl font-bold font-mono text-amber-400">
+          <div className="text-2xl font-bold font-mono text-amber-600 dark:text-amber-400">
             {analytics.security_events_summary.total_events}
           </div>
-          <div className="text-[10px] text-[#6B6F8A]">
+          <div className="text-[10px] text-[var(--muted)]">
             {analytics.security_events_summary.flagged_participants_count} flagged participants
           </div>
         </div>
       </div>
 
       {/* AI Cohort Diagnostic Intelligence Card */}
-      <div className="p-6 rounded-2xl bg-[#181824] border border-[#27273D] space-y-5 shadow-xl relative overflow-hidden">
+      <div className="p-6 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-5 shadow-xl relative overflow-hidden">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#5B5FEF] to-[#8C52FF] flex items-center justify-center text-white shadow-lg">
               <Sparkles size={16} />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm font-bold text-[var(--ink)] flex items-center gap-2">
                 SmartZero AI • Cohort Diagnostic Intelligence
               </h3>
-              <p className="text-[10px] text-[#A0A6C2]">
+              <p className="text-[10px] text-[var(--muted)]">
                 Post-contest pedagogical difficulty evaluation & curriculum insights
               </p>
             </div>
           </div>
-          <span className="px-2.5 py-0.5 rounded text-[10px] font-bold font-mono bg-[#5B5FEF]/10 text-[#818CF8] border border-[#5B5FEF]/30">
+          <span className="px-2.5 py-0.5 rounded text-[10px] font-bold font-mono bg-[#5B5FEF]/10 text-[#5B5FEF] dark:text-[#818CF8] border border-[#5B5FEF]/30">
             Instructor Intelligence
           </span>
         </div>
 
         {aiLoading ? (
-          <div className="py-8 flex flex-col items-center justify-center space-y-2 text-xs text-[#A0A6C2]">
+          <div className="py-8 flex flex-col items-center justify-center space-y-2 text-xs text-[var(--muted)]">
             <Loader2 className="w-6 h-6 animate-spin text-[#5B5FEF]" />
             <span>Analyzing cohort submission dynamics and problem friction...</span>
           </div>
         ) : aiSummary ? (
           <div className="space-y-4 text-xs">
             {/* Cohort Summary */}
-            <div className="p-4 rounded-xl bg-[#12121A] border border-[#27273D] text-[#D8DCEF] leading-relaxed">
+            <div className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--card-border)] text-[var(--ink)] leading-relaxed">
               {aiSummary.cohortSummary}
             </div>
 
             {/* Difficulty Assessment */}
-            <div className="p-4 rounded-xl bg-[#12121A] border border-[#27273D] space-y-1">
-              <div className="text-[10px] uppercase font-bold text-[#A0A6C2] tracking-wider">
+            <div className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--card-border)] space-y-1">
+              <div className="text-[10px] uppercase font-bold text-[var(--muted)] tracking-wider">
                 Assessment Calibration & Difficulty
               </div>
-              <p className="text-white font-medium">{aiSummary.difficultyAssessment}</p>
+              <p className="text-[var(--ink)] font-medium">{aiSummary.difficultyAssessment}</p>
             </div>
 
             {/* Outlier Questions Analysis */}
             {aiSummary.outlierQuestions.length > 0 && (
               <div className="space-y-2">
-                <div className="text-[10px] uppercase font-bold text-[#A0A6C2] tracking-wider">
+                <div className="text-[10px] uppercase font-bold text-[var(--muted)] tracking-wider">
                   Outlier Questions & Completion Bottlenecks
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {aiSummary.outlierQuestions.map((oq, idx) => (
                     <div
                       key={idx}
-                      className="p-3.5 rounded-xl bg-[#12121A] border border-amber-900/30 space-y-1.5"
+                      className="p-3.5 rounded-xl bg-[var(--subtle)] border border-amber-500/20 dark:border-amber-900/30 space-y-1.5"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-white truncate max-w-[200px]">
+                        <span className="font-semibold text-[var(--ink)] truncate max-w-[200px]">
                           {oq.questionTitle}
                         </span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
                           {oq.successRate}% Success
                         </span>
                       </div>
-                      <p className="text-[11px] text-[#A0A6C2] leading-relaxed">
+                      <p className="text-[11px] text-[var(--muted)] leading-relaxed">
                         {oq.insight}
                       </p>
                     </div>
@@ -243,14 +243,14 @@ export default function AdminContestAnalyticsPage({
             {/* Curriculum Recommendations */}
             {aiSummary.curriculumRecommendations.length > 0 && (
               <div className="space-y-2">
-                <div className="text-[10px] uppercase font-bold text-[#A0A6C2] tracking-wider">
+                <div className="text-[10px] uppercase font-bold text-[var(--muted)] tracking-wider">
                   Recommended Curriculum Actions
                 </div>
                 <div className="space-y-1.5">
                   {aiSummary.curriculumRecommendations.map((rec, idx) => (
                     <div
                       key={idx}
-                      className="p-3 rounded-lg bg-[#12121A] border border-[#27273D] text-[#C5CBE3] flex items-start gap-2"
+                      className="p-3 rounded-lg bg-[var(--subtle)] border border-[var(--card-border)] text-[var(--ink)] flex items-start gap-2"
                     >
                       <span className="text-[#5B5FEF] font-bold">→</span>
                       <span>{rec}</span>
@@ -261,20 +261,20 @@ export default function AdminContestAnalyticsPage({
             )}
 
             {/* Official Disclaimer */}
-            <div className="pt-3 border-t border-[#27273D]/60 text-[10px] text-[#6B6F8A] italic">
+            <div className="pt-3 border-t border-[var(--card-border)] text-[10px] text-[var(--muted)] italic">
               {aiSummary.disclaimer}
             </div>
           </div>
         ) : (
-          <div className="p-4 rounded-xl bg-[#12121A] border border-[#27273D] text-xs text-[#6B6F8A] text-center">
+          <div className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--card-border)] text-xs text-[var(--muted)] text-center">
             {aiError || "Cohort AI diagnostic is unavailable."}
           </div>
         )}
       </div>
 
       {/* Score Distribution Chart */}
-      <div className="p-6 rounded-2xl bg-[#181824] border border-[#27273D] space-y-4">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-[#A0A6C2] flex items-center gap-2">
+      <div className="p-6 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-4">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--muted)] flex items-center gap-2">
           <BarChart3 size={14} className="text-[#5B5FEF]" />
           <span>Score Distribution</span>
         </h3>
@@ -282,27 +282,27 @@ export default function AdminContestAnalyticsPage({
           {analytics.score_distribution.map((b) => (
             <div
               key={b.range}
-              className="p-3.5 rounded-xl bg-[#12121A] border border-[#27273D] text-center"
+              className="p-3.5 rounded-xl bg-[var(--subtle)] border border-[var(--card-border)] text-center"
             >
-              <div className="text-[10px] text-[#6B6F8A] font-mono">{b.range} pts</div>
-              <div className="text-lg font-bold font-mono text-white mt-1">
+              <div className="text-[10px] text-[var(--muted)] font-mono">{b.range} pts</div>
+              <div className="text-lg font-bold font-mono text-[var(--ink)] mt-1">
                 {b.count}
               </div>
-              <div className="text-[9px] text-[#A0A6C2]">contestants</div>
+              <div className="text-[9px] text-[var(--muted)]">contestants</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Question Analytics Table */}
-      <div className="p-6 rounded-2xl bg-[#181824] border border-[#27273D] space-y-4">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-[#A0A6C2]">
+      <div className="p-6 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-4">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--muted)]">
           Question Performance & Accuracy
         </h3>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-[#27273D] text-[10px] text-[#6B6F8A] uppercase font-mono">
+              <tr className="border-b border-[var(--card-border)] text-[10px] text-[var(--muted)] uppercase font-mono">
                 <th className="pb-3">Type</th>
                 <th className="pb-3">Question</th>
                 <th className="pb-3 text-right">Max Pts</th>
@@ -311,29 +311,29 @@ export default function AdminContestAnalyticsPage({
                 <th className="pb-3 text-right">Success Rate</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#27273D]/60 font-mono">
+            <tbody className="divide-y divide-[var(--card-border)] font-mono">
               {analytics.question_analytics.map((qa) => (
-                <tr key={qa.question_id} className="hover:bg-[#1C1C2C] transition-colors">
+                <tr key={qa.question_id} className="hover:bg-[var(--subtle)] transition-colors">
                   <td className="py-3">
                     <span
                       className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold ${
                         qa.question_type === "mcq"
-                          ? "bg-purple-950/60 text-purple-300"
-                          : "bg-blue-950/60 text-blue-300"
+                          ? "bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/30"
+                          : "bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/30"
                       }`}
                     >
                       {qa.question_type}
                     </span>
                   </td>
-                  <td className="py-3 font-sans font-medium text-white max-w-xs truncate">
+                  <td className="py-3 font-sans font-medium text-[var(--ink)] max-w-xs truncate">
                     {qa.title}
                   </td>
-                  <td className="py-3 text-right text-[#A0A6C2]">{qa.max_marks}</td>
-                  <td className="py-3 text-right text-[#A0A6C2]">{qa.attempts_count}</td>
-                  <td className="py-3 text-right font-bold text-white">
+                  <td className="py-3 text-right text-[var(--muted)]">{qa.max_marks}</td>
+                  <td className="py-3 text-right text-[var(--muted)]">{qa.attempts_count}</td>
+                  <td className="py-3 text-right font-bold text-[var(--ink)]">
                     {qa.average_score}
                   </td>
-                  <td className="py-3 text-right font-bold text-emerald-400">
+                  <td className="py-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
                     {qa.success_rate_percent}%
                   </td>
                 </tr>

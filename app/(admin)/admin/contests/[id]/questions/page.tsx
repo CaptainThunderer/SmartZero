@@ -178,7 +178,7 @@ export default function ContestQuestionsPage({
       <div className="flex items-center justify-between">
         <Link
           href={`/admin/contests/${id}`}
-          className="inline-flex items-center gap-1.5 text-xs text-[#A0A6C2] hover:text-white transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
         >
           <ArrowLeft size={14} />
           <span>Back to Contest Details</span>
@@ -187,7 +187,7 @@ export default function ContestQuestionsPage({
         <div className="flex items-center gap-2">
           <Link
             href={`/admin/contests/${id}/import`}
-            className="px-3.5 py-1.5 rounded-xl border border-[#27273D] hover:bg-[#1E1E2E] text-xs font-semibold flex items-center gap-1.5 text-white transition-colors"
+            className="px-3.5 py-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:bg-[var(--subtle)] text-xs font-semibold flex items-center gap-1.5 text-[var(--ink)] transition-colors shadow-xs"
           >
             <Upload size={13} />
             <span>Import Questions</span>
@@ -195,7 +195,7 @@ export default function ContestQuestionsPage({
 
           <button
             onClick={() => setShowMcqModal(true)}
-            className="px-3 py-1.5 rounded-xl bg-[#5B5FEF] hover:bg-[#4D51E0] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+            className="px-3.5 py-1.5 rounded-xl bg-[#5B5FEF] hover:bg-[#4D51E0] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
           >
             <Plus size={13} />
             <span>Add MCQ</span>
@@ -203,7 +203,7 @@ export default function ContestQuestionsPage({
 
           <button
             onClick={() => setShowCodeModal(true)}
-            className="px-3 py-1.5 rounded-xl bg-[#252646] hover:bg-[#30325A] text-[#A5B4FC] text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            className="px-3.5 py-1.5 rounded-xl bg-[#5B5FEF]/10 dark:bg-[#252646] hover:bg-[#5B5FEF]/20 dark:hover:bg-[#30325A] text-[#5B5FEF] dark:text-[#A5B4FC] border border-[#5B5FEF]/30 text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
           >
             <Plus size={13} />
             <span>Add Coding</span>
@@ -211,16 +211,16 @@ export default function ContestQuestionsPage({
         </div>
       </div>
 
-      <div className="bg-[#181824] border border-[#27273D] rounded-2xl p-6 space-y-4">
+      <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-2xl p-6 space-y-4 shadow-xs">
         <div>
-          <h1 className="text-lg font-bold">Contest Question Bank</h1>
-          <p className="text-xs text-[#A0A6C2]">
+          <h1 className="text-lg font-bold text-[var(--ink)]">Contest Question Bank</h1>
+          <p className="text-xs text-[var(--muted)]">
             Order questions and assign positive / negative marks.
           </p>
         </div>
 
         {errorMsg && (
-          <div className="p-3 rounded-xl bg-red-950/40 border border-red-900/50 flex items-center gap-2 text-xs text-red-400">
+          <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
             <AlertCircle size={14} />
             <span>{errorMsg}</span>
           </div>
@@ -231,10 +231,10 @@ export default function ContestQuestionsPage({
             <Loader2 className="w-6 h-6 animate-spin text-[#5B5FEF]" />
           </div>
         ) : questions.length === 0 ? (
-          <div className="p-10 rounded-xl bg-[#12121A] border border-[#27273D] text-center space-y-2">
-            <FileQuestion size={28} className="mx-auto text-[#6B6F8A]" />
-            <div className="text-xs font-semibold">No questions linked to this contest yet</div>
-            <div className="text-[11px] text-[#A0A6C2]">
+          <div className="p-10 rounded-xl bg-[var(--subtle)] border border-[var(--line)] text-center space-y-2">
+            <FileQuestion size={28} className="mx-auto text-[var(--muted)]" />
+            <div className="text-xs font-semibold text-[var(--ink)]">No questions linked to this contest yet</div>
+            <div className="text-[11px] text-[var(--muted)]">
               Add questions manually or import via JSON/CSV/XLSX.
             </div>
           </div>
@@ -243,25 +243,25 @@ export default function ContestQuestionsPage({
             {questions.map((cq, idx) => (
               <div
                 key={cq.id}
-                className="p-4 rounded-xl bg-[#12121A] border border-[#27273D] flex items-center justify-between gap-4 text-xs"
+                className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--line)] flex items-center justify-between gap-4 text-xs"
               >
                 <div className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-lg bg-[#252646] text-[#A5B4FC] font-mono text-[11px] font-bold flex items-center justify-center shrink-0">
+                  <span className="w-6 h-6 rounded-lg bg-[#5B5FEF]/10 dark:bg-[#252646] text-[#5B5FEF] dark:text-[#A5B4FC] font-mono text-[11px] font-bold flex items-center justify-center shrink-0">
                     {idx + 1}
                   </span>
                   <div>
-                    <div className="font-semibold text-white">
+                    <div className="font-semibold text-[var(--ink)]">
                       {cq.question_type === "mcq"
                         ? cq.mcq_details?.question_text || "Multiple Choice Question"
                         : cq.coding_details?.title || "Coding Challenge"}
                     </div>
-                    <div className="text-[11px] text-[#A0A6C2] flex items-center gap-2 mt-0.5">
-                      <span className="uppercase text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#252646] text-[#A5B4FC]">
+                    <div className="text-[11px] text-[var(--muted)] flex items-center gap-2 mt-0.5">
+                      <span className="uppercase text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#5B5FEF]/10 dark:bg-[#252646] text-[#5B5FEF] dark:text-[#A5B4FC]">
                         {cq.question_type}
                       </span>
                       <span>Marks: {cq.marks}</span>
                       {cq.negative_marks > 0 && (
-                        <span className="text-red-400">Penalty: -{cq.negative_marks}</span>
+                        <span className="text-red-500 dark:text-red-400">Penalty: -{cq.negative_marks}</span>
                       )}
                     </div>
                   </div>
@@ -271,7 +271,7 @@ export default function ContestQuestionsPage({
                   <button
                     disabled={idx === 0}
                     onClick={() => moveQuestion(idx, "up")}
-                    className="p-1.5 rounded hover:bg-[#1E1E2E] disabled:opacity-30 text-[#A0A6C2]"
+                    className="p-1.5 rounded hover:bg-[var(--card)] disabled:opacity-30 text-[var(--muted)] hover:text-[var(--ink)]"
                     title="Move up"
                   >
                     <ArrowUp size={14} />
@@ -279,7 +279,7 @@ export default function ContestQuestionsPage({
                   <button
                     disabled={idx === questions.length - 1}
                     onClick={() => moveQuestion(idx, "down")}
-                    className="p-1.5 rounded hover:bg-[#1E1E2E] disabled:opacity-30 text-[#A0A6C2]"
+                    className="p-1.5 rounded hover:bg-[var(--card)] disabled:opacity-30 text-[var(--muted)] hover:text-[var(--ink)]"
                     title="Move down"
                   >
                     <ArrowDown size={14} />
@@ -294,12 +294,12 @@ export default function ContestQuestionsPage({
       {/* MCQ Modal */}
       {showMcqModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#181824] border border-[#27273D] rounded-2xl p-6 max-w-lg w-full space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#27273D]">
-              <h2 className="text-sm font-bold">Add Multiple Choice Question</h2>
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--line)]">
+              <h2 className="text-sm font-bold text-[var(--ink)]">Add Multiple Choice Question</h2>
               <button
                 onClick={() => setShowMcqModal(false)}
-                className="text-[#6B6F8A] hover:text-white"
+                className="text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
               >
                 <X size={16} />
               </button>
@@ -307,19 +307,19 @@ export default function ContestQuestionsPage({
 
             <form onSubmit={handleAddMcq} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[#A0A6C2] font-semibold mb-1">Question Prompt *</label>
+                <label className="block text-[var(--muted)] font-semibold mb-1">Question Prompt *</label>
                 <textarea
                   required
                   rows={3}
                   value={mcqText}
                   onChange={(e) => setMcqText(e.target.value)}
                   placeholder="What is the average time complexity of QuickSort?"
-                  className="w-full px-3 py-2 rounded-xl border border-[#27273D] bg-[#12121A] text-xs focus:outline-none focus:border-[#5B5FEF]"
+                  className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="block text-[#A0A6C2] font-semibold">Options (Select Correct)</label>
+                <label className="block text-[var(--muted)] font-semibold">Options (Select Correct)</label>
                 {[
                   { label: "A", val: mcqOptA, set: setMcqOptA },
                   { label: "B", val: mcqOptB, set: setMcqOptB },
@@ -334,13 +334,13 @@ export default function ContestQuestionsPage({
                       onChange={() => setCorrectIdx(i)}
                       className="text-[#5B5FEF]"
                     />
-                    <span className="font-bold text-[#A0A6C2]">{opt.label}:</span>
+                    <span className="font-bold text-[var(--muted)]">{opt.label}:</span>
                     <input
                       type="text"
                       value={opt.val}
                       onChange={(e) => opt.set(e.target.value)}
                       placeholder={`Option ${opt.label} text`}
-                      className="flex-1 px-3 py-1.5 rounded-lg border border-[#27273D] bg-[#12121A] text-xs focus:outline-none focus:border-[#5B5FEF]"
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
                     />
                   </div>
                 ))}
@@ -348,40 +348,40 @@ export default function ContestQuestionsPage({
 
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <div>
-                  <label className="block text-[#A0A6C2] font-semibold mb-1">Marks</label>
+                  <label className="block text-[var(--muted)] font-semibold mb-1">Marks</label>
                   <input
                     type="number"
                     min={0.5}
                     step={0.5}
                     value={mcqMarks}
                     onChange={(e) => setMcqMarks(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 rounded-lg border border-[#27273D] bg-[#12121A] text-xs"
+                    className="w-full px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[#A0A6C2] font-semibold mb-1">Negative Marks</label>
+                  <label className="block text-[var(--muted)] font-semibold mb-1">Negative Marks</label>
                   <input
                     type="number"
                     min={0}
                     step={0.25}
                     value={mcqNegativeMarks}
                     onChange={(e) => setMcqNegativeMarks(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 rounded-lg border border-[#27273D] bg-[#12121A] text-xs"
+                    className="w-full px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)]"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#27273D]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--line)]">
                 <button
                   type="button"
                   onClick={() => setShowMcqModal(false)}
-                  className="px-3 py-1.5 rounded-lg text-[#A0A6C2] hover:bg-[#1E1E2E]"
+                  className="px-3 py-1.5 rounded-lg text-[var(--muted)] hover:bg-[var(--subtle)] hover:text-[var(--ink)] transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-[#5B5FEF] hover:bg-[#4D51E0] text-white font-medium"
+                  className="px-4 py-1.5 rounded-lg bg-[#5B5FEF] hover:bg-[#4D51E0] text-white font-medium shadow-xs transition-colors"
                 >
                   Add MCQ
                 </button>
@@ -394,12 +394,12 @@ export default function ContestQuestionsPage({
       {/* Coding Modal */}
       {showCodeModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#181824] border border-[#27273D] rounded-2xl p-6 max-w-lg w-full space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#27273D]">
-              <h2 className="text-sm font-bold">Add Coding Problem</h2>
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--line)]">
+              <h2 className="text-sm font-bold text-[var(--ink)]">Add Coding Problem</h2>
               <button
                 onClick={() => setShowCodeModal(false)}
-                className="text-[#6B6F8A] hover:text-white"
+                className="text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
               >
                 <X size={16} />
               </button>
@@ -407,74 +407,74 @@ export default function ContestQuestionsPage({
 
             <form onSubmit={handleAddCode} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[#A0A6C2] font-semibold mb-1">Problem Title *</label>
+                <label className="block text-[var(--muted)] font-semibold mb-1">Problem Title *</label>
                 <input
                   required
                   type="text"
                   value={codeTitle}
                   onChange={(e) => setCodeTitle(e.target.value)}
                   placeholder="e.g. Reverse Linked List"
-                  className="w-full px-3 py-2 rounded-xl border border-[#27273D] bg-[#12121A] text-xs focus:outline-none focus:border-[#5B5FEF]"
+                  className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
                 />
               </div>
 
               <div>
-                <label className="block text-[#A0A6C2] font-semibold mb-1">Description *</label>
+                <label className="block text-[var(--muted)] font-semibold mb-1">Description *</label>
                 <textarea
                   required
                   rows={3}
                   value={codeDesc}
                   onChange={(e) => setCodeDesc(e.target.value)}
                   placeholder="Given the head of a singly linked list, reverse the list..."
-                  className="w-full px-3 py-2 rounded-xl border border-[#27273D] bg-[#12121A] text-xs focus:outline-none focus:border-[#5B5FEF]"
+                  className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[#A0A6C2] font-semibold mb-1">Sample Input</label>
+                  <label className="block text-[var(--muted)] font-semibold mb-1">Sample Input</label>
                   <textarea
                     rows={2}
                     value={sampleInput}
                     onChange={(e) => setSampleInput(e.target.value)}
                     placeholder="[1,2,3,4,5]"
-                    className="w-full px-3 py-1.5 rounded-lg border border-[#27273D] bg-[#12121A] text-xs font-mono"
+                    className="w-full px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--subtle)] text-xs font-mono text-[var(--ink)] placeholder-[var(--muted)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[#A0A6C2] font-semibold mb-1">Sample Output</label>
+                  <label className="block text-[var(--muted)] font-semibold mb-1">Sample Output</label>
                   <textarea
                     rows={2}
                     value={sampleOutput}
                     onChange={(e) => setSampleOutput(e.target.value)}
                     placeholder="[5,4,3,2,1]"
-                    className="w-full px-3 py-1.5 rounded-lg border border-[#27273D] bg-[#12121A] text-xs font-mono"
+                    className="w-full px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--subtle)] text-xs font-mono text-[var(--ink)] placeholder-[var(--muted)]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[#A0A6C2] font-semibold mb-1">Marks</label>
+                <label className="block text-[var(--muted)] font-semibold mb-1">Marks</label>
                 <input
                   type="number"
                   min={1}
                   value={codeMarks}
                   onChange={(e) => setCodeMarks(Number(e.target.value))}
-                  className="w-32 px-3 py-1.5 rounded-lg border border-[#27273D] bg-[#12121A] text-xs"
+                  className="w-32 px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)]"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-[#27273D]">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--line)]">
                 <button
                   type="button"
                   onClick={() => setShowCodeModal(false)}
-                  className="px-3 py-1.5 rounded-lg text-[#A0A6C2] hover:bg-[#1E1E2E]"
+                  className="px-3 py-1.5 rounded-lg text-[var(--muted)] hover:bg-[var(--subtle)] hover:text-[var(--ink)] transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-[#5B5FEF] hover:bg-[#4D51E0] text-white font-medium"
+                  className="px-4 py-1.5 rounded-lg bg-[#5B5FEF] hover:bg-[#4D51E0] text-white font-medium shadow-xs transition-colors"
                 >
                   Add Problem
                 </button>

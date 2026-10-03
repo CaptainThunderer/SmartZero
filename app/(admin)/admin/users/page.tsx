@@ -556,7 +556,7 @@ export default function AdminUsersPage() {
               </div>
               <button
                 onClick={() => setIsProvisionOpen(false)}
-                className="text-[#6B6F8A] dark:text-[#A0A6C2] hover:text-white"
+                className="text-[#6B6F8A] dark:text-[#A0A6C2] hover:text-[#232946] dark:hover:text-white transition-colors"
               >
                 <X size={18} />
               </button>
@@ -643,7 +643,7 @@ export default function AdminUsersPage() {
                                   setProvContestIds(provContestIds.filter((id) => id !== c.id));
                                 }
                               }}
-                              className="rounded border-[#27273D] text-[#5B5FEF]"
+                              className="rounded border-[#E7E7E2] dark:border-[#27273D] text-[#5B5FEF]"
                             />
                             <span className="text-[11px] text-[#232946] dark:text-white truncate">{c.title}</span>
                           </label>
@@ -689,7 +689,7 @@ export default function AdminUsersPage() {
               </div>
               <button
                 onClick={() => setEditingAssignmentsUser(null)}
-                className="text-[#6B6F8A] dark:text-[#A0A6C2] hover:text-white"
+                className="text-[#6B6F8A] dark:text-[#A0A6C2] hover:text-[#232946] dark:hover:text-white transition-colors"
               >
                 <X size={18} />
               </button>
@@ -720,7 +720,7 @@ export default function AdminUsersPage() {
                             setSelectedContestIds(selectedContestIds.filter((id) => id !== c.id));
                           }
                         }}
-                        className="rounded border-[#27273D] text-[#5B5FEF]"
+                        className="rounded border-[#E7E7E2] dark:border-[#27273D] text-[#5B5FEF]"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-semibold text-[#232946] dark:text-white truncate">{c.title}</div>

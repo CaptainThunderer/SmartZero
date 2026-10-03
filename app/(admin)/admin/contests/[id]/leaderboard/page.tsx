@@ -241,10 +241,10 @@ export default function AdminLiveLeaderboardPage({
 
   if (errorMsg && !contest) {
     return (
-      <div className="max-w-2xl mx-auto p-8 rounded-2xl bg-[#181824] border border-red-900/40 text-center space-y-4">
-        <AlertCircle size={32} className="mx-auto text-red-400" />
-        <h2 className="text-base font-bold text-white">Live Monitoring Unavailable</h2>
-        <p className="text-xs text-[#A0A6C2]">{errorMsg}</p>
+      <div className="max-w-2xl mx-auto p-8 rounded-2xl bg-[var(--card)] border border-red-500/30 text-center space-y-4">
+        <AlertCircle size={32} className="mx-auto text-red-500 dark:text-red-400" />
+        <h2 className="text-base font-bold text-[var(--ink)]">Live Monitoring Unavailable</h2>
+        <p className="text-xs text-[var(--muted)]">{errorMsg}</p>
         <Link
           href={`/admin/contests/${id}`}
           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#5B5FEF] text-xs font-semibold text-white"
@@ -259,52 +259,52 @@ export default function AdminLiveLeaderboardPage({
   return (
     <div className="space-y-6">
       {/* ── TOP BREADCRUMB & HEADER ── */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-[#27273D]">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-[var(--line)]">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Link
               href={`/admin/contests/${id}`}
-              className="inline-flex items-center gap-1 text-xs text-[#A0A6C2] hover:text-white transition-colors"
+              className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
             >
               <ArrowLeft size={14} />
               <span>Contest Details</span>
             </Link>
-            <span className="text-[#6B6F8A]">/</span>
-            <span className="text-xs font-semibold text-[#A5B4FC]">Live Monitoring</span>
+            <span className="text-[var(--muted)]">/</span>
+            <span className="text-xs font-semibold text-[#5B5FEF] dark:text-[#A5B4FC]">Live Monitoring</span>
           </div>
 
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-              <Trophy size={20} className="text-amber-400" />
+            <h1 className="text-xl font-bold tracking-tight text-[var(--ink)] flex items-center gap-2">
+              <Trophy size={20} className="text-amber-500 dark:text-amber-400" />
               <span>SMARTZERO LIVE LEADERBOARD</span>
             </h1>
 
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span>{contest?.status || "LIVE"}</span>
             </span>
           </div>
 
-          <p className="text-xs text-[#A0A6C2]">
-            Contest: <strong className="text-white">{contest?.title}</strong> ({contest?.slug}) • Server Authoritative Realtime Monitoring
+          <p className="text-xs text-[var(--muted)]">
+            Contest: <strong className="text-[var(--ink)]">{contest?.title}</strong> ({contest?.slug}) • Server Authoritative Realtime Monitoring
           </p>
         </div>
 
         {/* Realtime Status Indicator & Manual Refresh */}
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#12121A] border border-[#27273D] text-[11px]">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--card)] border border-[var(--card-border)] text-[11px] shadow-xs">
             <Radio
               size={13}
               className={
                 connectionState === "LIVE"
-                  ? "text-emerald-400 animate-pulse"
-                  : "text-amber-400 animate-bounce"
+                  ? "text-emerald-500 dark:text-emerald-400 animate-pulse"
+                  : "text-amber-500 dark:text-amber-400 animate-bounce"
               }
             />
-            <span className="text-[#A0A6C2]">Realtime:</span>
+            <span className="text-[var(--muted)]">Realtime:</span>
             <span
               className={`font-semibold ${
-                connectionState === "LIVE" ? "text-emerald-400" : "text-amber-400"
+                connectionState === "LIVE" ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
               }`}
             >
               {connectionState === "LIVE" ? "LIVE (Connected)" : "POLLING (3s)"}
@@ -314,7 +314,7 @@ export default function AdminLiveLeaderboardPage({
           <button
             onClick={() => fetchLeaderboard(true)}
             disabled={refreshing}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#27273D] bg-[#181824] hover:bg-[#1E1E2E] text-xs font-semibold text-white transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--card-border)] bg-[var(--card)] hover:bg-[var(--subtle)] text-xs font-semibold text-[var(--ink)] transition-colors disabled:opacity-50 shadow-xs"
             title="Fetch latest rankings"
           >
             <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
@@ -325,49 +325,49 @@ export default function AdminLiveLeaderboardPage({
 
       {/* ── KEY METRICS STRIP ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-        <div className="p-4 rounded-2xl bg-[#181824] border border-[#27273D] space-y-1">
-          <div className="flex items-center gap-1.5 text-[#A0A6C2]">
+        <div className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-1 shadow-xs">
+          <div className="flex items-center gap-1.5 text-[var(--muted)]">
             <Users size={14} className="text-[#5B5FEF]" />
             <span className="font-semibold">Participants</span>
           </div>
-          <div className="text-xl font-bold text-white">{totalParticipants}</div>
-          <div className="text-[10px] text-[#6B6F8A]">Joined contestants</div>
+          <div className="text-xl font-bold text-[var(--ink)]">{totalParticipants}</div>
+          <div className="text-[10px] text-[var(--muted)]">Joined contestants</div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#181824] border border-[#27273D] space-y-1">
-          <div className="flex items-center gap-1.5 text-[#A0A6C2]">
-            <Flame size={14} className="text-amber-400" />
+        <div className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-1 shadow-xs">
+          <div className="flex items-center gap-1.5 text-[var(--muted)]">
+            <Flame size={14} className="text-amber-500 dark:text-amber-400" />
             <span className="font-semibold">Top Score</span>
           </div>
-          <div className="text-xl font-bold text-amber-400">{topScore} pts</div>
-          <div className="text-[10px] text-[#6B6F8A]">Current #1 rank</div>
+          <div className="text-xl font-bold text-amber-600 dark:text-amber-400">{topScore} pts</div>
+          <div className="text-[10px] text-[var(--muted)]">Current #1 rank</div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#181824] border border-[#27273D] space-y-1">
-          <div className="flex items-center gap-1.5 text-[#A0A6C2]">
-            <Target size={14} className="text-emerald-400" />
+        <div className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-1 shadow-xs">
+          <div className="flex items-center gap-1.5 text-[var(--muted)]">
+            <Target size={14} className="text-emerald-500 dark:text-emerald-400" />
             <span className="font-semibold">Average Score</span>
           </div>
-          <div className="text-xl font-bold text-white">{averageScore} pts</div>
-          <div className="text-[10px] text-[#6B6F8A]">Across all candidates</div>
+          <div className="text-xl font-bold text-[var(--ink)]">{averageScore} pts</div>
+          <div className="text-[10px] text-[var(--muted)]">Across all candidates</div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#181824] border border-[#27273D] space-y-1">
-          <div className="flex items-center gap-1.5 text-[#A0A6C2]">
-            <Clock size={14} className="text-rose-400" />
+        <div className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--card-border)] space-y-1 shadow-xs">
+          <div className="flex items-center gap-1.5 text-[var(--muted)]">
+            <Clock size={14} className="text-rose-500 dark:text-rose-400" />
             <span className="font-semibold">Time Remaining</span>
           </div>
-          <div className="text-xl font-bold font-mono text-rose-400">
+          <div className="text-xl font-bold font-mono text-rose-600 dark:text-rose-400">
             {formatRemainingTime(remainingSec)}
           </div>
-          <div className="text-[10px] text-[#6B6F8A]">Server authoritative</div>
+          <div className="text-[10px] text-[var(--muted)]">Server authoritative</div>
         </div>
       </div>
 
       {/* ── SEARCH & FILTERS BAR ── */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#181824] border border-[#27273D] p-3 rounded-2xl">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[var(--card)] border border-[var(--card-border)] p-3 rounded-2xl shadow-xs">
         <div className="relative flex-1">
-          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B6F8A]" />
+          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           <input
             type="text"
             placeholder="Search by participant name, email, or Student ID..."
@@ -376,7 +376,7 @@ export default function AdminLiveLeaderboardPage({
               setSearchQuery(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full pl-9 pr-4 py-1.5 rounded-xl border border-[#27273D] bg-[#12121A] text-xs text-white placeholder-[#6B6F8A] focus:outline-none focus:border-[#5B5FEF]"
+            className="w-full pl-9 pr-4 py-1.5 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
           />
         </div>
 
@@ -390,8 +390,8 @@ export default function AdminLiveLeaderboardPage({
               }}
               className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-colors shrink-0 ${
                 statusFilter === st
-                  ? "bg-[#252646] text-[#A5B4FC] border border-[#5B5FEF]/40"
-                  : "text-[#A0A6C2] hover:bg-[#1E1E2E] hover:text-white"
+                  ? "bg-[#5B5FEF]/10 dark:bg-[#252646] text-[#5B5FEF] dark:text-[#A5B4FC] border border-[#5B5FEF]/40"
+                  : "text-[var(--muted)] hover:bg-[var(--subtle)] hover:text-[var(--ink)] border border-transparent"
               }`}
             >
               {st}
@@ -401,11 +401,11 @@ export default function AdminLiveLeaderboardPage({
       </div>
 
       {/* ── LIVE LEADERBOARD TABLE ── */}
-      <div className="bg-[#181824] border border-[#27273D] rounded-2xl overflow-hidden shadow-sm">
+      <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-2xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-[#27273D] bg-[#12121A]/70 text-[#A0A6C2] uppercase text-[10px] font-bold tracking-wider">
+              <tr className="border-b border-[var(--line)] bg-[var(--subtle)] text-[var(--muted)] uppercase text-[10px] font-bold tracking-wider font-mono">
                 <th className="py-3 px-4 w-16 text-center">Rank</th>
                 <th className="py-3 px-4">Participant</th>
                 <th className="py-3 px-4">Student ID / College</th>
@@ -415,13 +415,13 @@ export default function AdminLiveLeaderboardPage({
                 <th className="py-3 px-4 text-right">Status / Last Activity</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#27273D] text-white">
+            <tbody className="divide-y divide-[var(--line)] text-[var(--ink)]">
               {paginatedEntries.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-[#A0A6C2]">
-                    <Trophy size={28} className="mx-auto text-[#6B6F8A] mb-2" />
-                    <div className="text-sm font-semibold">No participants found</div>
-                    <div className="text-xs text-[#6B6F8A]">
+                  <td colSpan={7} className="py-12 text-center text-[var(--muted)]">
+                    <Trophy size={28} className="mx-auto text-[var(--muted)] mb-2" />
+                    <div className="text-sm font-semibold text-[var(--ink)]">No participants found</div>
+                    <div className="text-xs text-[var(--muted)]">
                       {searchQuery
                         ? "Try clearing your search query."
                         : "Waiting for student activity or submissions..."}
@@ -432,25 +432,25 @@ export default function AdminLiveLeaderboardPage({
                 paginatedEntries.map((entry) => (
                   <tr
                     key={entry.participant_id}
-                    className="hover:bg-[#1E1E2E]/60 transition-colors"
+                    className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
                   >
                     {/* Rank */}
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center justify-center font-bold">
                         {entry.rank === 1 ? (
-                          <span className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center font-bold">
+                          <span className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/40 flex items-center justify-center font-bold">
                             🥇 1
                           </span>
                         ) : entry.rank === 2 ? (
-                          <span className="w-7 h-7 rounded-full bg-slate-300/20 text-slate-200 border border-slate-300/40 flex items-center justify-center font-bold">
+                          <span className="w-7 h-7 rounded-full bg-slate-300/30 text-slate-700 dark:text-slate-200 border border-slate-300/50 flex items-center justify-center font-bold">
                             🥈 2
                           </span>
                         ) : entry.rank === 3 ? (
-                          <span className="w-7 h-7 rounded-full bg-amber-700/20 text-amber-500 border border-amber-700/40 flex items-center justify-center font-bold">
+                          <span className="w-7 h-7 rounded-full bg-amber-700/20 text-amber-700 dark:text-amber-500 border border-amber-700/40 flex items-center justify-center font-bold">
                             🥉 3
                           </span>
                         ) : (
-                          <span className="text-[#A0A6C2] font-mono">#{entry.rank}</span>
+                          <span className="text-[var(--muted)] font-mono">#{entry.rank}</span>
                         )}
                       </div>
                     </td>
@@ -458,11 +458,11 @@ export default function AdminLiveLeaderboardPage({
                     {/* Participant Name & Email */}
                     <td className="py-3.5 px-4">
                       <div>
-                        <div className="font-semibold text-white leading-snug">
+                        <div className="font-semibold text-[var(--ink)] leading-snug">
                           {entry.display_name}
                         </div>
                         {entry.email && (
-                          <div className="text-[11px] text-[#A0A6C2] font-mono">
+                          <div className="text-[11px] text-[var(--muted)] font-mono">
                             {entry.email}
                           </div>
                         )}
@@ -472,11 +472,11 @@ export default function AdminLiveLeaderboardPage({
                     {/* Student ID & College */}
                     <td className="py-3.5 px-4">
                       <div>
-                        <div className="font-mono text-[11px] font-semibold text-indigo-300">
+                        <div className="font-mono text-[11px] font-semibold text-[#5B5FEF] dark:text-indigo-300">
                           {entry.student_id || "—"}
                         </div>
                         {entry.college && (
-                          <div className="text-[11px] text-[#6B6F8A] truncate max-w-[180px]">
+                          <div className="text-[11px] text-[var(--muted)] truncate max-w-[180px]">
                             {entry.college}
                           </div>
                         )}
@@ -485,7 +485,7 @@ export default function AdminLiveLeaderboardPage({
 
                     {/* Score */}
                     <td className="py-3.5 px-4 text-center">
-                      <span className="inline-block px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold font-mono">
+                      <span className="inline-block px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-bold font-mono">
                         {entry.total_score} pts
                       </span>
                     </td>
@@ -493,10 +493,10 @@ export default function AdminLiveLeaderboardPage({
                     {/* Problems Solved */}
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex flex-col items-center">
-                        <span className="font-semibold text-white">
+                        <span className="font-semibold text-[var(--ink)]">
                           {entry.solved_count} / {entry.total_questions}
                         </span>
-                        <div className="w-16 h-1.5 bg-[#12121A] rounded-full overflow-hidden mt-1 border border-[#27273D]">
+                        <div className="w-16 h-1.5 bg-[var(--subtle)] rounded-full overflow-hidden mt-1 border border-[var(--line)]">
                           <div
                             className="h-full bg-[#5B5FEF]"
                             style={{
@@ -516,7 +516,7 @@ export default function AdminLiveLeaderboardPage({
 
                     {/* Effective Time / Penalty */}
                     <td className="py-3.5 px-4 text-center">
-                      <span className="font-mono text-xs text-[#A0A6C2]">
+                      <span className="font-mono text-xs text-[var(--muted)]">
                         {entry.formatted_time}
                       </span>
                     </td>
@@ -527,16 +527,16 @@ export default function AdminLiveLeaderboardPage({
                         <span
                           className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
                             entry.submission_status === "submitted"
-                              ? "bg-emerald-500/20 text-emerald-400"
+                              ? "bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30"
                               : entry.submission_status === "in_progress"
-                              ? "bg-blue-500/20 text-blue-400"
-                              : "bg-gray-500/20 text-gray-400"
+                              ? "bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30"
+                              : "bg-zinc-100 dark:bg-gray-500/20 text-zinc-600 dark:text-gray-400 border border-zinc-200 dark:border-gray-500/30"
                           }`}
                         >
                           {entry.submission_status}
                         </span>
                         {entry.last_activity && (
-                          <span className="text-[10px] text-[#6B6F8A]">
+                          <span className="text-[10px] text-[var(--muted)]">
                             {new Date(entry.last_activity).toLocaleTimeString()}
                           </span>
                         )}
@@ -551,7 +551,7 @@ export default function AdminLiveLeaderboardPage({
 
         {/* ── PAGINATION CONTROLS ── */}
         {filteredEntries.length > pageSize && (
-          <div className="p-3 border-t border-[#27273D] bg-[#12121A]/50 flex items-center justify-between text-xs text-[#A0A6C2]">
+          <div className="p-3 border-t border-[var(--line)] bg-[var(--card)] flex items-center justify-between text-xs text-[var(--muted)]">
             <div>
               Showing {(currentPage - 1) * pageSize + 1} to{" "}
               {Math.min(currentPage * pageSize, filteredEntries.length)} of{" "}
@@ -562,17 +562,17 @@ export default function AdminLiveLeaderboardPage({
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
-                className="px-2.5 py-1 rounded-lg border border-[#27273D] hover:bg-[#1E1E2E] disabled:opacity-40 transition-colors"
+                className="px-2.5 py-1 rounded-lg border border-[var(--card-border)] bg-[var(--card)] hover:bg-[var(--subtle)] text-[var(--ink)] disabled:opacity-40 transition-colors"
               >
                 Previous
               </button>
-              <span className="px-2 font-semibold text-white">
+              <span className="px-2 font-semibold text-[var(--ink)]">
                 Page {currentPage} of {totalPages}
               </span>
               <button
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="px-2.5 py-1 rounded-lg border border-[#27273D] hover:bg-[#1E1E2E] disabled:opacity-40 transition-colors"
+                className="px-2.5 py-1 rounded-lg border border-[var(--card-border)] bg-[var(--card)] hover:bg-[var(--subtle)] text-[var(--ink)] disabled:opacity-40 transition-colors"
               >
                 Next
               </button>
@@ -582,7 +582,7 @@ export default function AdminLiveLeaderboardPage({
       </div>
 
       {/* ── FOOTER BAR ── */}
-      <div className="flex items-center justify-between text-[11px] text-[#6B6F8A] pt-2">
+      <div className="flex items-center justify-between text-[11px] text-[var(--muted)] pt-2">
         <div>
           Last updated: {lastUpdated.toLocaleTimeString()} • Ranking algorithm: Score (DESC) → Effective Time (ASC) → Problems Solved (DESC)
         </div>

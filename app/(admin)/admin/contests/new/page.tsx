@@ -146,22 +146,22 @@ export default function NewContestPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <Link
         href="/admin/contests"
-        className="inline-flex items-center gap-1.5 text-xs text-[#A0A6C2] hover:text-white transition-colors"
+        className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
       >
         <ArrowLeft size={14} />
         <span>Back to Contests</span>
       </Link>
 
-      <div className="bg-[#181824] border border-[#27273D] rounded-2xl p-6 sm:p-8 space-y-6">
+      <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-2xl p-6 sm:p-8 space-y-6 shadow-xs">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Create New Contest</h1>
-          <p className="text-xs text-[#A0A6C2] mt-1">
+          <h1 className="text-xl font-bold tracking-tight text-[var(--ink)]">Create New Contest</h1>
+          <p className="text-xs text-[var(--muted)] mt-1">
             Define timing, security passcode, and assessment parameters.
           </p>
         </div>
 
         {errorMsg && (
-          <div className="p-3 rounded-xl bg-red-950/40 border border-red-900/50 flex items-start gap-2.5 text-xs text-red-400">
+          <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-400">
             <AlertCircle size={15} className="shrink-0 mt-0.5" />
             <span>{errorMsg}</span>
           </div>
@@ -169,7 +169,7 @@ export default function NewContestPage() {
 
         <form onSubmit={handleSubmit} className="space-y-5 text-xs">
           <div>
-            <label className="block font-semibold uppercase tracking-wider text-[#A0A6C2] mb-1.5">
+            <label className="block font-semibold uppercase tracking-wider text-[var(--muted)] mb-1.5">
               Contest Title *
             </label>
             <input
@@ -178,12 +178,12 @@ export default function NewContestPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. SmartZero Algorithm Masters 2026"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#27273D] bg-[#12121A] text-sm focus:outline-none focus:border-[#5B5FEF]"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-sm text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
             />
           </div>
 
           <div>
-            <label className="block font-semibold uppercase tracking-wider text-[#A0A6C2] mb-1.5">
+            <label className="block font-semibold uppercase tracking-wider text-[var(--muted)] mb-1.5">
               Description
             </label>
             <textarea
@@ -191,13 +191,13 @@ export default function NewContestPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Brief description of topics covered and contest guidelines..."
-              className="w-full px-3.5 py-2 rounded-xl border border-[#27273D] bg-[#12121A] text-xs focus:outline-none focus:border-[#5B5FEF]"
+              className="w-full px-3.5 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block font-semibold uppercase tracking-wider text-[#A0A6C2] mb-1.5">
+              <label className="block font-semibold uppercase tracking-wider text-[var(--muted)] mb-1.5">
                 Passcode (Hashed Securely) *
               </label>
               <input
@@ -206,15 +206,15 @@ export default function NewContestPage() {
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
                 placeholder="e.g. ALGO-2026"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#27273D] bg-[#12121A] text-sm font-mono focus:outline-none focus:border-[#5B5FEF]"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-sm font-mono text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
               />
-              <span className="text-[10px] text-[#6B6F8A] mt-1 block">
+              <span className="text-[10px] text-[var(--muted)] mt-1 block">
                 Required by students to enter the exam.
               </span>
             </div>
 
             <div>
-              <label className="block font-semibold uppercase tracking-wider text-[#A0A6C2] mb-1.5">
+              <label className="block font-semibold uppercase tracking-wider text-[var(--muted)] mb-1.5">
                 Custom URL Slug (Optional)
               </label>
               <input
@@ -222,27 +222,27 @@ export default function NewContestPage() {
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
                 placeholder="e.g. algo-masters-2026"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-[#27273D] bg-[#12121A] text-sm font-mono focus:outline-none focus:border-[#5B5FEF]"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-sm font-mono text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
               />
             </div>
           </div>
 
           {/* Timing Section with Dynamic Current Time & Automatic End Time Calculation */}
-          <div className="p-4 rounded-xl bg-[#12121A] border border-[#27273D] space-y-4">
+          <div className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--line)] space-y-4">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-white">Contest Timing & Duration</span>
+              <span className="font-semibold text-[var(--ink)]">Contest Timing & Duration</span>
               {isEndAtManual ? (
                 <button
                   type="button"
                   onClick={handleResetEndAtToAuto}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
                   title="Click to reset End Time to Start Time + Duration"
                 >
                   <RotateCcw size={10} />
                   <span>Manual End Time (Reset to Auto)</span>
                 </button>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
                   <Sparkles size={10} />
                   <span>Auto End Time: Start + {durationMinutes}m</span>
                 </span>
@@ -251,7 +251,7 @@ export default function NewContestPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block font-semibold uppercase tracking-wider text-[#A0A6C2] mb-1.5">
+                <label className="block font-semibold uppercase tracking-wider text-[var(--muted)] mb-1.5">
                   Start Time (Local) *
                 </label>
                 <input
@@ -259,15 +259,15 @@ export default function NewContestPage() {
                   required
                   value={startAt}
                   onChange={(e) => handleStartAtChange(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-[#27273D] bg-[#181824] text-xs text-white focus:outline-none focus:border-[#5B5FEF]"
+                  className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--card)] text-xs text-[var(--ink)] focus:outline-none focus:border-[#5B5FEF]"
                 />
-                <span className="text-[10px] text-[#6B6F8A] mt-1 block">
+                <span className="text-[10px] text-[var(--muted)] mt-1 block">
                   Defaults to current local time NOW.
                 </span>
               </div>
 
               <div>
-                <label className="block font-semibold uppercase tracking-wider text-[#A0A6C2] mb-1.5">
+                <label className="block font-semibold uppercase tracking-wider text-[var(--muted)] mb-1.5">
                   End Time (Local) *
                 </label>
                 <input
@@ -276,16 +276,16 @@ export default function NewContestPage() {
                   value={endAt}
                   onChange={(e) => handleEndAtChange(e.target.value)}
                   className={`w-full px-3 py-2 rounded-xl border ${
-                    isEndAtManual ? "border-amber-500/50" : "border-[#27273D]"
-                  } bg-[#181824] text-xs text-white focus:outline-none focus:border-[#5B5FEF]`}
+                    isEndAtManual ? "border-amber-500/50" : "border-[var(--line)]"
+                  } bg-[var(--card)] text-xs text-[var(--ink)] focus:outline-none focus:border-[#5B5FEF]`}
                 />
-                <span className="text-[10px] text-[#6B6F8A] mt-1 block">
+                <span className="text-[10px] text-[var(--muted)] mt-1 block">
                   {isEndAtManual ? "Custom manual end time." : "Auto-calculated from duration."}
                 </span>
               </div>
 
               <div>
-                <label className="block font-semibold uppercase tracking-wider text-[#A0A6C2] mb-1.5">
+                <label className="block font-semibold uppercase tracking-wider text-[var(--muted)] mb-1.5">
                   Duration (mins) *
                 </label>
                 <input
@@ -295,9 +295,9 @@ export default function NewContestPage() {
                   required
                   value={durationMinutes}
                   onChange={(e) => handleDurationChange(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl border border-[#27273D] bg-[#181824] text-xs text-white focus:outline-none focus:border-[#5B5FEF]"
+                  className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--card)] text-xs text-[var(--ink)] focus:outline-none focus:border-[#5B5FEF]"
                 />
-                <span className="text-[10px] text-[#6B6F8A] mt-1 block">
+                <span className="text-[10px] text-[var(--muted)] mt-1 block">
                   Contest timer duration in minutes.
                 </span>
               </div>
@@ -305,14 +305,14 @@ export default function NewContestPage() {
           </div>
 
           {/* Assessment Integrity & Hardening Settings */}
-          <div className="p-4 rounded-xl bg-[#12121A] border border-[#27273D] space-y-4">
+          <div className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--line)] space-y-4">
             <div className="flex items-center gap-2">
               <ShieldAlert size={15} className="text-[#5B5FEF]" />
-              <span className="font-semibold text-white">Assessment Integrity & Retake Policy</span>
+              <span className="font-semibold text-[var(--ink)]">Assessment Integrity & Retake Policy</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[#181824] border border-[#27273D] cursor-pointer">
+              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--card)] border border-[var(--line)] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={fullscreenRequired}
@@ -320,14 +320,14 @@ export default function NewContestPage() {
                   className="w-4 h-4 rounded text-[#5B5FEF]"
                 />
                 <div>
-                  <div className="font-medium text-white">Fullscreen Enforced</div>
-                  <div className="text-[10px] text-[#6B6F8A]">
+                  <div className="font-medium text-[var(--ink)]">Fullscreen Enforced</div>
+                  <div className="text-[10px] text-[var(--muted)]">
                     Mandates browser fullscreen during exam.
                   </div>
                 </div>
               </label>
 
-              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[#181824] border border-[#27273D] cursor-pointer">
+              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--card)] border border-[var(--line)] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={autoSubmitOnViolation}
@@ -335,8 +335,8 @@ export default function NewContestPage() {
                   className="w-4 h-4 rounded text-[#5B5FEF]"
                 />
                 <div>
-                  <div className="font-medium text-white">Auto-Submit on Violations</div>
-                  <div className="text-[10px] text-[#6B6F8A]">
+                  <div className="font-medium text-[var(--ink)]">Auto-Submit on Violations</div>
+                  <div className="text-[10px] text-[var(--muted)]">
                     Submits exam if violations reach threshold.
                   </div>
                 </div>
@@ -345,7 +345,7 @@ export default function NewContestPage() {
 
             {autoSubmitOnViolation && (
               <div>
-                <label className="block font-semibold text-[#A0A6C2] mb-1">
+                <label className="block font-semibold text-[var(--muted)] mb-1">
                   Max Violations Threshold before Auto-Submit
                 </label>
                 <input
@@ -354,13 +354,13 @@ export default function NewContestPage() {
                   max={10}
                   value={maxViolations}
                   onChange={(e) => setMaxViolations(Number(e.target.value))}
-                  className="w-32 px-3 py-1.5 rounded-lg border border-[#27273D] bg-[#181824] text-xs text-white"
+                  className="w-32 px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--card)] text-xs text-[var(--ink)]"
                 />
               </div>
             )}
 
-            <div className="pt-2 border-t border-[#27273D]">
-              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[#181824] border border-[#27273D] cursor-pointer">
+            <div className="pt-2 border-t border-[var(--line)]">
+              <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--card)] border border-[var(--line)] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={allowRetake}
@@ -368,8 +368,8 @@ export default function NewContestPage() {
                   className="w-4 h-4 rounded text-[#5B5FEF]"
                 />
                 <div>
-                  <div className="font-medium text-white">Allow Contest Retakes</div>
-                  <div className="text-[10px] text-[#6B6F8A]">
+                  <div className="font-medium text-[var(--ink)]">Allow Contest Retakes</div>
+                  <div className="text-[10px] text-[var(--muted)]">
                     Students can retake the assessment up to the specified limit.
                   </div>
                 </div>
@@ -377,7 +377,7 @@ export default function NewContestPage() {
 
               {allowRetake && (
                 <div className="mt-3">
-                  <label className="block font-semibold text-[#A0A6C2] mb-1">
+                  <label className="block font-semibold text-[var(--muted)] mb-1">
                     Max Attempts Allowed
                   </label>
                   <input
@@ -386,7 +386,7 @@ export default function NewContestPage() {
                     max={10}
                     value={maxAttempts}
                     onChange={(e) => setMaxAttempts(Number(e.target.value))}
-                    className="w-32 px-3 py-1.5 rounded-lg border border-[#27273D] bg-[#181824] text-xs text-white"
+                    className="w-32 px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--card)] text-xs text-[var(--ink)]"
                   />
                 </div>
               )}
@@ -394,22 +394,22 @@ export default function NewContestPage() {
           </div>
 
           <div>
-            <label className="block font-semibold uppercase tracking-wider text-[#A0A6C2] mb-1.5">
+            <label className="block font-semibold uppercase tracking-wider text-[var(--muted)] mb-1.5">
               Exam Instructions
             </label>
             <textarea
               rows={3}
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl border border-[#27273D] bg-[#12121A] text-xs focus:outline-none focus:border-[#5B5FEF]"
+              className="w-full px-3.5 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
             />
           </div>
 
-          <div className="p-4 rounded-xl bg-[#12121A] border border-[#27273D] space-y-3">
+          <div className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--line)] space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-semibold text-white">Negative Marking</div>
-                <div className="text-[11px] text-[#6B6F8A]">
+                <div className="font-semibold text-[var(--ink)]">Negative Marking</div>
+                <div className="text-[11px] text-[var(--muted)]">
                   Deduct penalty marks for wrong MCQ answers
                 </div>
               </div>
@@ -423,7 +423,7 @@ export default function NewContestPage() {
 
             {negativeMarking && (
               <div>
-                <label className="block font-semibold text-[#A0A6C2] mb-1">
+                <label className="block font-semibold text-[var(--muted)] mb-1">
                   Default Penalty Marks per Wrong Answer
                 </label>
                 <input
@@ -433,7 +433,7 @@ export default function NewContestPage() {
                   max="5"
                   value={defaultNegativeMark}
                   onChange={(e) => setDefaultNegativeMark(Number(e.target.value))}
-                  className="w-32 px-3 py-1.5 rounded-lg border border-[#27273D] bg-[#181824] text-xs"
+                  className="w-32 px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--card)] text-xs text-[var(--ink)]"
                 />
               </div>
             )}

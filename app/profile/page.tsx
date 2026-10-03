@@ -378,7 +378,7 @@ function ProfileContent() {
               <button
                 type="submit"
                 disabled={changingPassword || !newPassword}
-                className="w-full py-2.5 rounded-xl border border-[#27273D] bg-[#181824] hover:bg-[#252646] text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                className="w-full py-2.5 rounded-xl border border-[#E7E7E2] dark:border-[#27273D] bg-[#232946] dark:bg-[#1E1E2E] hover:bg-[#343859] dark:hover:bg-[#252646] text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
               >
                 {changingPassword ? (
                   <>
