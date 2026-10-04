@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SMARTZERO 2.0 â€” MASTER PRODUCTION HARDENING TEST SUITE
  *
  * Verifies:
@@ -33,17 +33,20 @@ import { POST as finishRoute } from "../app/api/contest/[slug]/finish/route";
 import { GET as questionsRoute } from "../app/api/contest/[slug]/questions/route";
 import { GET as resultsRoute } from "../app/api/contest/[slug]/results/route";
 import { GET as studentDashboardRoute } from "../app/api/student/dashboard/route";
+import { loadEnvConfig } from "@next/env";
+
+loadEnvConfig(process.cwd());
 
 let passedCount = 0;
 function check(condition: boolean, msg: string) {
   assert(condition, msg);
-  console.log(`  âœ… ${msg}`);
+  console.log(`  ✅ ${msg}`);
   passedCount++;
 }
 
 async function runMasterHardeningSuite() {
-  process.env.JUDGE_WORKER_URL = "http://127.0.0.1:8080";
-  process.env.JUDGE_WORKER_SECRET = "sz-stage2-secret-9f8a3c2b1d";
+  process.env.JUDGE_WORKER_URL = process.env.JUDGE_WORKER_URL || "http://127.0.0.1:8080";
+  process.env.JUDGE_WORKER_SECRET = process.env.JUDGE_WORKER_SECRET || "sz-stage2-secret-9f8a3c2b1d";
 
   console.log("==================================================");
   console.log("SMARTZERO 2.0 â€” MASTER PRODUCTION HARDENING SUITE");

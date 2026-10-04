@@ -735,7 +735,7 @@ export default function LiveContestExamPage({
             currentQ.question_type === "coding" && currentQ.coding_details ? (
               <div className="flex-1 flex flex-col h-full overflow-hidden">
                 <CodingIDE
-                  key={currentQ.question_id}
+                  key={`${user?.id || "anon"}_${currentQ.question_id}`}
                   slug={slug}
                   questionId={currentQ.question_id}
                   codingDetails={currentQ.coding_details}

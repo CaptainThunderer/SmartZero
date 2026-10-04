@@ -317,99 +317,101 @@ function ProfileContent() {
             </div>
           </form>
 
-          {/* Security & Password Section */}
-          <div id="security" className="pt-6 border-t border-[#E7E7E2] dark:border-[#27273D] space-y-4">
-            <div className="flex items-center gap-2">
-              <KeyRound size={16} className="text-[#5B5FEF]" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[#6B6F8A] dark:text-[#A0A6C2]">
-                Security & Password Update
-              </h2>
+          {/* Security & Password Section (Staff Only) */}
+          {role !== "student" && (
+            <div id="security" className="pt-6 border-t border-[#E7E7E2] dark:border-[#27273D] space-y-4">
+              <div className="flex items-center gap-2">
+                <KeyRound size={16} className="text-[#5B5FEF]" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-[#6B6F8A] dark:text-[#A0A6C2]">
+                  Security & Password Update (Staff Only)
+                </h2>
+              </div>
+
+              {Boolean(user?.user_metadata?.must_change_password) && (
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-center gap-2.5">
+                  <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>
+                    Your account is currently using the temporary staff password. Please change your password to secure your staff account.
+                  </span>
+                </div>
+              )}
+
+              {passwordMsg && (
+                <div
+                  className={`p-3 rounded-xl border flex items-center gap-2.5 text-xs ${
+                    passwordMsg.type === "success"
+                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400"
+                      : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400"
+                  }`}
+                >
+                  {passwordMsg.type === "success" ? (
+                    <CheckCircle2 size={16} className="shrink-0" />
+                  ) : (
+                    <AlertCircle size={16} className="shrink-0" />
+                  )}
+                  <span>{passwordMsg.text}</span>
+                </div>
+              )}
+
+              <form onSubmit={handlePasswordChange} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#6B6F8A] dark:text-[#A0A6C2] mb-1.5">
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <Lock
+                      size={16}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9498B3]"
+                    />
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Minimum 6 characters"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E7E7E2] dark:border-[#27273D] bg-[#FAFAF8] dark:bg-[#12121A] text-sm focus:outline-none focus:border-[#5B5FEF] focus:ring-1 focus:ring-[#5B5FEF] transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#6B6F8A] dark:text-[#A0A6C2] mb-1.5">
+                    Confirm New Password
+                  </label>
+                  <div className="relative">
+                    <Lock
+                      size={16}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9498B3]"
+                    />
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Re-enter new password"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E7E7E2] dark:border-[#27273D] bg-[#FAFAF8] dark:bg-[#12121A] text-sm focus:outline-none focus:border-[#5B5FEF] focus:ring-1 focus:ring-[#5B5FEF] transition-all"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={changingPassword || !newPassword}
+                  className="w-full py-2.5 rounded-xl border border-[#E7E7E2] dark:border-[#27273D] bg-[#232946] dark:bg-[#1E1E2E] hover:bg-[#343859] dark:hover:bg-[#252646] text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  {changingPassword ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>Updating Password...</span>
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound size={14} />
+                      <span>Update Password</span>
+                    </>
+                  )}
+                </button>
+              </form>
             </div>
-
-            {Boolean(user?.user_metadata?.must_change_password) && (
-              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs flex items-center gap-2.5">
-                <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>
-                  Your account is currently using the temporary staff password. Please change your password to secure your staff account.
-                </span>
-              </div>
-            )}
-
-            {passwordMsg && (
-              <div
-                className={`p-3 rounded-xl border flex items-center gap-2.5 text-xs ${
-                  passwordMsg.type === "success"
-                    ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-700 dark:text-emerald-400"
-                    : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-400"
-                }`}
-              >
-                {passwordMsg.type === "success" ? (
-                  <CheckCircle2 size={16} className="shrink-0" />
-                ) : (
-                  <AlertCircle size={16} className="shrink-0" />
-                )}
-                <span>{passwordMsg.text}</span>
-              </div>
-            )}
-
-            <form onSubmit={handlePasswordChange} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-[#6B6F8A] dark:text-[#A0A6C2] mb-1.5">
-                  New Password
-                </label>
-                <div className="relative">
-                  <Lock
-                    size={16}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9498B3]"
-                  />
-                  <input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Minimum 6 characters"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E7E7E2] dark:border-[#27273D] bg-[#FAFAF8] dark:bg-[#12121A] text-sm focus:outline-none focus:border-[#5B5FEF] focus:ring-1 focus:ring-[#5B5FEF] transition-all"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#6B6F8A] dark:text-[#A0A6C2] mb-1.5">
-                  Confirm New Password
-                </label>
-                <div className="relative">
-                  <Lock
-                    size={16}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9498B3]"
-                  />
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Re-enter new password"
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#E7E7E2] dark:border-[#27273D] bg-[#FAFAF8] dark:bg-[#12121A] text-sm focus:outline-none focus:border-[#5B5FEF] focus:ring-1 focus:ring-[#5B5FEF] transition-all"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={changingPassword || !newPassword}
-                className="w-full py-2.5 rounded-xl border border-[#E7E7E2] dark:border-[#27273D] bg-[#232946] dark:bg-[#1E1E2E] hover:bg-[#343859] dark:hover:bg-[#252646] text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-              >
-                {changingPassword ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    <span>Updating Password...</span>
-                  </>
-                ) : (
-                  <>
-                    <KeyRound size={14} />
-                    <span>Update Password</span>
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
+          )}
         </div>
       </div>
     </div>

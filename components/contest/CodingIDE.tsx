@@ -35,6 +35,43 @@ const Editor = dynamic(() => import("@monaco-editor/react"), {
   ),
 });
 
+/**
+ * Generates an isolated, student-scoped cache key for coding drafts.
+ * Global/unscoped keys are strictly avoided to prevent cross-account state leakage.
+ */
+export function getStudentDraftKey(
+  userId: string | undefined,
+  slug: string,
+  questionId: string,
+  language: string
+): string | null {
+  if (!userId || userId === "unauthenticated-viewer") return null;
+  return `smartzero_code_${userId}_${slug}_${questionId}_${language}`;
+}
+
+/**
+ * Purges legacy unscoped client draft keys to prevent cross-user leakage.
+ */
+export function cleanupLegacyUnscopedDrafts(slug: string, questionId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (
+        k &&
+        (k.startsWith(`smartzero_code_${slug}_${questionId}_`) ||
+          k.startsWith(`coding_draft_${questionId}`))
+      ) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // Non-blocking
+  }
+}
+
 interface CodingIDEProps {
   slug: string;
   questionId: string;
@@ -55,8 +92,12 @@ export default function CodingIDE({
   const [language, setLanguage] = useState<CodingLanguage>("python");
   const [code, setCode] = useState<string>(() => {
     if (typeof window !== "undefined") {
-      const cached = localStorage.getItem(`smartzero_code_${slug}_${questionId}_python`);
-      if (cached) return cached;
+      cleanupLegacyUnscopedDrafts(slug, questionId);
+      const scopedKey = getStudentDraftKey(userId, slug, questionId, "python");
+      if (scopedKey) {
+        const cached = localStorage.getItem(scopedKey);
+        if (cached) return cached;
+      }
     }
     return STARTER_TEMPLATES.python;
   });
@@ -82,52 +123,98 @@ export default function CodingIDE({
   const draftSeqRef = useRef<number>(0);
   const isRunningRef = useRef<boolean>(false);
   const isSubmittingRef = useRef<boolean>(false);
+  const currentUserIdRef = useRef<string | undefined>(userId);
 
-  // Synchronize code with cache when question changes
+  // Invalidate previous student state if userId prop changes dynamically
+  useEffect(() => {
+    if (currentUserIdRef.current !== userId) {
+      currentUserIdRef.current = userId;
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      setDraftStatus("IDLE");
+      setRunResult(null);
+      setLastSubmission(null);
+      setSubmissionsHistory([]);
+
+      const scopedKey = getStudentDraftKey(userId, slug, questionId, language);
+      const scopedCache = scopedKey && typeof window !== "undefined" ? localStorage.getItem(scopedKey) : null;
+      setCode(scopedCache || STARTER_TEMPLATES[language] || "");
+    }
+  }, [userId, slug, questionId, language]);
+
+  // Synchronize code with student-scoped cache when question or language changes
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const cached = localStorage.getItem(`smartzero_code_${slug}_${questionId}_${language}`);
+      cleanupLegacyUnscopedDrafts(slug, questionId);
+      const scopedKey = getStudentDraftKey(userId, slug, questionId, language);
+      const cached = scopedKey ? localStorage.getItem(scopedKey) : null;
       if (cached !== null) {
         setCode(cached);
       } else {
         setCode(STARTER_TEMPLATES[language] || "");
       }
     }
-  }, [slug, questionId, language]);
+  }, [slug, questionId, language, userId]);
 
-  // Fetch previous submission history on mount
+  // Fetch previous submission history and hydrate authoritative server draft
   useEffect(() => {
-    fetch(`/api/contest/${slug}/coding/submissions?question_id=${questionId}&user_id=${userId || "demo-student-user"}`)
+    if (!userId) return;
+
+    let cancelled = false;
+    fetch(`/api/contest/${slug}/coding/submissions?question_id=${questionId}&user_id=${userId}`)
       .then((r) => r.json())
       .then((data) => {
+        if (cancelled || currentUserIdRef.current !== userId) return;
         if (data.submissions) {
           setSubmissionsHistory(data.submissions);
           if (data.submissions.length > 0) {
-            setLastSubmission(data.submissions[0]);
-            if (typeof window !== "undefined") {
-              const cached = localStorage.getItem(`smartzero_code_${slug}_${questionId}_${language}`);
-              if (!cached && data.submissions[0].code) {
-                setCode(data.submissions[0].code);
-                if (data.submissions[0].language) {
-                  setLanguage(data.submissions[0].language);
-                }
+            const latest = data.submissions[0];
+            setLastSubmission(latest);
+            // Server draft is authoritative: ALWAYS hydrate latest server code over local cache!
+            if (latest.code) {
+              setCode(latest.code);
+              if (latest.language && latest.language !== language) {
+                setLanguage(latest.language);
               }
+              const scopedKey = getStudentDraftKey(userId, slug, questionId, latest.language || language);
+              if (scopedKey && typeof window !== "undefined") {
+                try {
+                  localStorage.setItem(scopedKey, latest.code);
+                } catch {}
+              }
+            }
+          } else {
+            // Student has no server drafts. Ensure no stale code from previous student survives
+            const scopedKey = getStudentDraftKey(userId, slug, questionId, language);
+            const cached = scopedKey && typeof window !== "undefined" ? localStorage.getItem(scopedKey) : null;
+            if (!cached) {
+              setCode(STARTER_TEMPLATES[language] || "");
             }
           }
         }
       })
       .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
   }, [slug, questionId, userId, language]);
 
-  // Debounced Draft Autosave to Server with monotonic sequence protection
+  // Debounced Draft Autosave to Server with monotonic sequence and identity protection
   useEffect(() => {
-    if (!code || code === STARTER_TEMPLATES[language]) return;
+    if (!userId || !code || code === STARTER_TEMPLATES[language]) return;
 
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
 
+    const targetUserId = userId;
     saveTimeoutRef.current = setTimeout(async () => {
+      // Abort if identity changed during debounce window
+      if (currentUserIdRef.current !== targetUserId) return;
+
       const currentSeq = ++draftSeqRef.current;
       setDraftStatus("SAVING");
       let attempts = 0;
@@ -135,6 +222,8 @@ export default function CodingIDE({
       while (attempts < 3 && !success) {
         attempts++;
         try {
+          if (currentUserIdRef.current !== targetUserId) return;
+
           const res = await fetch(`/api/contest/${slug}/coding/save`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -142,14 +231,14 @@ export default function CodingIDE({
               question_id: questionId,
               language,
               code,
-              user_id: userId || "demo-student-user",
+              user_id: targetUserId,
               seq: currentSeq,
               timestamp: Date.now(),
             }),
           });
           if (res.ok) {
             success = true;
-            if (currentSeq === draftSeqRef.current) {
+            if (currentSeq === draftSeqRef.current && currentUserIdRef.current === targetUserId) {
               setDraftStatus("SAVED");
             }
             break;
@@ -158,13 +247,13 @@ export default function CodingIDE({
           // Retry
         }
         if (!success && attempts < 3) {
-          if (currentSeq === draftSeqRef.current) {
+          if (currentSeq === draftSeqRef.current && currentUserIdRef.current === targetUserId) {
             setDraftStatus("RETRYING");
           }
           await new Promise((r) => setTimeout(r, 600 * attempts));
         }
       }
-      if (!success && currentSeq === draftSeqRef.current) {
+      if (!success && currentSeq === draftSeqRef.current && currentUserIdRef.current === targetUserId) {
         setDraftStatus("SAVE_FAILED");
       }
     }, 1200);
@@ -175,10 +264,15 @@ export default function CodingIDE({
   }, [code, language, questionId, slug, userId]);
 
   const handleLanguageChange = (newLang: CodingLanguage) => {
-    // Save current language code
     if (typeof window !== "undefined") {
-      localStorage.setItem(`smartzero_code_${slug}_${questionId}_${language}`, code);
-      const cached = localStorage.getItem(`smartzero_code_${slug}_${questionId}_${newLang}`);
+      const oldKey = getStudentDraftKey(userId, slug, questionId, language);
+      if (oldKey) {
+        try {
+          localStorage.setItem(oldKey, code);
+        } catch {}
+      }
+      const newKey = getStudentDraftKey(userId, slug, questionId, newLang);
+      const cached = newKey ? localStorage.getItem(newKey) : null;
       setCode(cached !== null ? cached : STARTER_TEMPLATES[newLang] || "");
     } else {
       setCode(STARTER_TEMPLATES[newLang] || "");
@@ -190,9 +284,12 @@ export default function CodingIDE({
     const val = newCode || "";
     setCode(val);
     if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem(`smartzero_code_${slug}_${questionId}_${language}`, val);
-      } catch {}
+      const scopedKey = getStudentDraftKey(userId, slug, questionId, language);
+      if (scopedKey) {
+        try {
+          localStorage.setItem(scopedKey, val);
+        } catch {}
+      }
     }
   };
 
@@ -200,9 +297,12 @@ export default function CodingIDE({
     const reset = STARTER_TEMPLATES[language] || "";
     setCode(reset);
     if (typeof window !== "undefined") {
-      try {
-        localStorage.removeItem(`smartzero_code_${slug}_${questionId}_${language}`);
-      } catch {}
+      const scopedKey = getStudentDraftKey(userId, slug, questionId, language);
+      if (scopedKey) {
+        try {
+          localStorage.removeItem(scopedKey);
+        } catch {}
+      }
     }
   };
 
@@ -213,7 +313,12 @@ export default function CodingIDE({
       }
       setCode(sub.code);
       if (typeof window !== "undefined") {
-        localStorage.setItem(`smartzero_code_${slug}_${questionId}_${sub.language || language}`, sub.code);
+        const scopedKey = getStudentDraftKey(userId, slug, questionId, sub.language || language);
+        if (scopedKey) {
+          try {
+            localStorage.setItem(scopedKey, sub.code);
+          } catch {}
+        }
       }
     }
   };
@@ -398,7 +503,7 @@ export default function CodingIDE({
                       <div className="text-[10px] text-[#6B6F8A] uppercase font-mono mb-1">
                         Input
                       </div>
-                      <pre className="p-2 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-white overflow-x-auto">
+                      <pre className="p-2.5 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-white overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
                         {tc.input || "(empty)"}
                       </pre>
                     </div>
@@ -406,7 +511,7 @@ export default function CodingIDE({
                       <div className="text-[10px] text-[#6B6F8A] uppercase font-mono mb-1">
                         Expected Output
                       </div>
-                      <pre className="p-2 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-emerald-400 overflow-x-auto">
+                      <pre className="p-2.5 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-emerald-400 overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
                         {tc.expected_output || "(empty)"}
                       </pre>
                     </div>
@@ -745,14 +850,16 @@ export default function CodingIDE({
                           {tc.is_sample && (
                             <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
                               <div>
-                                <span className="text-[#6B6F8A]">Input:</span>
-                                <div className="text-white truncate">{tc.input || "(none)"}</div>
+                                <span className="text-[#6B6F8A] block mb-1">Input:</span>
+                                <pre className="p-2 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-white overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
+                                  {tc.input || "(none)"}
+                                </pre>
                               </div>
                               <div>
-                                <span className="text-[#6B6F8A]">Actual Output:</span>
-                                <div className="text-emerald-300 truncate">
+                                <span className="text-[#6B6F8A] block mb-1">Actual Output:</span>
+                                <pre className="p-2 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-emerald-300 overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
                                   {tc.actual_output || "(empty)"}
-                                </div>
+                                </pre>
                               </div>
                             </div>
                           )}

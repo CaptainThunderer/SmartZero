@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import type { UserRole } from "@/types/auth";
+import type { UserRole, AccountStatus } from "@/types/auth";
 
 export const STUDENT_SESSION_COOKIE_NAME = "smartzero_student_session";
 const DEFAULT_EXPIRATION_SECONDS = 7 * 24 * 60 * 60; // 7 days
@@ -12,6 +12,7 @@ export interface StudentSessionPayload {
   student_id: string;
   college: string;
   role: UserRole;
+  account_status?: AccountStatus;
   iat: number;
   exp: number;
 }
@@ -25,6 +26,7 @@ export interface AuthenticatedUser {
   profile?: {
     student_id?: string;
     college?: string;
+    account_status?: AccountStatus;
   };
 }
 
@@ -106,6 +108,7 @@ export function createStudentSessionToken(
     student_id?: string;
     studentId?: string;
     college?: string;
+    account_status?: AccountStatus;
   },
   expiresInSeconds: number = DEFAULT_EXPIRATION_SECONDS
 ): string {
@@ -128,6 +131,7 @@ export function createStudentSessionToken(
     student_id: studentId,
     college: (data.college || "").trim(),
     role: "student",
+    account_status: data.account_status || "verified",
     iat: now,
     exp: now + expiresInSeconds,
   };
@@ -307,6 +311,7 @@ export async function getAuthenticatedUser(req?: Request): Promise<Authenticated
         profile: {
           student_id: studentSession.student_id,
           college: studentSession.college,
+          account_status: studentSession.account_status || "verified",
         },
       };
     }
@@ -338,6 +343,9 @@ export async function getAuthenticatedUser(req?: Request): Promise<Authenticated
           fullName: user.user_metadata?.full_name || user.email || "Admin",
           role,
           source: "supabase_auth",
+          profile: {
+            account_status: "verified",
+          },
         };
       }
     }

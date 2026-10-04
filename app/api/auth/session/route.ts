@@ -16,8 +16,9 @@ export async function GET(req: Request) {
         full_name: user.fullName,
         role: user.role,
         source: user.source,
-        student_id: user.profile?.student_id,
-        college: user.profile?.college,
+        student_id: user.profile?.student_id || "",
+        college: user.profile?.college || "",
+        account_status: user.profile?.account_status || "verified",
       },
     },
     { status: 200 }

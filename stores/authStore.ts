@@ -50,6 +50,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               student_id: serverUser.student_id || null,
               college: serverUser.college || null,
               avatar_url: null,
+              account_status: serverUser.account_status || "verified",
               role: (serverUser.role as UserRole) || "student",
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
@@ -135,6 +136,35 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   refreshProfile: async () => {
+    // 1. Attempt server-authoritative profile endpoint first (works for student sessions and staff)
+    try {
+      const res = await fetch("/api/profile");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.profile) {
+          const prof: UserProfile = data.profile;
+          set({
+            profile: prof,
+            role: (prof.role as UserRole) || "student",
+            user: {
+              id: prof.id,
+              email: prof.email || undefined,
+              user_metadata: {
+                full_name: prof.full_name || undefined,
+                student_id: prof.student_id || undefined,
+                college: prof.college || undefined,
+              },
+            },
+            isLoading: false,
+          });
+          return;
+        }
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+
+    // 2. Direct Supabase browser client fallback (for staff with Supabase Auth)
     const supabase = getSupabaseBrowser();
     const currentUser = get().user;
     if (!supabase || !currentUser) {
@@ -167,6 +197,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         student_id: profileData?.student_id || currentUser.user_metadata?.student_id || "",
         college: profileData?.college || currentUser.user_metadata?.college || "",
         avatar_url: profileData?.avatar_url || currentUser.user_metadata?.avatar_url || null,
+        account_status: profileData?.account_status || "verified",
         created_at: profileData?.created_at,
         updated_at: profileData?.updated_at,
         role: userRole,
@@ -414,6 +445,15 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem("smartzero_student_profile");
+        // Clear all client-side cached coding draft keys to prevent cross-account leaks
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith("smartzero_code_") || k.startsWith("coding_draft_"))) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
       } catch {
         // Non-blocking
       }
@@ -447,54 +487,46 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       return { error: "User is not logged in." };
     }
 
-    // Sync localStorage if database-registered student profile exists
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("smartzero_student_profile");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          const updated = { ...parsed, ...updates, updated_at: new Date().toISOString() };
-          localStorage.setItem("smartzero_student_profile", JSON.stringify(updated));
-          set({
-            profile: updated,
-            user: {
-              ...currentUser,
-              user_metadata: {
-                ...currentUser.user_metadata,
-                full_name: updated.full_name,
-                student_id: updated.student_id,
-                college: updated.college,
-              },
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        return { error: data.error || "Failed to update profile." };
+      }
+
+      if (data.profile) {
+        const updated: UserProfile = data.profile;
+        set({
+          profile: updated,
+          role: (updated.role as UserRole) || get().role,
+          user: {
+            ...currentUser,
+            user_metadata: {
+              ...currentUser.user_metadata,
+              full_name: updated.full_name,
+              student_id: updated.student_id,
+              college: updated.college,
             },
-          });
+          },
+        });
+
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem("smartzero_student_profile", JSON.stringify(updated));
+          } catch {
+            // Non-blocking
+          }
         }
-      } catch {
-        // Non-blocking
       }
+
+      return { error: null };
+    } catch (err: unknown) {
+      return { error: err instanceof Error ? err.message : "Failed to update profile." };
     }
-
-    const supabase = getSupabaseBrowser();
-    if (supabase) {
-      try {
-        const { error } = await supabase
-          .from("profiles")
-          .update({
-            ...updates,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", currentUser.id);
-
-        if (error) {
-          return { error: error.message };
-        }
-
-        await get().refreshProfile();
-        return { error: null };
-      } catch (err: unknown) {
-        return { error: err instanceof Error ? err.message : "Failed to update profile." };
-      }
-    }
-
-    return { error: null };
   },
 }));
