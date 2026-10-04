@@ -87,6 +87,7 @@ export async function POST(req: Request) {
       allow_retake: body.allow_retake,
       max_attempts: body.max_attempts,
       anti_cheat_settings: body.anti_cheat_settings,
+      leaderboard_visibility: body.leaderboard_visibility === "ANONYMOUS" ? "ANONYMOUS" : "PUBLIC",
       created_by: userId,
     });
 

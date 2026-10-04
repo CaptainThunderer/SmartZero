@@ -85,6 +85,7 @@ export default function ContestDetailPage({
   const [editMaxAttempts, setEditMaxAttempts] = useState(1);
   const [editNegativeMarking, setEditNegativeMarking] = useState(false);
   const [editDefaultNegativeMark, setEditDefaultNegativeMark] = useState(0.25);
+  const [editLeaderboardVisibility, setEditLeaderboardVisibility] = useState<"PUBLIC" | "ANONYMOUS">("PUBLIC");
 
   const fetchDrawerLeaderboard = useCallback(async () => {
     setDrawerLoading(true);
@@ -236,6 +237,7 @@ export default function ContestDetailPage({
     setEditMaxAttempts(contest.max_attempts ?? 1);
     setEditNegativeMarking(contest.negative_marking ?? false);
     setEditDefaultNegativeMark(contest.default_negative_mark ?? 0.25);
+    setEditLeaderboardVisibility(contest.leaderboard_visibility ?? "PUBLIC");
     setEditError(null);
     setEditSuccess(false);
     setShowEditModal(true);
@@ -291,6 +293,7 @@ export default function ContestDetailPage({
       if (editMaxAttempts !== (contest.max_attempts ?? 1)) payload.max_attempts = editMaxAttempts;
       if (editNegativeMarking !== (contest.negative_marking ?? false)) payload.negative_marking = editNegativeMarking;
       if (editDefaultNegativeMark !== (contest.default_negative_mark ?? 0.25)) payload.default_negative_mark = editDefaultNegativeMark;
+      if (editLeaderboardVisibility !== (contest.leaderboard_visibility ?? "PUBLIC")) payload.leaderboard_visibility = editLeaderboardVisibility;
     }
 
     return Object.keys(payload).length > 0 ? payload : null;
@@ -915,6 +918,17 @@ export default function ContestDetailPage({
                           <input type="number" step="0.25" value={editDefaultNegativeMark} onChange={(e) => setEditDefaultNegativeMark(Number(e.target.value))} min={0} max={5} className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)]" />
                         </div>
                       )}
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-[var(--muted)] mb-1">Leaderboard Visibility</label>
+                      <select
+                        value={editLeaderboardVisibility}
+                        onChange={(e) => setEditLeaderboardVisibility(e.target.value as "PUBLIC" | "ANONYMOUS")}
+                        className="w-full px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] focus:outline-none focus:border-[var(--accent)]"
+                      >
+                        <option value="PUBLIC">Public Leaderboard</option>
+                        <option value="ANONYMOUS">Anonymous (Hidden Scores/Ranks)</option>
+                      </select>
                     </div>
                   </div>
                 </div>

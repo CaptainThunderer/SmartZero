@@ -46,6 +46,7 @@ export default function NewContestPage() {
   const [maxViolations, setMaxViolations] = useState(3);
   const [allowRetake, setAllowRetake] = useState(false);
   const [maxAttempts, setMaxAttempts] = useState(2);
+  const [leaderboardVisibility, setLeaderboardVisibility] = useState<"PUBLIC" | "ANONYMOUS">("PUBLIC");
 
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -125,6 +126,7 @@ export default function NewContestPage() {
           max_violations: Number(maxViolations),
           allow_retake: allowRetake,
           max_attempts: Number(maxAttempts),
+          leaderboard_visibility: leaderboardVisibility,
         }),
       });
 
@@ -403,6 +405,25 @@ export default function NewContestPage() {
               onChange={(e) => setInstructions(e.target.value)}
               className="w-full px-3.5 py-2 rounded-xl border border-[var(--line)] bg-[var(--subtle)] text-xs text-[var(--ink)] placeholder-[var(--muted)] focus:outline-none focus:border-[#5B5FEF]"
             />
+          </div>
+
+          <div className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--line)] space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-semibold text-[var(--ink)]">Leaderboard Visibility</div>
+                <div className="text-[11px] text-[var(--muted)]">
+                  Choose whether student scores and ranks are publicly displayed or strictly anonymous
+                </div>
+              </div>
+              <select
+                value={leaderboardVisibility}
+                onChange={(e) => setLeaderboardVisibility(e.target.value as "PUBLIC" | "ANONYMOUS")}
+                className="px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--card)] text-xs text-[var(--ink)] font-medium"
+              >
+                <option value="PUBLIC">Public Leaderboard</option>
+                <option value="ANONYMOUS">Anonymous (Hidden Scores/Ranks)</option>
+              </select>
+            </div>
           </div>
 
           <div className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--line)] space-y-3">

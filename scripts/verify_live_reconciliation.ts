@@ -47,7 +47,8 @@ async function verifyLiveReconciliation() {
     "start_at", "end_at", "duration_minutes", "status",
     "instructions", "negative_marking", "default_negative_mark",
     "fullscreen_required", "auto_submit_on_violation", "max_violations",
-    "allow_retake", "max_attempts", "anti_cheat_settings"
+    "allow_retake", "max_attempts", "anti_cheat_settings",
+    "leaderboard_visibility"
   ];
 
   for (const col of contestCols) {
@@ -57,6 +58,24 @@ async function verifyLiveReconciliation() {
       hasErrors = true;
     } else {
       console.log(`  ✅ contests.${col}: EXISTS IN SCHEMA CACHE`);
+    }
+  }
+
+  // Check that no contests have null leaderboard_visibility
+  const { data: contestRows, error: rowsErr } = await supabase
+    .from("contests")
+    .select("id, title, leaderboard_visibility")
+    .limit(50);
+  if (rowsErr) {
+    console.log(`  ❌ Error querying contests rows: ${rowsErr.message}`);
+    hasErrors = true;
+  } else if (contestRows) {
+    const nullRows = contestRows.filter((r) => !r.leaderboard_visibility);
+    if (nullRows.length > 0) {
+      console.log(`  ❌ ${nullRows.length} contests have NULL leaderboard_visibility!`);
+      hasErrors = true;
+    } else {
+      console.log(`  ✅ All existing contests (${contestRows.length}) have valid non-null leaderboard_visibility.`);
     }
   }
 
@@ -124,7 +143,7 @@ async function verifyLiveReconciliation() {
   if (hasErrors) {
     console.log("\n==================================================");
     console.log("⚠️ SCHEMA RECONCILIATION PENDING MANUAL SQL EXECUTION");
-    console.log("Execute 'supabase/migrations/20261003_reconcile_live_schema.sql' in the Supabase SQL Editor, then re-run.");
+    console.log("Execute 'supabase/migrations/20261004_reconcile_leaderboard_visibility.sql' in the Supabase SQL Editor, then re-run.");
     console.log("==================================================");
     process.exit(1);
   }
