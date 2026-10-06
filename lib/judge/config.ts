@@ -81,6 +81,16 @@ export const LANGUAGE_CONFIGS: Record<CodingLanguage, LanguageRuntimeConfig> = {
     memoryMultiplier: 1.5,
     dockerImage: "eclipse-temurin:21-alpine",
   },
+  sql: {
+    language: "sql",
+    name: "SQL (SQLite)",
+    sourceFile: "solution.sql",
+    command: "node",
+    args: ["solution.sql"],
+    timeoutMultiplier: 1.0,
+    memoryMultiplier: 1.0,
+    dockerImage: "node:22-alpine",
+  },
 };
 
 /**

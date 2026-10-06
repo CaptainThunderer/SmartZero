@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import type {
   CodingQuestion,
+  SqlQuestion,
+  QuestionType,
   CodingLanguage,
   CodingVerdict,
   CodingSubmission,
@@ -75,7 +77,9 @@ export function cleanupLegacyUnscopedDrafts(slug: string, questionId: string): v
 interface CodingIDEProps {
   slug: string;
   questionId: string;
-  codingDetails: CodingQuestion;
+  codingDetails?: CodingQuestion;
+  sqlDetails?: SqlQuestion;
+  questionType?: QuestionType;
   marks: number;
   userId?: string;
   onSubmissionSuccess?: (score: number) => void;
@@ -85,21 +89,26 @@ export default function CodingIDE({
   slug,
   questionId,
   codingDetails,
+  sqlDetails,
+  questionType,
   marks,
   userId,
   onSubmissionSuccess,
 }: CodingIDEProps) {
-  const [language, setLanguage] = useState<CodingLanguage>("python");
+  const isSqlQuestion = questionType === "sql" || !!sqlDetails;
+  const initialLang: CodingLanguage = isSqlQuestion ? "sql" : "python";
+
+  const [language, setLanguage] = useState<CodingLanguage>(initialLang);
   const [code, setCode] = useState<string>(() => {
     if (typeof window !== "undefined") {
       cleanupLegacyUnscopedDrafts(slug, questionId);
-      const scopedKey = getStudentDraftKey(userId, slug, questionId, "python");
+      const scopedKey = getStudentDraftKey(userId, slug, questionId, initialLang);
       if (scopedKey) {
         const cached = localStorage.getItem(scopedKey);
         if (cached) return cached;
       }
     }
-    return STARTER_TEMPLATES.python;
+    return STARTER_TEMPLATES[initialLang] || "";
   });
   const [customInput, setCustomInput] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"results" | "custom" | "history">("results");
@@ -426,22 +435,28 @@ export default function CodingIDE({
           {/* Header */}
           <div className="space-y-2 border-b border-[#27273D] pb-4">
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-[#5B5FEF]/15 text-[#5B5FEF] border border-[#5B5FEF]/30 uppercase tracking-wider">
-                Coding Challenge
+              <span className={`px-2.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${
+                isSqlQuestion
+                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                  : "bg-[#5B5FEF]/15 text-[#5B5FEF] border border-[#5B5FEF]/30"
+              }`}>
+                {isSqlQuestion ? "SQL Database Query" : "Coding Challenge"}
               </span>
               <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-950/40 text-emerald-400 border border-emerald-800/40">
                 {marks} Marks
               </span>
               <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-[#27273D] text-[#A0A6C2]">
-                {codingDetails.difficulty}
+                {sqlDetails?.difficulty || codingDetails?.difficulty || "Medium"}
               </span>
             </div>
             <h2 className="text-lg font-bold text-white tracking-tight">
-              {codingDetails.title}
+              {sqlDetails?.title || codingDetails?.title || "Challenge Problem"}
             </h2>
             <div className="flex items-center gap-4 text-[11px] text-[#A0A6C2] font-mono">
-              <span>Time Limit: {codingDetails.time_limit_ms}ms</span>
-              <span>Memory Limit: {codingDetails.memory_limit_mb}MB</span>
+              <span>Time Limit: {sqlDetails?.time_limit_ms || codingDetails?.time_limit_ms || 2000}ms</span>
+              {!isSqlQuestion && codingDetails?.memory_limit_mb && (
+                <span>Memory Limit: {codingDetails.memory_limit_mb}MB</span>
+              )}
             </div>
           </div>
 
@@ -450,75 +465,115 @@ export default function CodingIDE({
             <h3 className="text-xs font-bold uppercase text-[#A0A6C2] tracking-wider">
               Problem Description
             </h3>
-            <p className="whitespace-pre-line">{codingDetails.description}</p>
+            <p className="whitespace-pre-line">{sqlDetails?.description || codingDetails?.description}</p>
           </div>
 
-          {/* Input Format */}
-          {codingDetails.input_format && (
-            <div className="space-y-1.5 text-xs">
-              <h3 className="font-bold text-white">Input Format:</h3>
-              <p className="text-[#A0A6C2] whitespace-pre-line leading-relaxed">
-                {codingDetails.input_format}
-              </p>
-            </div>
-          )}
-
-          {/* Output Format */}
-          {codingDetails.output_format && (
-            <div className="space-y-1.5 text-xs">
-              <h3 className="font-bold text-white">Output Format:</h3>
-              <p className="text-[#A0A6C2] whitespace-pre-line leading-relaxed">
-                {codingDetails.output_format}
-              </p>
-            </div>
-          )}
-
-          {/* Constraints */}
-          {codingDetails.constraints && (
-            <div className="space-y-1.5 text-xs">
-              <h3 className="font-bold text-white">Constraints:</h3>
-              <pre className="p-3 rounded-lg bg-[#12121A] border border-[#27273D] font-mono text-[11px] text-[#A5B4FC] overflow-x-auto whitespace-pre-wrap">
-                {codingDetails.constraints}
-              </pre>
-            </div>
-          )}
-
-          {/* Sample Test Cases */}
-          <div className="space-y-4 pt-2">
-            <h3 className="text-xs font-bold uppercase text-[#A0A6C2] tracking-wider">
-              Sample Test Cases
-            </h3>
-            {codingDetails.test_cases
-              ?.filter((tc) => tc.is_sample)
-              .map((tc, idx) => (
-                <div
-                  key={tc.id || idx}
-                  className="rounded-xl border border-[#27273D] bg-[#12121A] p-3.5 space-y-2 text-xs"
-                >
-                  <div className="font-bold text-[#A5B4FC] text-[11px]">
-                    Sample Case {idx + 1}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <div className="text-[10px] text-[#6B6F8A] uppercase font-mono mb-1">
-                        Input
-                      </div>
-                      <pre className="p-2.5 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-white overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
-                        {tc.input || "(empty)"}
-                      </pre>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-[#6B6F8A] uppercase font-mono mb-1">
-                        Expected Output
-                      </div>
-                      <pre className="p-2.5 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-emerald-400 overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
-                        {tc.expected_output || "(empty)"}
-                      </pre>
-                    </div>
-                  </div>
+          {/* SQL-Specific Database Schema & Sample Data */}
+          {isSqlQuestion && sqlDetails && (
+            <>
+              {sqlDetails.schema_sql && (
+                <div className="space-y-1.5 text-xs">
+                  <h3 className="font-bold text-amber-400 font-mono text-[11px] uppercase tracking-wider">
+                    Database Schema (DDL):
+                  </h3>
+                  <pre className="p-3 rounded-lg bg-[#12121A] border border-[#27273D] font-mono text-[11px] text-amber-200 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                    {sqlDetails.schema_sql}
+                  </pre>
                 </div>
-              ))}
-          </div>
+              )}
+
+              {sqlDetails.sample_data_sql && (
+                <div className="space-y-1.5 text-xs">
+                  <h3 className="font-bold text-indigo-400 font-mono text-[11px] uppercase tracking-wider">
+                    Sample Dataset:
+                  </h3>
+                  <pre className="p-3 rounded-lg bg-[#12121A] border border-[#27273D] font-mono text-[11px] text-[#A5B4FC] overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                    {sqlDetails.sample_data_sql}
+                  </pre>
+                </div>
+              )}
+
+              {sqlDetails.sample_expected_output && (
+                <div className="space-y-1.5 text-xs">
+                  <h3 className="font-bold text-emerald-400 font-mono text-[11px] uppercase tracking-wider">
+                    Sample Expected Output{sqlDetails.order_sensitive ? " (Order Sensitive)" : ""}:
+                  </h3>
+                  <pre className="p-3 rounded-lg bg-[#12121A] border border-[#27273D] font-mono text-[11px] text-emerald-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                    {sqlDetails.sample_expected_output}
+                  </pre>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Coding Challenge Formats & Constraints */}
+          {!isSqlQuestion && codingDetails && (
+            <>
+              {codingDetails.input_format && (
+                <div className="space-y-1.5 text-xs">
+                  <h3 className="font-bold text-white">Input Format:</h3>
+                  <p className="text-[#A0A6C2] whitespace-pre-line leading-relaxed">
+                    {codingDetails.input_format}
+                  </p>
+                </div>
+              )}
+
+              {codingDetails.output_format && (
+                <div className="space-y-1.5 text-xs">
+                  <h3 className="font-bold text-white">Output Format:</h3>
+                  <p className="text-[#A0A6C2] whitespace-pre-line leading-relaxed">
+                    {codingDetails.output_format}
+                  </p>
+                </div>
+              )}
+
+              {codingDetails.constraints && (
+                <div className="space-y-1.5 text-xs">
+                  <h3 className="font-bold text-white">Constraints:</h3>
+                  <pre className="p-3 rounded-lg bg-[#12121A] border border-[#27273D] font-mono text-[11px] text-[#A5B4FC] overflow-x-auto whitespace-pre-wrap">
+                    {codingDetails.constraints}
+                  </pre>
+                </div>
+              )}
+
+              {/* Sample Test Cases */}
+              <div className="space-y-4 pt-2">
+                <h3 className="text-xs font-bold uppercase text-[#A0A6C2] tracking-wider">
+                  Sample Test Cases
+                </h3>
+                {codingDetails.test_cases
+                  ?.filter((tc) => tc.is_sample)
+                  .map((tc, idx) => (
+                    <div
+                      key={tc.id || idx}
+                      className="rounded-xl border border-[#27273D] bg-[#12121A] p-3.5 space-y-2 text-xs"
+                    >
+                      <div className="font-bold text-[#A5B4FC] text-[11px]">
+                        Sample Case {idx + 1}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <div className="text-[10px] text-[#6B6F8A] uppercase font-mono mb-1">
+                            Input
+                          </div>
+                          <pre className="p-2.5 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-white overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
+                            {tc.input || "(empty)"}
+                          </pre>
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-[#6B6F8A] uppercase font-mono mb-1">
+                            Expected Output
+                          </div>
+                          <pre className="p-2.5 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-emerald-400 overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
+                            {tc.expected_output || "(empty)"}
+                          </pre>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -532,17 +587,21 @@ export default function CodingIDE({
               <span>Solution Editor</span>
             </div>
 
-            {/* Language Selector */}
+            {/* Language Selector: Restricted to Python 3 and SQL (SQLite) */}
             <select
               value={language}
               onChange={(e) => handleLanguageChange(e.target.value as CodingLanguage)}
-              className="bg-[#12121A] border border-[#27273D] text-white text-xs font-mono rounded-lg px-2.5 py-1 focus:outline-none focus:border-[#5B5FEF]"
+              disabled={isSqlQuestion}
+              className="bg-[#12121A] border border-[#27273D] text-white text-xs font-mono rounded-lg px-2.5 py-1 focus:outline-none focus:border-[#5B5FEF] disabled:opacity-90"
             >
-              <option value="python">Python 3</option>
-              <option value="javascript">JavaScript (Node.js)</option>
-              <option value="typescript">TypeScript</option>
-              <option value="cpp">C++ (g++)</option>
-              <option value="java">Java 17</option>
+              {isSqlQuestion ? (
+                <option value="sql">SQL (SQLite)</option>
+              ) : (
+                <>
+                  <option value="python">Python 3</option>
+                  <option value="sql">SQL (SQLite)</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -848,19 +907,38 @@ export default function CodingIDE({
 
                           {/* Show details ONLY for sample test cases */}
                           {tc.is_sample && (
-                            <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
-                              <div>
-                                <span className="text-[#6B6F8A] block mb-1">Input:</span>
-                                <pre className="p-2 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-white overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
-                                  {tc.input || "(none)"}
-                                </pre>
-                              </div>
-                              <div>
-                                <span className="text-[#6B6F8A] block mb-1">Actual Output:</span>
-                                <pre className="p-2 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-emerald-300 overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
-                                  {tc.actual_output || "(empty)"}
-                                </pre>
-                              </div>
+                            <div className="space-y-2 pt-1 text-[10px]">
+                              {tc.columns && tc.rows ? (
+                                <div>
+                                  <div className="flex items-center justify-between text-[#6B6F8A] mb-1 font-mono">
+                                    <span className="font-bold text-indigo-300">Query Result:</span>
+                                    <span>{tc.row_count ?? tc.rows.length} rows • {tc.execution_time_ms}ms</span>
+                                  </div>
+                                  <pre className="p-2.5 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-emerald-300 overflow-x-auto whitespace-pre leading-relaxed">
+                                    {tc.actual_output || "(empty result)"}
+                                  </pre>
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <span className="text-[#6B6F8A] block mb-1">Input:</span>
+                                    <pre className="p-2 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-white overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
+                                      {tc.input || "(none)"}
+                                    </pre>
+                                  </div>
+                                  <div>
+                                    <span className="text-[#6B6F8A] block mb-1">Actual Output:</span>
+                                    <pre className="p-2 rounded bg-[#181824] border border-[#27273D] font-mono text-[11px] text-emerald-300 overflow-x-auto whitespace-pre-wrap break-words leading-relaxed">
+                                      {tc.actual_output || "(empty)"}
+                                    </pre>
+                                  </div>
+                                </div>
+                              )}
+                              {tc.error && (
+                                <div className="text-rose-400 p-2 rounded bg-rose-950/20 border border-rose-900/40 whitespace-pre-wrap">
+                                  {tc.error}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

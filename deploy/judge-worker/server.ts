@@ -54,7 +54,7 @@ const server = http.createServer(async (req, res) => {
       status: "ok",
       ready: true,
       worker: "smartzero-judge",
-      runtimes: ["python", "javascript", "typescript", "cpp", "java"],
+      runtimes: ["python", "javascript", "typescript", "cpp", "java", "sql"],
       concurrency: priorityJudgeQueue.getConcurrency(),
       memory_mb: 512,
     });
@@ -89,7 +89,7 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        const supportedLanguages: CodingLanguage[] = ["python", "javascript", "typescript", "cpp", "java"];
+        const supportedLanguages: CodingLanguage[] = ["python", "javascript", "typescript", "cpp", "java", "sql"];
         if (!supportedLanguages.includes(body.language as CodingLanguage)) {
           return json(400, {
             error: `Unsupported language: ${body.language}. Supported: ${supportedLanguages.join(", ")}`,
@@ -121,6 +121,8 @@ const server = http.createServer(async (req, res) => {
           time_limit_ms: Math.min(body.time_limit_ms || 2000, JUDGE_RESOURCE_LIMITS.MAX_TIME_LIMIT_MS),
           memory_limit_mb: Math.min(body.memory_limit_mb || 256, JUDGE_RESOURCE_LIMITS.MAX_MEMORY_LIMIT_MB),
           total_marks: body.total_marks,
+          schema_sql: body.schema_sql,
+          order_sensitive: body.order_sensitive,
         };
 
         const result: JudgeWorkerJobResponse = await priorityJudgeQueue.enqueueJob(
@@ -142,6 +144,9 @@ const server = http.createServer(async (req, res) => {
                 expected_output: tr.expected_output,
                 actual_output: tr.actual_output,
                 error: tr.error,
+                columns: tr.columns,
+                rows: tr.rows,
+                row_count: tr.row_count,
               }
             : {}),
         }));

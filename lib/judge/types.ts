@@ -12,6 +12,10 @@ export interface JudgeTestCase {
   weight: number;
   is_sample: boolean;
   is_hidden: boolean;
+  setup_sql?: string;
+  schema_sql?: string;
+  sample_data_sql?: string;
+  order_sensitive?: boolean;
 }
 
 export interface JudgeRunRequest {
@@ -57,6 +61,9 @@ export interface JudgeWorkerJobRequest {
   time_limit_ms: number;
   memory_limit_mb: number;
   total_marks?: number;
+  schema_sql?: string;
+  sample_data_sql?: string;
+  order_sensitive?: boolean;
 }
 
 /**
@@ -74,6 +81,9 @@ export interface SafeTestCaseResult {
   expected_output?: string;// ONLY present if is_sample === true
   actual_output?: string;  // ONLY present if is_sample === true
   error?: string;          // ONLY present if is_sample === true
+  columns?: string[];      // For tabular SQL results (ONLY present if is_sample === true)
+  rows?: (string | number | null)[][]; // For tabular SQL results (ONLY present if is_sample === true)
+  row_count?: number;      // For tabular SQL results (ONLY present if is_sample === true)
 }
 
 /**

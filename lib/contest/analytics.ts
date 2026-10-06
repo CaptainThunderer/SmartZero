@@ -3,6 +3,7 @@ import type {
   ContestQuestion,
   CodingVerdict,
   ParticipantStatus,
+  QuestionType,
 } from "@/types/contest";
 import {
   getContestById,
@@ -18,7 +19,7 @@ import { getParticipantSecurityEvents } from "./security";
 
 export interface StudentQuestionPerformance {
   question_id: string;
-  question_type: "mcq" | "coding";
+  question_type: QuestionType;
   title: string;
   allocated_marks: number;
   earned_marks: number;
@@ -59,7 +60,7 @@ export interface StudentContestResult {
 
 export interface AdminQuestionAnalytics {
   question_id: string;
-  question_type: "mcq" | "coding";
+  question_type: QuestionType;
   title: string;
   max_marks: number;
   attempts_count: number;
@@ -225,8 +226,11 @@ export async function getStudentContestResult(
 
       questionPerformance.push({
         question_id: q.question_id,
-        question_type: "coding",
-        title: q.coding_details?.title || "Coding Challenge",
+        question_type: q.question_type,
+        title:
+          q.question_type === "sql"
+            ? q.sql_details?.title || "SQL Query Challenge"
+            : q.coding_details?.title || "Coding Challenge",
         allocated_marks: q.marks,
         earned_marks: earned,
         status,
@@ -366,6 +370,8 @@ export async function getAdminContestAnalytics(
       title:
         q.question_type === "mcq"
           ? q.mcq_details?.question_text || "MCQ Question"
+          : q.question_type === "sql"
+          ? q.sql_details?.title || "SQL Query Challenge"
           : q.coding_details?.title || "Coding Question",
       max_marks: q.marks,
       attempts_count: attemptsCount,

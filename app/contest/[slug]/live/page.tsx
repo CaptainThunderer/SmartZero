@@ -732,13 +732,16 @@ export default function LiveContestExamPage({
         {/* LEFT / CENTER: QUESTION WORKSPACE */}
         <main className="flex-1 flex flex-col bg-[#12121A] overflow-hidden">
           {currentQ ? (
-            currentQ.question_type === "coding" && currentQ.coding_details ? (
+            (currentQ.question_type === "coding" && currentQ.coding_details) ||
+            (currentQ.question_type === "sql" && currentQ.sql_details) ? (
               <div className="flex-1 flex flex-col h-full overflow-hidden">
                 <CodingIDE
                   key={`${user?.id || "anon"}_${currentQ.question_id}`}
                   slug={slug}
                   questionId={currentQ.question_id}
                   codingDetails={currentQ.coding_details}
+                  sqlDetails={currentQ.sql_details}
+                  questionType={currentQ.question_type}
                   marks={currentQ.marks}
                   userId={user?.id}
                   onSubmissionSuccess={() => setRefreshTrigger((t) => t + 1)}
@@ -898,6 +901,7 @@ export default function LiveContestExamPage({
                 const isAnswered = ans && ans.option_id !== null;
                 const isMarked = ans && ans.is_marked;
                 const isCoding = q.question_type === "coding";
+                const isSql = q.question_type === "sql";
 
                 let btnClass = "border-[#27273D] bg-[#12121A] text-[#A0A6C2] hover:border-[#383854]";
                 if (isCurrent) {
@@ -917,6 +921,9 @@ export default function LiveContestExamPage({
                     <span>{idx + 1}</span>
                     {isCoding && (
                       <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                    )}
+                    {isSql && (
+                      <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" />
                     )}
                   </button>
                 );

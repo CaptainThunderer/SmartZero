@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   getContestBySlug,
   getCodingQuestionRaw,
+  getSqlQuestionRaw,
   getContestQuestions,
   computeContestStatus,
   getParticipant,
@@ -105,31 +106,58 @@ export async function POST(
   }
 
   // Authoritative question verification: confirm question exists
-  const rawQuestion = await getCodingQuestionRaw(body.question_id);
-  if (!rawQuestion) {
-    return NextResponse.json({ error: "Coding question not found." }, { status: 404 });
+  const isSql = body.language === "sql";
+  let rawCodingQ = null;
+  let rawSqlQ = null;
+
+  if (isSql) {
+    rawSqlQ = await getSqlQuestionRaw(body.question_id);
+    if (!rawSqlQ) {
+      rawCodingQ = await getCodingQuestionRaw(body.question_id);
+    }
+  } else {
+    rawCodingQ = await getCodingQuestionRaw(body.question_id);
+    if (!rawCodingQ) {
+      rawSqlQ = await getSqlQuestionRaw(body.question_id);
+    }
+  }
+
+  if (!rawCodingQ && !rawSqlQ) {
+    return NextResponse.json({ error: "Question not found." }, { status: 404 });
   }
 
   // Authoritative marks lookup from contest configuration
   const contestQuestions = await getContestQuestions(contest.id, "admin");
   const contestQLink = contestQuestions.find(
-    (cq) => cq.question_id === body.question_id && cq.question_type === "coding"
+    (cq) => cq.question_id === body.question_id && (cq.question_type === (rawSqlQ ? "sql" : "coding"))
   );
-  const totalMarks = contestQLink ? contestQLink.marks : 20;
+  const totalMarks = contestQLink ? contestQLink.marks : (rawSqlQ ? rawSqlQ.marks || 10 : 20);
 
   const submissionId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
   judgeObservability.recordJobEnqueued();
 
-  const testCases: JudgeTestCase[] = (rawQuestion.test_cases || []).map((tc) => ({
-    id: tc.id,
-    input: tc.input,
-    expected_output: tc.expected_output || "",
-    weight: tc.weight || 1,
-    is_sample: !!tc.is_sample,
-    is_hidden: !tc.is_sample,
-  }));
+  const testCases: JudgeTestCase[] = rawSqlQ
+    ? (rawSqlQ.test_cases || []).map((tc) => ({
+        id: tc.id,
+        input: tc.setup_sql || rawSqlQ!.sample_data_sql || "",
+        setup_sql: tc.setup_sql || rawSqlQ!.sample_data_sql || "",
+        schema_sql: rawSqlQ!.schema_sql,
+        order_sensitive: rawSqlQ!.order_sensitive,
+        expected_output: tc.expected_output || "",
+        weight: tc.weight || 1,
+        is_sample: !!tc.is_sample,
+        is_hidden: !tc.is_sample,
+      }))
+    : (rawCodingQ!.test_cases || []).map((tc) => ({
+        id: tc.id,
+        input: tc.input,
+        expected_output: tc.expected_output || "",
+        weight: tc.weight || 1,
+        is_sample: !!tc.is_sample,
+        is_hidden: !tc.is_sample,
+      }));
 
   try {
     const jobResponse = await judgeWorkerClient.executeJob({
@@ -141,9 +169,12 @@ export async function POST(
       source_code: body.code,
       execution_mode: "submit",
       test_cases: testCases,
-      time_limit_ms: rawQuestion.time_limit_ms,
-      memory_limit_mb: rawQuestion.memory_limit_mb,
+      time_limit_ms: rawSqlQ ? rawSqlQ.time_limit_ms : rawCodingQ!.time_limit_ms,
+      memory_limit_mb: rawSqlQ ? 256 : rawCodingQ!.memory_limit_mb,
       total_marks: totalMarks,
+      schema_sql: rawSqlQ?.schema_sql,
+      sample_data_sql: rawSqlQ?.sample_data_sql,
+      order_sensitive: rawSqlQ?.order_sensitive,
     });
 
     const judgeSummary: JudgeExecutionSummary = {

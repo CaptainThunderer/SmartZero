@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { getContestBySlug, getCodingQuestionRaw, getParticipant, getEffectiveAttemptDeadline } from "@/lib/contest/service";
+import {
+  getContestBySlug,
+  getCodingQuestionRaw,
+  getSqlQuestionRaw,
+  getParticipant,
+  getEffectiveAttemptDeadline,
+} from "@/lib/contest/service";
 import { judgeWorkerClient, JudgeUnavailableError } from "@/lib/judge/service";
 import { JUDGE_RESOURCE_LIMITS } from "@/lib/judge/config";
 import { getAuthenticatedUser } from "@/lib/auth/studentSession";
@@ -59,33 +65,80 @@ export async function POST(
     );
   }
 
-  const rawQuestion = await getCodingQuestionRaw(body.question_id);
-  if (!rawQuestion) {
-    return NextResponse.json({ error: "Coding question not found." }, { status: 404 });
+  const isSql = body.language === "sql";
+  let rawCodingQ = null;
+  let rawSqlQ = null;
+
+  if (isSql) {
+    rawSqlQ = await getSqlQuestionRaw(body.question_id);
+    if (!rawSqlQ) {
+      rawCodingQ = await getCodingQuestionRaw(body.question_id);
+    }
+  } else {
+    rawCodingQ = await getCodingQuestionRaw(body.question_id);
+    if (!rawCodingQ) {
+      rawSqlQ = await getSqlQuestionRaw(body.question_id);
+    }
   }
 
-  // Filter ONLY public sample test cases for student interactive "Run"
-  const sampleTestCases: JudgeTestCase[] = (rawQuestion.test_cases || [])
-    .filter((tc) => tc.is_sample)
-    .map((tc) => ({
-      id: tc.id,
-      input: tc.input,
-      expected_output: tc.expected_output || "",
-      weight: tc.weight || 1,
-      is_sample: true,
-      is_hidden: false,
-    }));
+  if (!rawCodingQ && !rawSqlQ) {
+    return NextResponse.json({ error: "Question not found." }, { status: 404 });
+  }
 
-  // If user provided custom input, evaluate custom input as well
-  if (body.custom_input !== undefined && body.custom_input.trim().length > 0) {
-    sampleTestCases.push({
-      id: "custom-input-case",
-      input: body.custom_input,
-      expected_output: "",
-      weight: 0,
-      is_sample: true,
-      is_hidden: false,
-    });
+  let sampleTestCases: JudgeTestCase[] = [];
+
+  if (rawSqlQ) {
+    const samples = (rawSqlQ.test_cases || []).filter((tc) => tc.is_sample);
+    if (samples.length > 0) {
+      sampleTestCases = samples.map((tc) => ({
+        id: tc.id,
+        input: tc.setup_sql || rawSqlQ!.sample_data_sql || "",
+        setup_sql: tc.setup_sql || rawSqlQ!.sample_data_sql || "",
+        schema_sql: rawSqlQ!.schema_sql,
+        order_sensitive: rawSqlQ!.order_sensitive,
+        expected_output: tc.expected_output || rawSqlQ!.sample_expected_output || "",
+        weight: 1,
+        is_sample: true,
+        is_hidden: false,
+      }));
+    } else {
+      sampleTestCases = [
+        {
+          id: "sql-sample-test",
+          input: rawSqlQ.sample_data_sql || "",
+          setup_sql: rawSqlQ.sample_data_sql || "",
+          schema_sql: rawSqlQ.schema_sql,
+          order_sensitive: rawSqlQ.order_sensitive,
+          expected_output: rawSqlQ.sample_expected_output || "",
+          weight: 1,
+          is_sample: true,
+          is_hidden: false,
+        },
+      ];
+    }
+  } else if (rawCodingQ) {
+    sampleTestCases = (rawCodingQ.test_cases || [])
+      .filter((tc) => tc.is_sample)
+      .map((tc) => ({
+        id: tc.id,
+        input: tc.input,
+        expected_output: tc.expected_output || "",
+        weight: tc.weight || 1,
+        is_sample: true,
+        is_hidden: false,
+      }));
+
+    // If user provided custom input, evaluate custom input as well
+    if (body.custom_input !== undefined && body.custom_input.trim().length > 0) {
+      sampleTestCases.push({
+        id: "custom-input-case",
+        input: body.custom_input,
+        expected_output: "",
+        weight: 0,
+        is_sample: true,
+        is_hidden: false,
+      });
+    }
   }
 
   const jobId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -100,9 +153,12 @@ export async function POST(
       source_code: body.code,
       execution_mode: "run",
       test_cases: sampleTestCases,
-      time_limit_ms: rawQuestion.time_limit_ms,
-      memory_limit_mb: rawQuestion.memory_limit_mb,
+      time_limit_ms: rawSqlQ ? rawSqlQ.time_limit_ms : rawCodingQ!.time_limit_ms,
+      memory_limit_mb: rawSqlQ ? 256 : rawCodingQ!.memory_limit_mb,
       total_marks: 0, // Interactive Run has no impact on contest marks
+      schema_sql: rawSqlQ?.schema_sql,
+      sample_data_sql: rawSqlQ?.sample_data_sql,
+      order_sensitive: rawSqlQ?.order_sensitive,
     });
 
     return NextResponse.json({

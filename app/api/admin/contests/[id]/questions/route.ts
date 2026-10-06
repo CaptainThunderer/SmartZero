@@ -4,6 +4,7 @@ import {
   linkQuestionToContest,
   addMcqQuestion,
   addCodingQuestion,
+  addSqlQuestion,
   reorderContestQuestions,
 } from "@/lib/contest/service";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -11,10 +12,12 @@ import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 
 async function verifyAdminAuth(req: Request) {
   const authUser = await getAuthenticatedUser(req);
-  if (authUser && authUser.role !== "student") return true;
+  if (authUser) {
+    return authUser.role !== "student";
+  }
 
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return true; // Local dev fallback
+  if (!supabase) return false;
 
   const {
     data: { user },
@@ -98,9 +101,31 @@ export async function POST(
       });
 
       return NextResponse.json({ question: linked }, { status: 201 });
+    } else if (body.type === "sql") {
+      const sqlQ = await addSqlQuestion({
+        title: body.title,
+        description: body.description,
+        difficulty: body.difficulty,
+        time_limit_ms: body.time_limit_ms,
+        schema_sql: body.schema_sql,
+        sample_data_sql: body.sample_data_sql,
+        sample_expected_output: body.sample_expected_output,
+        order_sensitive: body.order_sensitive,
+        test_cases: body.test_cases || [],
+      });
+
+      const linked = await linkQuestionToContest({
+        contest_id,
+        question_id: sqlQ.id,
+        question_type: "sql",
+        marks: body.marks || 10,
+        negative_marks: body.negative_marks || 0,
+      });
+
+      return NextResponse.json({ question: linked }, { status: 201 });
     }
 
-    return NextResponse.json({ error: "Invalid question type. Expected 'mcq' or 'coding'." }, { status: 400 });
+    return NextResponse.json({ error: "Invalid question type. Expected 'mcq', 'coding', or 'sql'." }, { status: 400 });
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to add question." },

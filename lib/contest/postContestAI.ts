@@ -6,10 +6,11 @@ import {
   type AdminContestAnalytics,
 } from "./analytics";
 import { generateAIText } from "@/ai";
+import type { QuestionType } from "@/types/contest";
 
 export interface SanitizedStudentPerformance {
   title: string;
-  question_type: "mcq" | "coding";
+  question_type: QuestionType;
   allocated_marks: number;
   earned_marks: number;
   status: "solved" | "partial" | "unsolved" | "unattempted";
@@ -57,7 +58,7 @@ export interface SanitizedAdminCohortData {
   verdict_distribution: Record<string, number>;
   questions: Array<{
     title: string;
-    question_type: "mcq" | "coding";
+    question_type: QuestionType;
     max_marks: number;
     attempts_count: number;
     solved_count: number;
@@ -71,7 +72,7 @@ export interface AdminPostContestAISummary {
   difficultyAssessment: string;
   outlierQuestions: Array<{
     questionTitle: string;
-    questionType: "mcq" | "coding";
+    questionType: QuestionType;
     successRate: number;
     insight: string;
   }>;

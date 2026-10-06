@@ -6,7 +6,7 @@ export type ContestStatus =
   | "ENDED"
   | "FINAL_RESULTS";
 
-export type QuestionType = "mcq" | "coding";
+export type QuestionType = "mcq" | "coding" | "sql";
 
 export type QuestionDifficulty = "Easy" | "Medium" | "Hard";
 
@@ -103,6 +103,33 @@ export interface CodingQuestion {
   test_cases?: CodingTestCase[];
 }
 
+export interface SqlTestCase {
+  id: string;
+  question_id?: string;
+  setup_sql?: string;
+  expected_output: string;
+  is_hidden: boolean;
+  is_sample: boolean;
+  weight: number;
+  sort_order?: number;
+}
+
+export interface SqlQuestion {
+  id: string;
+  title: string;
+  description: string;
+  difficulty: QuestionDifficulty;
+  marks?: number;
+  time_limit_ms: number;
+  schema_sql: string;
+  sample_data_sql?: string;
+  sample_expected_output?: string;
+  order_sensitive?: boolean;
+  created_by?: string | null;
+  created_at?: string;
+  test_cases?: SqlTestCase[];
+}
+
 export interface ContestQuestion {
   id: string;
   contest_id: string;
@@ -115,6 +142,7 @@ export interface ContestQuestion {
   // Hydrated details
   mcq_details?: McqQuestion;
   coding_details?: CodingQuestion;
+  sql_details?: SqlQuestion;
 }
 
 export interface ContestParticipant {
@@ -166,7 +194,8 @@ export type CodingLanguage =
   | "javascript"
   | "typescript"
   | "cpp"
-  | "java";
+  | "java"
+  | "sql";
 
 export interface TestCaseVerdictResult {
   test_case_id: string;
@@ -178,6 +207,9 @@ export interface TestCaseVerdictResult {
   expected_output?: string;// ONLY shown if is_sample === true
   actual_output?: string;  // ONLY shown if is_sample === true
   error?: string;
+  columns?: string[];
+  rows?: (string | number | null)[][];
+  row_count?: number;
 }
 
 export interface CodingSubmission {
@@ -262,6 +294,7 @@ export interface PublicContestSummary {
     total: number;
     mcq: number;
     coding: number;
+    sql?: number;
   };
   participant_count?: number;
   leaderboard_visibility?: LeaderboardVisibility;

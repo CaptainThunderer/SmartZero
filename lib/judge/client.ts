@@ -69,6 +69,9 @@ export class JudgeWorkerClient {
             item.expected_output = r.expected_output;
             item.actual_output = r.actual_output;
             item.error = r.error;
+            item.columns = r.columns;
+            item.rows = r.rows;
+            item.row_count = r.row_count;
           }
           return item;
         });
@@ -134,6 +137,9 @@ export class JudgeWorkerClient {
                 expected_output: r.expected_output,
                 actual_output: r.actual_output,
                 error: r.error,
+                columns: r.columns,
+                rows: r.rows,
+                row_count: r.row_count,
               }
             : {}),
         }));

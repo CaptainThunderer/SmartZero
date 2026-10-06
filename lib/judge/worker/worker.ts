@@ -12,9 +12,10 @@ import type {
 } from "../types";
 import type { SubmissionJob, IJudgeQueue } from "../queue/types";
 import { executeInSandbox } from "../sandbox";
+import { executeSqlTestCases } from "../sqlEngine";
 import { judgeQueue } from "../queue/queue";
 import { judgeObservability } from "../observability";
-import { getCodingQuestionRaw, getContestQuestions } from "@/lib/contest/service";
+import { getCodingQuestionRaw, getSqlQuestionRaw, getContestQuestions } from "@/lib/contest/service";
 
 /**
  * Deterministically normalizes stdout and expected output:
@@ -64,6 +65,16 @@ export class JudgeWorker {
     const totalMarks = params.totalMarks !== undefined ? params.totalMarks : 20;
 
     const testCases = params.testCases || [];
+    if (params.language === "sql") {
+      return executeSqlTestCases({
+        jobId: `sql-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        sourceCode: params.code,
+        testCases,
+        timeLimitMs,
+        totalMarks,
+      });
+    }
+
     const testCaseResults: TestCaseVerdictResult[] = [];
 
     let totalWeight = 0;
@@ -193,13 +204,34 @@ export class JudgeWorker {
 
     try {
       // 1. Authoritative Question Lookup
-      const rawQuestion = await getCodingQuestionRaw(job.questionId);
+      let rawQuestion: {
+        test_cases?: Array<{
+          id: string;
+          input?: string;
+          setup_sql?: string;
+          expected_output?: string;
+          weight?: number;
+          is_sample: boolean;
+          is_hidden: boolean;
+        }>;
+        time_limit_ms: number;
+        memory_limit_mb?: number;
+        schema_sql?: string;
+        order_sensitive?: boolean;
+      } | null = null;
+
+      if (job.language === "sql") {
+        rawQuestion = await getSqlQuestionRaw(job.questionId);
+      } else {
+        rawQuestion = await getCodingQuestionRaw(job.questionId);
+      }
+
       if (!rawQuestion) {
         await this.queue.updateJobStatus(job.jobId, "FAILED", {
           error: `Question ${job.questionId} not found in authoritative database.`,
         });
         judgeObservability.recordJobFailed("SYSTEM_ERROR");
-        throw new Error(`Coding question ${job.questionId} not found.`);
+        throw new Error(`Question ${job.questionId} not found.`);
       }
 
       // 2. Authoritative Marks Lookup from Contest Question Configuration
@@ -213,7 +245,11 @@ export class JudgeWorker {
       const allTestCases: JudgeTestCase[] = (rawQuestion.test_cases || []).map(
         (tc) => ({
           id: tc.id,
-          input: tc.input,
+          input: tc.input || tc.setup_sql || "",
+          setup_sql: tc.setup_sql,
+          schema_sql: rawQuestion?.schema_sql,
+          sample_data_sql: (rawQuestion as { sample_data_sql?: string })?.sample_data_sql,
+          order_sensitive: rawQuestion?.order_sensitive,
           expected_output: tc.expected_output || "",
           weight: tc.weight || 1,
           is_sample: tc.is_sample,
@@ -262,6 +298,55 @@ export class JudgeWorker {
    * Deterministic Worker Job Execution implementing Section A3 Contract.
    */
   async executeJob(request: JudgeWorkerJobRequest): Promise<JudgeWorkerJobResponse> {
+    if (request.language === "sql") {
+      const summary = await executeSqlTestCases({
+        jobId: request.job_id,
+        sourceCode: request.source_code,
+        testCases: request.test_cases,
+        schemaSql: request.schema_sql,
+        orderSensitive: request.order_sensitive,
+        timeLimitMs: request.time_limit_ms,
+        totalMarks: request.total_marks ?? (request.execution_mode === "run" ? 0 : 20),
+        executionMode: request.execution_mode,
+      });
+
+      const safeResults: SafeTestCaseResult[] = summary.test_case_results.map((tc, idx) => {
+        const item: SafeTestCaseResult = {
+          index: idx + 1,
+          passed: tc.verdict === "Accepted",
+          verdict: tc.verdict,
+          execution_time_ms: tc.execution_time_ms,
+          memory_kb: tc.memory_kb,
+          is_sample: tc.is_sample,
+        };
+        if (tc.is_sample) {
+          item.input = tc.input;
+          item.expected_output = tc.expected_output;
+          item.actual_output = tc.actual_output;
+          item.error = tc.error;
+          item.columns = tc.columns;
+          item.rows = tc.rows;
+          item.row_count = tc.row_count;
+        }
+        return item;
+      });
+
+      return {
+        job_id: request.job_id,
+        submission_id: request.submission_id,
+        status: summary.verdict === "SYSTEM_ERROR" ? "FAILED" : "COMPLETED",
+        verdict: summary.verdict,
+        passed_tests: summary.test_cases_passed,
+        total_tests: summary.total_test_cases,
+        score: request.execution_mode === "run" ? 0 : summary.score,
+        max_score: request.execution_mode === "run" ? 0 : (request.total_marks ?? 20),
+        execution_time_ms: summary.execution_time_ms,
+        memory_used_mb: 0,
+        compile_output: summary.compile_output,
+        test_results: safeResults,
+      };
+    }
+
     const summary = await this.executeTestCases({
       code: request.source_code,
       language: request.language,
@@ -285,6 +370,9 @@ export class JudgeWorker {
         item.expected_output = tc.expected_output;
         item.actual_output = tc.actual_output;
         item.error = tc.error;
+        item.columns = tc.columns;
+        item.rows = tc.rows;
+        item.row_count = tc.row_count;
       }
       return item;
     });

@@ -4,6 +4,8 @@ import type {
   ContestStatus,
   McqQuestion,
   CodingQuestion,
+  SqlQuestion,
+  SqlTestCase,
   ContestParticipant,
   McqAnswer,
   PublicContestSummary,
@@ -25,6 +27,7 @@ const memoryStore = {
   contestQuestions: new Map<string, ContestQuestion[]>(), // contestId -> questions
   mcqQuestions: new Map<string, McqQuestion>(),
   codingQuestions: new Map<string, CodingQuestion>(),
+  sqlQuestions: new Map<string, SqlQuestion>(),
   participants: new Map<string, ContestParticipant[]>(), // contestId -> participants
   answers: new Map<string, McqAnswer[]>(), // `${contestId}:${userId}` -> answers
   adminAssignments: new Map<string, string[]>(), // contestId -> adminUserIds
@@ -86,6 +89,25 @@ export function sanitizeQuestionForStudent(cq: ContestQuestion): ContestQuestion
           id: tc.id,
           question_id: tc.question_id,
           input: tc.input,
+          expected_output: tc.expected_output,
+          is_hidden: false,
+          is_sample: true,
+          weight: tc.weight,
+          sort_order: tc.sort_order,
+        })),
+    };
+  }
+
+  if (sanitized.sql_details && sanitized.sql_details.test_cases) {
+    sanitized.sql_details = {
+      ...sanitized.sql_details,
+      // Only keep public sample test cases for students
+      test_cases: sanitized.sql_details.test_cases
+        .filter((tc) => tc.is_sample && !tc.is_hidden)
+        .map((tc) => ({
+          id: tc.id,
+          question_id: tc.question_id,
+          setup_sql: tc.setup_sql,
           expected_output: tc.expected_output,
           is_hidden: false,
           is_sample: true,
@@ -306,13 +328,14 @@ export async function listContests(filters?: { status?: ContestStatus }): Promis
 
 export async function getContestQuestionCounts(
   contestId: string
-): Promise<{ total: number; mcq: number; coding: number }> {
+): Promise<{ total: number; mcq: number; coding: number; sql?: number }> {
   // Check memoryStore first
   const memList = memoryStore.contestQuestions.get(contestId);
   if (memList && memList.length > 0) {
     const mcq = memList.filter((q) => q.question_type === "mcq").length;
     const coding = memList.filter((q) => q.question_type === "coding").length;
-    return { total: memList.length, mcq, coding };
+    const sql = memList.filter((q) => q.question_type === "sql").length;
+    return { total: memList.length, mcq, coding, sql };
   }
 
   // Supabase check if available
@@ -327,14 +350,15 @@ export async function getContestQuestionCounts(
       if (!error && data) {
         const mcq = data.filter((q) => q.question_type === "mcq").length;
         const coding = data.filter((q) => q.question_type === "coding").length;
-        return { total: data.length, mcq, coding };
+        const sql = data.filter((q) => q.question_type === "sql").length;
+        return { total: data.length, mcq, coding, sql };
       }
     } catch {
       // Fall through
     }
   }
 
-  return { total: 0, mcq: 0, coding: 0 };
+  return { total: 0, mcq: 0, coding: 0, sql: 0 };
 }
 
 export async function getContestParticipantCount(contestId: string): Promise<number> {
@@ -681,11 +705,125 @@ export async function getCodingQuestionRaw(
   return local || null;
 }
 
+export async function addSqlQuestion(params: {
+  id?: string;
+  title: string;
+  description: string;
+  difficulty?: "Easy" | "Medium" | "Hard";
+  marks?: number;
+  time_limit_ms?: number;
+  schema_sql: string;
+  sample_data_sql?: string;
+  sample_expected_output?: string;
+  order_sensitive?: boolean;
+  test_cases: {
+    id?: string;
+    setup_sql?: string;
+    expected_output: string;
+    is_hidden?: boolean;
+    is_sample?: boolean;
+    weight?: number;
+  }[];
+  created_by?: string | null;
+}): Promise<SqlQuestion> {
+  const questionId = params.id || randomUUID();
+  const q: SqlQuestion = {
+    id: questionId,
+    title: params.title.trim(),
+    description: params.description.trim(),
+    difficulty: params.difficulty || "Medium",
+    marks: params.marks ?? 10,
+    time_limit_ms: params.time_limit_ms || 2000,
+    schema_sql: params.schema_sql.trim(),
+    sample_data_sql: params.sample_data_sql?.trim() || "",
+    sample_expected_output: params.sample_expected_output?.trim() || "",
+    order_sensitive: !!params.order_sensitive,
+    created_by: params.created_by || null,
+    created_at: new Date().toISOString(),
+    test_cases: params.test_cases.map((tc, i) => ({
+      id: tc.id || randomUUID(),
+      question_id: questionId,
+      setup_sql: tc.setup_sql || "",
+      expected_output: tc.expected_output,
+      is_hidden: tc.is_hidden ?? true,
+      is_sample: tc.is_sample ?? false,
+      weight: tc.weight ?? 1,
+      sort_order: i,
+    })),
+  };
+
+  memoryStore.sqlQuestions.set(q.id, q);
+
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase.from("sql_questions").upsert({
+        id: q.id,
+        title: q.title,
+        description: q.description,
+        difficulty: q.difficulty,
+        time_limit_ms: q.time_limit_ms,
+        schema_sql: q.schema_sql,
+        sample_data_sql: q.sample_data_sql,
+        sample_expected_output: q.sample_expected_output,
+        order_sensitive: q.order_sensitive,
+        created_by: q.created_by,
+      });
+
+      if (q.test_cases && q.test_cases.length > 0) {
+        await supabase.from("sql_test_cases").upsert(
+          q.test_cases.map((tc) => ({
+            id: tc.id,
+            question_id: q.id,
+            setup_sql: tc.setup_sql,
+            expected_output: tc.expected_output,
+            is_hidden: tc.is_hidden,
+            is_sample: tc.is_sample,
+            weight: tc.weight,
+            sort_order: tc.sort_order,
+          }))
+        );
+      }
+    } catch (err) {
+      if (isProduction()) {
+        throw new Error(`Database error adding SQL question: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  return q;
+}
+
+export async function getSqlQuestionRaw(
+  questionId: string
+): Promise<SqlQuestion | null> {
+  const local = memoryStore.sqlQuestions.get(questionId);
+  if (local && local.test_cases && local.test_cases.length > 0) return local;
+
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      const { data } = await supabase
+        .from("sql_questions")
+        .select("*, test_cases:sql_test_cases(*)")
+        .eq("id", questionId)
+        .maybeSingle();
+      if (data) {
+        memoryStore.sqlQuestions.set(questionId, data as SqlQuestion);
+        return data as SqlQuestion;
+      }
+    } catch {
+      // Ignore
+    }
+  }
+  return local || null;
+}
+
 export async function linkQuestionToContest(params: {
   id?: string;
   contest_id: string;
   question_id: string;
-  question_type: "mcq" | "coding";
+  question_type: "mcq" | "coding" | "sql";
   sort_order?: number;
   marks?: number;
   negative_marks?: number;
@@ -693,6 +831,7 @@ export async function linkQuestionToContest(params: {
   const cqId = params.id || randomUUID();
   const mcqDetails = params.question_type === "mcq" ? (memoryStore.mcqQuestions.get(params.question_id) || (await getMcqQuestionRaw(params.question_id))) : undefined;
   const codingDetails = params.question_type === "coding" ? (memoryStore.codingQuestions.get(params.question_id) || (await getCodingQuestionRaw(params.question_id))) : undefined;
+  const sqlDetails = params.question_type === "sql" ? (memoryStore.sqlQuestions.get(params.question_id) || (await getSqlQuestionRaw(params.question_id))) : undefined;
 
   const cq: ContestQuestion = {
     id: cqId,
@@ -705,6 +844,7 @@ export async function linkQuestionToContest(params: {
     created_at: new Date().toISOString(),
     mcq_details: mcqDetails || undefined,
     coding_details: codingDetails || undefined,
+    sql_details: sqlDetails || undefined,
   };
 
   const list = memoryStore.contestQuestions.get(params.contest_id) || [];
@@ -760,6 +900,7 @@ export async function getContestQuestions(
           for (const row of cqRows) {
             let mcq_details: McqQuestion | undefined;
             let coding_details: CodingQuestion | undefined;
+            let sql_details: SqlQuestion | undefined;
 
             if (row.question_type === "mcq") {
               const mcq = await getMcqQuestionRaw(row.question_id);
@@ -767,6 +908,9 @@ export async function getContestQuestions(
             } else if (row.question_type === "coding") {
               const codeQ = await getCodingQuestionRaw(row.question_id);
               if (codeQ) coding_details = codeQ;
+            } else if (row.question_type === "sql") {
+              const sqlQ = await getSqlQuestionRaw(row.question_id);
+              if (sqlQ) sql_details = sqlQ;
             }
 
             hydrated.push({
@@ -780,6 +924,7 @@ export async function getContestQuestions(
               created_at: row.created_at || new Date().toISOString(),
               mcq_details,
               coding_details,
+              sql_details,
             });
           }
           list = hydrated;

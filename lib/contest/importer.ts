@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { addMcqQuestion, addCodingQuestion, linkQuestionToContest } from "./service";
+import { addMcqQuestion, addCodingQuestion, addSqlQuestion, linkQuestionToContest } from "./service";
 import type { ContestQuestion, QuestionDifficulty } from "../../types/contest";
 
 export type ImportFormat = "json" | "csv" | "xlsx" | "xls" | "unsupported";
@@ -34,7 +34,28 @@ export interface ParsedImportCoding {
   }[];
 }
 
-export type ParsedImportQuestion = ParsedImportMcq | ParsedImportCoding;
+export interface ParsedImportSql {
+  type: "sql";
+  title: string;
+  description: string;
+  difficulty?: QuestionDifficulty;
+  time_limit_ms?: number;
+  marks: number;
+  negative_marks?: number;
+  schema_sql: string;
+  sample_data_sql?: string;
+  sample_expected_output?: string;
+  order_sensitive?: boolean;
+  test_cases: {
+    setup_sql?: string;
+    expected_output: string;
+    is_hidden?: boolean;
+    is_sample?: boolean;
+    weight?: number;
+  }[];
+}
+
+export type ParsedImportQuestion = ParsedImportMcq | ParsedImportCoding | ParsedImportSql;
 
 export interface ValidationErrorItem {
   row: number;
@@ -116,11 +137,11 @@ export function validateImportQuestions(
     const rawType = String(row.type || row.question_type || "").toLowerCase().trim();
 
     // 1. Validate Question Type
-    if (!rawType || (rawType !== "mcq" && rawType !== "coding")) {
+    if (!rawType || (rawType !== "mcq" && rawType !== "coding" && rawType !== "sql")) {
       errors.push({
         row: rowNum,
         field: "type",
-        message: `Invalid or missing question type '${rawType || "(empty)"}'. Must be 'mcq' or 'coding'.`,
+        message: `Invalid or missing question type '${rawType || "(empty)"}'. Must be 'mcq', 'coding', or 'sql'.`,
       });
       return;
     }
@@ -340,6 +361,89 @@ export function validateImportQuestions(
         test_cases: testCases,
       });
     }
+
+    // ── SQL VALIDATION ──
+    if (rawType === "sql") {
+      const title = String(row.title || row.name || row.prompt || "").trim();
+      const description = String(row.description || row.desc || "").trim();
+      const schemaSql = String(row.schema_sql || row.schema || "").trim();
+
+      if (!title) {
+        errors.push({
+          row: rowNum,
+          field: "title",
+          message: "SQL question title is required.",
+        });
+        return;
+      }
+
+      if (!description) {
+        errors.push({
+          row: rowNum,
+          field: "description",
+          message: "SQL question description is required.",
+        });
+        return;
+      }
+
+      if (!schemaSql) {
+        errors.push({
+          row: rowNum,
+          field: "schema_sql",
+          message: "Database schema (schema_sql) is required for SQL questions.",
+        });
+        return;
+      }
+
+      const sampleDataSql = String(row.sample_data_sql || row.sample_data || row.seed_data || "").trim();
+      const sampleExpectedOutput = String(row.sample_expected_output || row.expected_output || "").trim();
+      const orderSensitive = Boolean(row.order_sensitive);
+
+      let testCases: ParsedImportSql["test_cases"] = [];
+
+      if (Array.isArray(row.test_cases)) {
+        testCases = (row.test_cases as Array<Record<string, unknown>>).map((tc) => ({
+          setup_sql: String(tc.setup_sql || tc.setup || tc.input || "").trim(),
+          expected_output: String(tc.expected_output || tc.output || "").trim(),
+          is_hidden: tc.is_hidden !== undefined ? Boolean(tc.is_hidden) : true,
+          is_sample: tc.is_sample !== undefined ? Boolean(tc.is_sample) : false,
+          weight: Number(tc.weight) > 0 ? Number(tc.weight) : 1,
+        }));
+      }
+
+      if (testCases.length === 0 && sampleExpectedOutput) {
+        testCases.push({
+          setup_sql: sampleDataSql,
+          expected_output: sampleExpectedOutput,
+          is_hidden: false,
+          is_sample: true,
+          weight: 1,
+        });
+      }
+
+      if (testCases.length === 0) {
+        warnings.push({
+          row: rowNum,
+          field: "test_cases",
+          message: "No test cases or expected output provided for SQL question.",
+        });
+      }
+
+      validQuestions.push({
+        type: "sql",
+        title,
+        description,
+        difficulty,
+        time_limit_ms: Number(row.time_limit_ms || 2000),
+        marks,
+        negative_marks: negativeMarks,
+        schema_sql: schemaSql,
+        sample_data_sql: sampleDataSql,
+        sample_expected_output: sampleExpectedOutput,
+        order_sensitive: orderSensitive,
+        test_cases: testCases,
+      });
+    }
   });
 
   return {
@@ -399,6 +503,29 @@ export async function persistImportedQuestions(
         question_id: createdCode.id,
         question_type: "coding",
         marks: q.marks,
+        sort_order: i,
+      });
+
+      linkedQuestions.push(linked);
+    } else if (q.type === "sql") {
+      const createdSql = await addSqlQuestion({
+        title: q.title,
+        description: q.description,
+        difficulty: q.difficulty,
+        time_limit_ms: q.time_limit_ms,
+        schema_sql: q.schema_sql,
+        sample_data_sql: q.sample_data_sql,
+        sample_expected_output: q.sample_expected_output,
+        order_sensitive: q.order_sensitive,
+        test_cases: q.test_cases,
+      });
+
+      const linked = await linkQuestionToContest({
+        contest_id: contestId,
+        question_id: createdSql.id,
+        question_type: "sql",
+        marks: q.marks,
+        negative_marks: q.negative_marks || 0,
         sort_order: i,
       });
 

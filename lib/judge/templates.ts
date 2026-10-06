@@ -58,4 +58,8 @@ public class Main {
     }
 }
 `,
+  sql: `-- Write your SQL solution below
+SELECT *
+FROM students;
+`,
 };
