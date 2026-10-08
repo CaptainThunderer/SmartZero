@@ -44,7 +44,24 @@ export function normalizeOutput(str: string | null | undefined): string {
 }
 
 export function compareOutputs(actual: string | null | undefined, expected: string | null | undefined): boolean {
-  return normalizeOutput(actual) === normalizeOutput(expected);
+  const normActual = normalizeOutput(actual);
+  const normExpected = normalizeOutput(expected);
+  
+  const isMatch = normActual === normExpected;
+  
+  if (!isMatch && actual && expected) {
+    // Diagnostic logging requested by user
+    console.error("[JUDGE DIAGNOSTIC] Comparator mismatch detected");
+    console.error(`Actual length (raw/norm): ${actual.length}/${normActual.length}`);
+    console.error(`Expected length (raw/norm): ${expected.length}/${normExpected.length}`);
+    
+    // Log safe character codes (first 100 chars max to prevent log flooding)
+    const safeCharCodes = (str: string) => str.slice(0, 100).split('').map(c => c.charCodeAt(0)).join(',');
+    console.error(`Actual norm chars: ${safeCharCodes(normActual)}`);
+    console.error(`Expected norm chars: ${safeCharCodes(normExpected)}`);
+  }
+  
+  return isMatch;
 }
 
 export class JudgeWorker {
