@@ -132,6 +132,23 @@ export class JudgeWorkerClient {
         clearTimeout(timeoutId);
 
         if (!res.ok) {
+          const status = res.status;
+          let bodyText = "";
+          try {
+            bodyText = await res.text();
+          } catch {
+            bodyText = "[Failed to read response body]";
+          }
+          console.error(`[JudgeWorkerClient] Worker returned HTTP ${status}:`, bodyText.substring(0, 500));
+          
+          if (status === 401) {
+            console.error("[JudgeWorkerClient] CRITICAL: 401 Unauthorized. JUDGE_WORKER_SECRET mismatch between Vercel and Docker.");
+          } else if (status === 502 || status === 530) {
+            console.error("[JudgeWorkerClient] CRITICAL: Bad Gateway. Cloudflare tunnel is likely disconnected or worker is down.");
+          } else if (status === 403) {
+            console.error("[JudgeWorkerClient] CRITICAL: 403 Forbidden. Cloudflare WAF/Bot Management might be blocking the request.");
+          }
+
           throw new JudgeUnavailableError(
             request.execution_mode === "run"
               ? "Code execution service is temporarily unavailable."
@@ -164,7 +181,11 @@ export class JudgeWorkerClient {
         return data;
       } catch (fetchErr: unknown) {
         clearTimeout(timeoutId);
-        console.error("[JudgeWorkerClient] Worker communication failure:", fetchErr);
+        
+        if (!(fetchErr instanceof JudgeUnavailableError)) {
+          console.error("[JudgeWorkerClient] Worker network/fetch failure:", fetchErr);
+        }
+
         if (
           fetchErr instanceof JudgeTimeoutError ||
           (fetchErr as Error)?.name === "AbortError" ||
