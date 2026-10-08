@@ -1,5 +1,11 @@
 import * as XLSX from "xlsx";
-import { addMcqQuestion, addCodingQuestion, addSqlQuestion, linkQuestionToContest } from "./service";
+import {
+  addMcqQuestion,
+  addCodingQuestion,
+  addSqlQuestion,
+  linkQuestionToContest,
+  normalizeQuestionDifficulty,
+} from "./service";
 import type { ContestQuestion, QuestionDifficulty } from "../../types/contest";
 
 export type ImportFormat = "json" | "csv" | "xlsx" | "xls" | "unsupported";
@@ -166,7 +172,7 @@ export function validateImportQuestions(
       return;
     }
 
-    const difficulty = (String(row.difficulty || "Medium").trim() as QuestionDifficulty) || "Medium";
+    const difficulty = normalizeQuestionDifficulty(row.difficulty);
 
     // ── MCQ VALIDATION ──
     if (rawType === "mcq") {

@@ -45,7 +45,16 @@ function check(condition: boolean, msg: string) {
 }
 
 async function runMasterHardeningSuite() {
-  process.env.JUDGE_WORKER_URL = process.env.JUDGE_WORKER_URL || "http://127.0.0.1:8080";
+  if (!process.env.JUDGE_WORKER_URL) {
+    try {
+      const ping = await fetch("http://127.0.0.1:8080/health", { signal: AbortSignal.timeout(500) });
+      if (ping.ok) {
+        process.env.JUDGE_WORKER_URL = "http://127.0.0.1:8080";
+      }
+    } catch {
+      delete process.env.JUDGE_WORKER_URL;
+    }
+  }
   process.env.JUDGE_WORKER_SECRET = process.env.JUDGE_WORKER_SECRET || "mock-test-judge-secret-not-for-production";
 
   console.log("==================================================");

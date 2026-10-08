@@ -52,7 +52,5 @@ services:
       - judge-worker
     command: tunnel --no-autoupdate run
     environment:
-      # Option A: Quick Tunnel (Ephemeral HTTPS URL logged to console)
-      # Option B: Permanent Tunnel (Set your free Cloudflare Tunnel token)
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
     network_mode: host

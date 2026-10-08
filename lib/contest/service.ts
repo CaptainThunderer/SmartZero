@@ -11,6 +11,8 @@ import type {
   PublicContestSummary,
   AntiCheatSettings,
   LeaderboardVisibility,
+  QuestionDifficulty,
+  McqOption,
 } from "../../types/contest";
 import { hashPasscode, verifyPasscode, generateContestSlug } from "./crypto";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "../supabase-server";
@@ -60,28 +62,65 @@ export function computeContestStatus(contest: {
 }
 
 /**
+ * Normalizes user/import difficulty strings to canonical schema-compliant enum values:
+ * 'Easy' | 'Medium' | 'Hard'.
+ */
+export function normalizeQuestionDifficulty(raw?: unknown): QuestionDifficulty {
+  if (!raw) return "Medium";
+  const str = String(raw).trim().toLowerCase();
+  if (str === "easy") return "Easy";
+  if (str === "hard") return "Hard";
+  return "Medium";
+}
+
+/**
  * Sanitizes question objects so students NEVER receive answer keys or hidden tests.
+ * Enforces canonical student shape with both nested (mcq_details) and top-level fields.
  */
 export function sanitizeQuestionForStudent(cq: ContestQuestion): ContestQuestion {
   const sanitized = { ...cq };
 
-  if (sanitized.mcq_details && sanitized.mcq_details.options) {
+  if (sanitized.question_type === "mcq") {
+    const mcq = sanitized.mcq_details;
+    const questionText =
+      mcq?.question_text ||
+      (mcq as any)?.prompt ||
+      (mcq as any)?.question ||
+      (sanitized as any).question_text ||
+      (sanitized as any).prompt ||
+      (sanitized as any).question ||
+      "";
+
+    const rawOptions = mcq?.options || (sanitized as any).options || [];
+    const sanitizedOptions: McqOption[] = Array.isArray(rawOptions)
+      ? rawOptions.map((opt: any, idx: number) => ({
+          id: opt.id || `opt-${idx}`,
+          question_id: opt.question_id || sanitized.question_id,
+          option_text: opt.option_text || opt.text || opt.option || "",
+          sort_order: opt.sort_order ?? idx,
+          // is_correct is intentionally stripped!
+        }))
+      : [];
+
     sanitized.mcq_details = {
-      ...sanitized.mcq_details,
+      id: mcq?.id || sanitized.question_id,
+      question_text: questionText,
+      difficulty: normalizeQuestionDifficulty(mcq?.difficulty),
+      created_at: mcq?.created_at,
+      options: sanitizedOptions,
       explanation: undefined, // Hidden during exam
-      options: sanitized.mcq_details.options.map((opt) => ({
-        id: opt.id,
-        question_id: opt.question_id,
-        option_text: opt.option_text,
-        sort_order: opt.sort_order,
-        // is_correct is intentionally stripped!
-      })),
     };
+
+    // Canonical top-level projections for direct access
+    sanitized.question_text = questionText;
+    sanitized.prompt = questionText;
+    sanitized.options = sanitizedOptions;
   }
 
   if (sanitized.coding_details && sanitized.coding_details.test_cases) {
     sanitized.coding_details = {
       ...sanitized.coding_details,
+      difficulty: normalizeQuestionDifficulty(sanitized.coding_details.difficulty),
       // Only keep public sample test cases for students
       test_cases: sanitized.coding_details.test_cases
         .filter((tc) => tc.is_sample && !tc.is_hidden)
@@ -101,6 +140,7 @@ export function sanitizeQuestionForStudent(cq: ContestQuestion): ContestQuestion
   if (sanitized.sql_details && sanitized.sql_details.test_cases) {
     sanitized.sql_details = {
       ...sanitized.sql_details,
+      difficulty: normalizeQuestionDifficulty(sanitized.sql_details.difficulty),
       // Only keep public sample test cases for students
       test_cases: sanitized.sql_details.test_cases
         .filter((tc) => tc.is_sample && !tc.is_hidden)
@@ -509,23 +549,24 @@ export async function addMcqQuestion(params: {
   question_text?: string;
   prompt?: string;
   explanation?: string;
-  difficulty?: "Easy" | "Medium" | "Hard";
+  difficulty?: "Easy" | "Medium" | "Hard" | string;
   options: { id?: string; option_text: string; is_correct: boolean; sort_order?: number }[];
   created_by?: string | null;
 }): Promise<McqQuestion> {
   const questionId = params.id || randomUUID();
   const text = (params.question_text || params.prompt || "").trim();
+  const difficulty = normalizeQuestionDifficulty(params.difficulty);
   const q: McqQuestion = {
     id: questionId,
     question_text: text,
     explanation: params.explanation || "",
-    difficulty: params.difficulty || "Medium",
+    difficulty,
     created_by: params.created_by || null,
     created_at: new Date().toISOString(),
     options: params.options.map((opt, i) => ({
       id: opt.id || randomUUID(),
       question_id: questionId,
-      option_text: opt.option_text.trim(),
+      option_text: (opt.option_text || (opt as any).text || (opt as any).option || "").trim(),
       is_correct: opt.is_correct,
       sort_order: opt.sort_order ?? i,
     })),
@@ -536,16 +577,19 @@ export async function addMcqQuestion(params: {
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
-      await supabase.from("mcq_questions").upsert({
+      const { error: mcqErr } = await supabase.from("mcq_questions").upsert({
         id: q.id,
         question_text: q.question_text,
         explanation: q.explanation,
         difficulty: q.difficulty,
         created_by: q.created_by,
       });
+      if (mcqErr) {
+        throw new Error(`Database error adding MCQ question: ${mcqErr.message}`);
+      }
 
       if (q.options && q.options.length > 0) {
-        await supabase.from("mcq_options").upsert(
+        const { error: optErr } = await supabase.from("mcq_options").upsert(
           q.options.map((opt) => ({
             id: opt.id,
             question_id: q.id,
@@ -554,6 +598,9 @@ export async function addMcqQuestion(params: {
             sort_order: opt.sort_order,
           }))
         );
+        if (optErr) {
+          throw new Error(`Database error adding MCQ options: ${optErr.message}`);
+        }
       }
     } catch (err) {
       if (isProduction()) {
@@ -572,7 +619,7 @@ export async function addCodingQuestion(params: {
   input_format?: string;
   output_format?: string;
   constraints?: string;
-  difficulty?: "Easy" | "Medium" | "Hard";
+  difficulty?: "Easy" | "Medium" | "Hard" | string;
   time_limit_ms?: number;
   memory_limit_mb?: number;
   test_cases: {
@@ -586,6 +633,7 @@ export async function addCodingQuestion(params: {
   created_by?: string | null;
 }): Promise<CodingQuestion> {
   const questionId = params.id || randomUUID();
+  const difficulty = normalizeQuestionDifficulty(params.difficulty);
   const q: CodingQuestion = {
     id: questionId,
     title: params.title.trim(),
@@ -593,7 +641,7 @@ export async function addCodingQuestion(params: {
     input_format: params.input_format || "",
     output_format: params.output_format || "",
     constraints: params.constraints || "",
-    difficulty: params.difficulty || "Medium",
+    difficulty,
     time_limit_ms: params.time_limit_ms || 2000,
     memory_limit_mb: params.memory_limit_mb || 256,
     created_by: params.created_by || null,
@@ -615,7 +663,7 @@ export async function addCodingQuestion(params: {
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
-      await supabase.from("coding_questions").upsert({
+      const { error: codeErr } = await supabase.from("coding_questions").upsert({
         id: q.id,
         title: q.title,
         description: q.description,
@@ -627,9 +675,12 @@ export async function addCodingQuestion(params: {
         memory_limit_mb: q.memory_limit_mb,
         created_by: q.created_by,
       });
+      if (codeErr) {
+        throw new Error(`Database error adding coding question: ${codeErr.message}`);
+      }
 
       if (q.test_cases && q.test_cases.length > 0) {
-        await supabase.from("coding_test_cases").upsert(
+        const { error: tcErr } = await supabase.from("coding_test_cases").upsert(
           q.test_cases.map((tc) => ({
             id: tc.id,
             question_id: q.id,
@@ -641,6 +692,9 @@ export async function addCodingQuestion(params: {
             sort_order: tc.sort_order,
           }))
         );
+        if (tcErr) {
+          throw new Error(`Database error adding coding test cases: ${tcErr.message}`);
+        }
       }
     } catch (err) {
       if (isProduction()) {
@@ -709,7 +763,7 @@ export async function addSqlQuestion(params: {
   id?: string;
   title: string;
   description: string;
-  difficulty?: "Easy" | "Medium" | "Hard";
+  difficulty?: "Easy" | "Medium" | "Hard" | string;
   marks?: number;
   time_limit_ms?: number;
   schema_sql: string;
@@ -727,11 +781,12 @@ export async function addSqlQuestion(params: {
   created_by?: string | null;
 }): Promise<SqlQuestion> {
   const questionId = params.id || randomUUID();
+  const difficulty = normalizeQuestionDifficulty(params.difficulty);
   const q: SqlQuestion = {
     id: questionId,
     title: params.title.trim(),
     description: params.description.trim(),
-    difficulty: params.difficulty || "Medium",
+    difficulty,
     marks: params.marks ?? 10,
     time_limit_ms: params.time_limit_ms || 2000,
     schema_sql: params.schema_sql.trim(),
@@ -757,7 +812,7 @@ export async function addSqlQuestion(params: {
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
-      await supabase.from("sql_questions").upsert({
+      const { error: sqlErr } = await supabase.from("sql_questions").upsert({
         id: q.id,
         title: q.title,
         description: q.description,
@@ -769,9 +824,12 @@ export async function addSqlQuestion(params: {
         order_sensitive: q.order_sensitive,
         created_by: q.created_by,
       });
+      if (sqlErr) {
+        throw new Error(`Database error adding SQL question: ${sqlErr.message}`);
+      }
 
       if (q.test_cases && q.test_cases.length > 0) {
-        await supabase.from("sql_test_cases").upsert(
+        const { error: tcErr } = await supabase.from("sql_test_cases").upsert(
           q.test_cases.map((tc) => ({
             id: tc.id,
             question_id: q.id,
@@ -783,6 +841,9 @@ export async function addSqlQuestion(params: {
             sort_order: tc.sort_order,
           }))
         );
+        if (tcErr) {
+          throw new Error(`Database error adding SQL test cases: ${tcErr.message}`);
+        }
       }
     } catch (err) {
       if (isProduction()) {
@@ -842,6 +903,9 @@ export async function linkQuestionToContest(params: {
     marks: params.marks ?? 1,
     negative_marks: params.negative_marks ?? 0,
     created_at: new Date().toISOString(),
+    question_text: mcqDetails?.question_text,
+    prompt: mcqDetails?.question_text,
+    options: mcqDetails?.options,
     mcq_details: mcqDetails || undefined,
     coding_details: codingDetails || undefined,
     sql_details: sqlDetails || undefined,
@@ -860,7 +924,7 @@ export async function linkQuestionToContest(params: {
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
-      await supabase.from("contest_questions").upsert({
+      const { error: linkErr } = await supabase.from("contest_questions").upsert({
         contest_id: params.contest_id,
         question_id: params.question_id,
         question_type: params.question_type,
@@ -868,6 +932,9 @@ export async function linkQuestionToContest(params: {
         marks: params.marks ?? 1,
         negative_marks: params.negative_marks ?? 0,
       }, { onConflict: "contest_id,question_id" });
+      if (linkErr) {
+        throw new Error(`Database error linking question: ${linkErr.message}`);
+      }
     } catch (err) {
       if (isProduction()) {
         throw new Error(`Database error linking question: ${(err as Error).message}`);
@@ -922,6 +989,9 @@ export async function getContestQuestions(
               marks: Number(row.marks ?? 1),
               negative_marks: Number(row.negative_marks ?? 0),
               created_at: row.created_at || new Date().toISOString(),
+              question_text: mcq_details?.question_text,
+              prompt: mcq_details?.question_text,
+              options: mcq_details?.options,
               mcq_details,
               coding_details,
               sql_details,

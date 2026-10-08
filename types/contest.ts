@@ -139,6 +139,10 @@ export interface ContestQuestion {
   marks: number;
   negative_marks: number;
   created_at?: string;
+  // Canonical student-facing question fields (supports both flat and nested access)
+  question_text?: string;
+  prompt?: string;
+  options?: McqOption[];
   // Hydrated details
   mcq_details?: McqQuestion;
   coding_details?: CodingQuestion;

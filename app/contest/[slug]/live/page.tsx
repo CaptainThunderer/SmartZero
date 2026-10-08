@@ -643,9 +643,18 @@ export default function LiveContestExamPage({
   }
 
   const currentQ = questions[currentIndex];
-  const currentMcq = currentQ?.mcq_details;
+  const currentMcq = currentQ?.mcq_details || (currentQ?.question_type === "mcq" ? (currentQ as any) : undefined);
   const currentAnswer = currentQ ? answers[currentQ.question_id] : undefined;
   const isLowTime = secondsRemaining <= 300;
+
+  const mcqPromptText =
+    currentMcq?.question_text ||
+    (currentMcq as any)?.prompt ||
+    (currentMcq as any)?.question ||
+    (currentQ as any)?.question_text ||
+    (currentQ as any)?.prompt ||
+    (currentQ as any)?.title ||
+    "";
 
   return (
     <div className="min-h-screen bg-[#12121A] text-[#F1F5F9] flex flex-col font-sans select-none">
@@ -795,19 +804,20 @@ export default function LiveContestExamPage({
                   </div>
 
                   {/* Question Text Prompt */}
-                  <div className="text-base sm:text-lg font-medium text-white leading-relaxed">
-                    {currentMcq?.question_text || "No question prompt available."}
+                  <div className="text-base sm:text-lg font-medium text-white leading-relaxed whitespace-pre-wrap">
+                    {mcqPromptText || "No question prompt available."}
                   </div>
 
                   {/* Options List */}
                   <div className="space-y-3 pt-2">
-                    {currentMcq?.options?.map((option, idx) => {
+                    {(currentMcq?.options || (currentQ as any)?.options || []).map((option: any, idx: number) => {
                       const isSelected = currentAnswer?.option_id === option.id;
                       const optionLabel = String.fromCharCode(65 + idx);
+                      const optionText = option.option_text || option.text || option.option || "";
 
                       return (
                         <button
-                          key={option.id}
+                          key={option.id || `opt-${idx}`}
                           onClick={() => handleSelectOption(currentQ.question_id, option.id)}
                           className={`w-full p-4 rounded-xl border text-left flex items-start gap-3.5 transition-all ${
                             isSelected
@@ -824,7 +834,7 @@ export default function LiveContestExamPage({
                           >
                             {optionLabel}
                           </div>
-                          <span className="text-sm pt-0.5 leading-snug">{option.option_text}</span>
+                          <span className="text-sm pt-0.5 leading-snug">{optionText}</span>
                         </button>
                       );
                     })}

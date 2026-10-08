@@ -323,7 +323,7 @@ export default function ContestQuestionsPage({
                   <div>
                     <div className="font-semibold text-[var(--ink)]">
                       {cq.question_type === "mcq"
-                        ? cq.mcq_details?.question_text || "Multiple Choice Question"
+                        ? cq.question_text || cq.prompt || cq.mcq_details?.question_text || "Multiple Choice Question"
                         : cq.question_type === "sql"
                         ? cq.sql_details?.title || "SQL Query Challenge"
                         : cq.coding_details?.title || "Coding Challenge"}
