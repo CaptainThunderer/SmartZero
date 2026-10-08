@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SMARTZERO 2.0 â€” FINAL DOCKER JUDGE CONCURRENCY TEST
  *
  * Tests tiers: 10, 20, 40, 70, 70-burst
@@ -11,7 +11,7 @@
 import { execSync } from "node:child_process";
 
 const WORKER_URL = "http://127.0.0.1:8080";
-const SECRET = "sz-stage2-secret-9f8a3c2b1d";
+const SECRET = process.env.JUDGE_WORKER_SECRET || process.env.SMARTZERO_TEST_SECRET || "mock-test-judge-secret-not-for-production";
 
 const HTTP_REQUEST_TIMEOUT_MS = 10_000; // 10s hard timeout per HTTP request
 const TIER_TIMEOUT_MS = 120_000;        // 120s hard timeout per tier

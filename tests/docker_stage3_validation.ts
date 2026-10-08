@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
 
 const WORKER_URL = "http://127.0.0.1:8080";
-const SECRET = "sz-stage2-secret-9f8a3c2b1d";
+const SECRET = process.env.JUDGE_WORKER_SECRET || process.env.SMARTZERO_TEST_SECRET || "mock-test-judge-secret-not-for-production";
 
 console.log("==================================================");
 console.log("▶ PHASE 15F — STAGE 3: SANDBOX & MULTI-LANGUAGE TEST");

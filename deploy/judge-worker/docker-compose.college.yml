@@ -24,7 +24,7 @@ services:
       - NODE_ENV=production
       - SMARTZERO_JUDGE_MODE=local
       - SMARTZERO_JUDGE_CONCURRENCY=6 # College hardware (4-8 cores) easily sustains 6-8 concurrent executions
-      - JUDGE_WORKER_SECRET=smartzero-judge-secret-2026
+      - JUDGE_WORKER_SECRET=${JUDGE_WORKER_SECRET}
     deploy:
       resources:
         limits:

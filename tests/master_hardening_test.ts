@@ -46,7 +46,7 @@ function check(condition: boolean, msg: string) {
 
 async function runMasterHardeningSuite() {
   process.env.JUDGE_WORKER_URL = process.env.JUDGE_WORKER_URL || "http://127.0.0.1:8080";
-  process.env.JUDGE_WORKER_SECRET = process.env.JUDGE_WORKER_SECRET || "sz-stage2-secret-9f8a3c2b1d";
+  process.env.JUDGE_WORKER_SECRET = process.env.JUDGE_WORKER_SECRET || "mock-test-judge-secret-not-for-production";
 
   console.log("==================================================");
   console.log("SMARTZERO 2.0 â€” MASTER PRODUCTION HARDENING SUITE");

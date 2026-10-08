@@ -17,7 +17,7 @@ function testAssert(condition: boolean, message: string) {
 }
 
 const TEST_PORT = 8099;
-const TEST_SECRET = process.env.JUDGE_WORKER_SECRET || "smartzero-judge-secret-2026";
+const TEST_SECRET = process.env.JUDGE_WORKER_SECRET || "mock-test-judge-secret-not-for-production";
 const WORKER_URL = process.env.JUDGE_WORKER_URL || `http://127.0.0.1:${TEST_PORT}`;
 
 async function runTests() {

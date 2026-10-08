@@ -12,7 +12,7 @@ process.env.SMARTZERO_CONTAINER_WORKER = "true";
 const getExpectedSecret = () =>
   process.env.JUDGE_WORKER_SECRET ||
   process.env.SMARTZERO_JUDGE_SECRET ||
-  "smartzero-judge-secret-2026";
+  "";
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -69,7 +69,13 @@ const server = http.createServer(async (req, res) => {
     const internalHeader = req.headers["x-smartzero-worker-secret"] || req.headers["x-smartzero-internal"];
 
     const expectedSecret = getExpectedSecret();
-    if (token !== expectedSecret && internalHeader !== expectedSecret && internalHeader !== "true") {
+    if (!expectedSecret) {
+      return json(500, {
+        error: "JUDGE_WORKER_SECRET is not configured on this worker.",
+      });
+    }
+
+    if (token !== expectedSecret && internalHeader !== expectedSecret) {
       return json(401, {
         error: "Unauthorized worker request. Valid Bearer secret required.",
       });

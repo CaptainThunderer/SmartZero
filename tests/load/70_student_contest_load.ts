@@ -1044,7 +1044,7 @@ async function runLoadHarness() {
 
     // 4. Worker Security: Malformed / Invalid payload
     const secret =
-      process.env.JUDGE_WORKER_SECRET || "smartzero-judge-secret-2026";
+      process.env.JUDGE_WORKER_SECRET || "mock-test-judge-secret-not-for-production";
     const malformedReq = new Request("http://localhost/api/judge/execute", {
       method: "POST",
       headers: {

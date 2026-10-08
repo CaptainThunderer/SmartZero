@@ -5,18 +5,24 @@ import { JUDGE_RESOURCE_LIMITS, LANGUAGE_CONFIGS } from "@/lib/judge/config";
 import type { JudgeWorkerJobRequest, JudgeWorkerJobResponse, SafeTestCaseResult } from "@/lib/judge/types";
 import type { CodingLanguage } from "@/types/contest";
 
-const EXPECTED_WORKER_SECRET =
-  process.env.JUDGE_WORKER_SECRET ||
-  process.env.SMARTZERO_JUDGE_SECRET ||
-  "smartzero-judge-secret-2026";
+const getExpectedWorkerSecret = () =>
+  process.env.JUDGE_WORKER_SECRET || process.env.SMARTZERO_JUDGE_SECRET || "";
 
 export async function POST(req: Request) {
   // 1. Verify Worker Authorization
+  const expectedWorkerSecret = getExpectedWorkerSecret();
+  if (!expectedWorkerSecret) {
+    return NextResponse.json(
+      { error: "JUDGE_WORKER_SECRET is not configured on this server." },
+      { status: 500 }
+    );
+  }
+
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   const internalHeader = req.headers.get("x-smartzero-worker-secret") || "";
 
-  if (token !== EXPECTED_WORKER_SECRET && internalHeader !== EXPECTED_WORKER_SECRET) {
+  if (token !== expectedWorkerSecret && internalHeader !== expectedWorkerSecret) {
     return NextResponse.json(
       { error: "Unauthorized worker request. Valid Bearer secret required." },
       { status: 401 }

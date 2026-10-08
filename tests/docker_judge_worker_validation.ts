@@ -1,10 +1,10 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { execSync, spawn } from "node:child_process";
 
 const CONTAINER_NAME = "smartzero-judge-worker-validate";
 const PORT = 8080;
 const WORKER_URL = `http://127.0.0.1:${PORT}`;
-const TEST_SECRET = "test-docker-secret-2026";
+const TEST_SECRET = process.env.JUDGE_WORKER_SECRET || "mock-test-judge-secret-not-for-production";
 
 console.log("==================================================");
 console.log("â–¶ SMARTZERO DOCKER JUDGE WORKER LOCAL VALIDATION");

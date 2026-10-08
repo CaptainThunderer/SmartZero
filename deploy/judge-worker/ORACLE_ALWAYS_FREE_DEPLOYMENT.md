@@ -1,4 +1,4 @@
-﻿# SMARTZERO 2.0 â€” ORACLE CLOUD ALWAYS FREE REMOTE JUDGE DEPLOYMENT GUIDE
+# SMARTZERO 2.0 â€” ORACLE CLOUD ALWAYS FREE REMOTE JUDGE DEPLOYMENT GUIDE
 
 **Target Infrastructure**: Oracle Cloud Infrastructure (OCI) Always Free Tier
 **Compute Model**: Ampere A1 Compute (ARM64 / aarch64)
@@ -120,11 +120,11 @@ sudo systemctl restart caddy
 Generate a high-entropy secret token on the server:
 ```bash
 openssl rand -hex 32
-# Example output: e4c9973bf91ddcfdb4b321a082d6e4b9...
+# Output will be a 64-character hex string. Save this value!
 ```
 Export it or add to `/opt/smartzero-judge-worker/.env`:
 ```bash
-echo "JUDGE_WORKER_SECRET=e4c9973bf91ddcfdb4b321a082d6e4b9" > /opt/smartzero-judge-worker/.env
+echo "JUDGE_WORKER_SECRET=<YOUR_JUDGE_WORKER_SECRET>" > /opt/smartzero-judge-worker/.env
 ```
 
 ### Step 11: Run the Worker Container
@@ -141,7 +141,7 @@ docker run -d \
   -e SMARTZERO_JUDGE_MODE=local \
   -e SMARTZERO_CONTAINER_WORKER=true \
   -e SMARTZERO_JUDGE_CONCURRENCY=3 \
-  -e JUDGE_WORKER_SECRET=e4c9973bf91ddcfdb4b321a082d6e4b9 \
+  -e JUDGE_WORKER_SECRET=<YOUR_JUDGE_WORKER_SECRET> \
   smartzero-judge-worker:latest
 ```
 
@@ -183,7 +183,7 @@ HTTP/2 401 Unauthorized
 ```bash
 curl -i -X POST https://judge.yourdomain.com/api/judge/execute \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer e4c9973bf91ddcfdb4b321a082d6e4b9" \
+  -H "Authorization: Bearer <YOUR_JUDGE_WORKER_SECRET>" \
   -d '{
     "job_id": "test-py-01",
     "language": "python",
@@ -214,7 +214,7 @@ Verify that `g++` and `javac` work natively on ARM64:
 In your Vercel Project Settings â†’ **Environment Variables**:
 1. `SMARTZERO_JUDGE_MODE`: `production`
 2. `JUDGE_WORKER_URL`: `https://judge.yourdomain.com`
-3. `JUDGE_WORKER_SECRET`: `e4c9973bf91ddcfdb4b321a082d6e4b9`
+3. `JUDGE_WORKER_SECRET`: `<YOUR_JUDGE_WORKER_SECRET>`
 4. Redeploy Vercel application.
 
 ---

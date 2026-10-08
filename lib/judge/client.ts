@@ -96,8 +96,13 @@ export class JudgeWorkerClient {
       const timeoutId = setTimeout(() => controller.abort(), Math.min(timeoutMs, 15000));
       const workerSecret =
         process.env.JUDGE_WORKER_SECRET ||
-        process.env.SMARTZERO_JUDGE_SECRET ||
-        "smartzero-judge-secret-2026";
+        process.env.SMARTZERO_JUDGE_SECRET;
+
+      if (!workerSecret) {
+        throw new JudgeUnavailableError(
+          "JUDGE_WORKER_SECRET is not configured for remote judge execution."
+        );
+      }
 
       try {
         const res = await fetch(`${workerUrl.replace(/\/$/, "")}/api/judge/execute`, {
