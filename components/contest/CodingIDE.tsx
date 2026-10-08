@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import {
   Play,
@@ -25,7 +25,7 @@ import type {
   CodingSubmission,
   TestCaseVerdictResult,
 } from "@/types/contest";
-import { STARTER_TEMPLATES } from "@/lib/judge/templates";
+import { STARTER_TEMPLATES, getSqlStarterTemplate } from "@/lib/judge/templates";
 
 // Dynamically import Monaco Editor to avoid SSR window issues
 const Editor = dynamic(() => import("@monaco-editor/react"), {
@@ -38,23 +38,43 @@ const Editor = dynamic(() => import("@monaco-editor/react"), {
 });
 
 /**
- * Generates an isolated, student-scoped cache key for coding drafts.
- * Global/unscoped keys are strictly avoided to prevent cross-account state leakage.
+ * Generates an isolated, student/attempt-scoped cache key for coding drafts.
+ * Scoped strictly to: contestId, attemptNumber, studentId, questionId, language.
+ * Format: smartzero:draft:<contestId>:<attemptNumber>:<studentId>:<questionId>:<language>
  */
 export function getStudentDraftKey(
   userId: string | undefined,
-  slug: string,
-  questionId: string,
-  language: string
+  contestIdOrSlug: string | undefined,
+  attemptOrQuestion: number | string | undefined,
+  questionOrLanguage: string,
+  maybeLanguage?: string
 ): string | null {
-  if (!userId || userId === "unauthenticated-viewer") return null;
-  return `smartzero_code_${userId}_${slug}_${questionId}_${language}`;
+  if (!userId || userId === "unauthenticated-viewer" || userId === "demo-student-user") return null;
+
+  const contestId = contestIdOrSlug || "contest";
+  let attemptNumber = 1;
+  let questionId = "";
+  let language = "python";
+
+  if (typeof attemptOrQuestion === "number" && maybeLanguage !== undefined) {
+    // 5 arguments: (userId, contestId, attemptNumber, questionId, language)
+    attemptNumber = attemptOrQuestion;
+    questionId = questionOrLanguage;
+    language = maybeLanguage;
+  } else {
+    // 4 arguments: (userId, slug, questionId, language)
+    attemptNumber = 1;
+    questionId = String(attemptOrQuestion || "");
+    language = questionOrLanguage;
+  }
+
+  return `smartzero:draft:${contestId}:${attemptNumber}:${userId}:${questionId}:${language}`;
 }
 
 /**
  * Purges legacy unscoped client draft keys to prevent cross-user leakage.
  */
-export function cleanupLegacyUnscopedDrafts(slug: string, questionId: string): void {
+export function cleanupLegacyUnscopedDrafts(slug?: string, questionId?: string): void {
   if (typeof window === "undefined") return;
   try {
     const keysToRemove: string[] = [];
@@ -62,8 +82,9 @@ export function cleanupLegacyUnscopedDrafts(slug: string, questionId: string): v
       const k = localStorage.key(i);
       if (
         k &&
-        (k.startsWith(`smartzero_code_${slug}_${questionId}_`) ||
-          k.startsWith(`coding_draft_${questionId}`))
+        (k.startsWith("smartzero_code_") ||
+          k.startsWith("coding_draft_") ||
+          (slug && questionId && k.startsWith(`smartzero_code_${slug}_${questionId}_`)))
       ) {
         keysToRemove.push(k);
       }
@@ -76,6 +97,8 @@ export function cleanupLegacyUnscopedDrafts(slug: string, questionId: string): v
 
 interface CodingIDEProps {
   slug: string;
+  contestId?: string;
+  attemptNumber?: number;
   questionId: string;
   codingDetails?: CodingQuestion;
   sqlDetails?: SqlQuestion;
@@ -87,6 +110,8 @@ interface CodingIDEProps {
 
 export default function CodingIDE({
   slug,
+  contestId,
+  attemptNumber = 1,
   questionId,
   codingDetails,
   sqlDetails,
@@ -98,17 +123,27 @@ export default function CodingIDE({
   const isSqlQuestion = questionType === "sql" || !!sqlDetails;
   const initialLang: CodingLanguage = isSqlQuestion ? "sql" : "python";
 
+  const getInitialStarter = useCallback(
+    (lang: CodingLanguage): string => {
+      if (lang === "sql") {
+        return getSqlStarterTemplate(sqlDetails);
+      }
+      return STARTER_TEMPLATES[lang] || "";
+    },
+    [sqlDetails]
+  );
+
   const [language, setLanguage] = useState<CodingLanguage>(initialLang);
   const [code, setCode] = useState<string>(() => {
     if (typeof window !== "undefined") {
       cleanupLegacyUnscopedDrafts(slug, questionId);
-      const scopedKey = getStudentDraftKey(userId, slug, questionId, initialLang);
+      const scopedKey = getStudentDraftKey(userId, contestId || slug, attemptNumber, questionId, initialLang);
       if (scopedKey) {
         const cached = localStorage.getItem(scopedKey);
-        if (cached) return cached;
+        if (cached !== null) return cached;
       }
     }
-    return STARTER_TEMPLATES[initialLang] || "";
+    return getInitialStarter(initialLang);
   });
   const [customInput, setCustomInput] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"results" | "custom" | "history">("results");
@@ -147,29 +182,29 @@ export default function CodingIDE({
       setLastSubmission(null);
       setSubmissionsHistory([]);
 
-      const scopedKey = getStudentDraftKey(userId, slug, questionId, language);
+      const scopedKey = getStudentDraftKey(userId, contestId || slug, attemptNumber, questionId, language);
       const scopedCache = scopedKey && typeof window !== "undefined" ? localStorage.getItem(scopedKey) : null;
-      setCode(scopedCache || STARTER_TEMPLATES[language] || "");
+      setCode(scopedCache || getInitialStarter(language));
     }
-  }, [userId, slug, questionId, language]);
+  }, [userId, contestId, slug, attemptNumber, questionId, language, getInitialStarter]);
 
   // Synchronize code with student-scoped cache when question or language changes
   useEffect(() => {
     if (typeof window !== "undefined") {
       cleanupLegacyUnscopedDrafts(slug, questionId);
-      const scopedKey = getStudentDraftKey(userId, slug, questionId, language);
+      const scopedKey = getStudentDraftKey(userId, contestId || slug, attemptNumber, questionId, language);
       const cached = scopedKey ? localStorage.getItem(scopedKey) : null;
       if (cached !== null) {
         setCode(cached);
       } else {
-        setCode(STARTER_TEMPLATES[language] || "");
+        setCode(getInitialStarter(language));
       }
     }
-  }, [slug, questionId, language, userId]);
+  }, [slug, contestId, attemptNumber, questionId, language, userId, getInitialStarter]);
 
-  // Fetch previous submission history and hydrate authoritative server draft
+  // Fetch previous submission history for Submissions tab (history only; does not overwrite new attempt starter)
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || userId === "demo-student-user") return;
 
     let cancelled = false;
     fetch(`/api/contest/${slug}/coding/submissions?question_id=${questionId}&user_id=${userId}`)
@@ -179,28 +214,7 @@ export default function CodingIDE({
         if (data.submissions) {
           setSubmissionsHistory(data.submissions);
           if (data.submissions.length > 0) {
-            const latest = data.submissions[0];
-            setLastSubmission(latest);
-            // Server draft is authoritative: ALWAYS hydrate latest server code over local cache!
-            if (latest.code) {
-              setCode(latest.code);
-              if (latest.language && latest.language !== language) {
-                setLanguage(latest.language);
-              }
-              const scopedKey = getStudentDraftKey(userId, slug, questionId, latest.language || language);
-              if (scopedKey && typeof window !== "undefined") {
-                try {
-                  localStorage.setItem(scopedKey, latest.code);
-                } catch {}
-              }
-            }
-          } else {
-            // Student has no server drafts. Ensure no stale code from previous student survives
-            const scopedKey = getStudentDraftKey(userId, slug, questionId, language);
-            const cached = scopedKey && typeof window !== "undefined" ? localStorage.getItem(scopedKey) : null;
-            if (!cached) {
-              setCode(STARTER_TEMPLATES[language] || "");
-            }
+            setLastSubmission(data.submissions[0]);
           }
         }
       })
@@ -209,11 +223,11 @@ export default function CodingIDE({
     return () => {
       cancelled = true;
     };
-  }, [slug, questionId, userId, language]);
+  }, [slug, questionId, userId]);
 
   // Debounced Draft Autosave to Server with monotonic sequence and identity protection
   useEffect(() => {
-    if (!userId || !code || code === STARTER_TEMPLATES[language]) return;
+    if (!userId || !code || code === getInitialStarter(language)) return;
 
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -270,21 +284,21 @@ export default function CodingIDE({
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [code, language, questionId, slug, userId]);
+  }, [code, language, questionId, slug, userId, getInitialStarter]);
 
   const handleLanguageChange = (newLang: CodingLanguage) => {
     if (typeof window !== "undefined") {
-      const oldKey = getStudentDraftKey(userId, slug, questionId, language);
+      const oldKey = getStudentDraftKey(userId, contestId || slug, attemptNumber, questionId, language);
       if (oldKey) {
         try {
           localStorage.setItem(oldKey, code);
         } catch {}
       }
-      const newKey = getStudentDraftKey(userId, slug, questionId, newLang);
+      const newKey = getStudentDraftKey(userId, contestId || slug, attemptNumber, questionId, newLang);
       const cached = newKey ? localStorage.getItem(newKey) : null;
-      setCode(cached !== null ? cached : STARTER_TEMPLATES[newLang] || "");
+      setCode(cached !== null ? cached : getInitialStarter(newLang));
     } else {
-      setCode(STARTER_TEMPLATES[newLang] || "");
+      setCode(getInitialStarter(newLang));
     }
     setLanguage(newLang);
   };
@@ -293,7 +307,7 @@ export default function CodingIDE({
     const val = newCode || "";
     setCode(val);
     if (typeof window !== "undefined") {
-      const scopedKey = getStudentDraftKey(userId, slug, questionId, language);
+      const scopedKey = getStudentDraftKey(userId, contestId || slug, attemptNumber, questionId, language);
       if (scopedKey) {
         try {
           localStorage.setItem(scopedKey, val);
@@ -303,10 +317,10 @@ export default function CodingIDE({
   };
 
   const handleResetCode = () => {
-    const reset = STARTER_TEMPLATES[language] || "";
+    const reset = getInitialStarter(language);
     setCode(reset);
     if (typeof window !== "undefined") {
-      const scopedKey = getStudentDraftKey(userId, slug, questionId, language);
+      const scopedKey = getStudentDraftKey(userId, contestId || slug, attemptNumber, questionId, language);
       if (scopedKey) {
         try {
           localStorage.removeItem(scopedKey);
@@ -322,7 +336,7 @@ export default function CodingIDE({
       }
       setCode(sub.code);
       if (typeof window !== "undefined") {
-        const scopedKey = getStudentDraftKey(userId, slug, questionId, sub.language || language);
+        const scopedKey = getStudentDraftKey(userId, contestId || slug, attemptNumber, questionId, sub.language || language);
         if (scopedKey) {
           try {
             localStorage.setItem(scopedKey, sub.code);

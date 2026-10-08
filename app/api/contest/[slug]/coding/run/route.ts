@@ -6,7 +6,7 @@ import {
   getParticipant,
   getEffectiveAttemptDeadline,
 } from "@/lib/contest/service";
-import { judgeWorkerClient, JudgeUnavailableError } from "@/lib/judge/service";
+import { judgeWorkerClient, JudgeUnavailableError, JudgeTimeoutError } from "@/lib/judge/service";
 import { JUDGE_RESOURCE_LIMITS } from "@/lib/judge/config";
 import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 import type { CodingLanguage } from "@/types/contest";
@@ -175,6 +175,16 @@ export async function POST(
       },
     });
   } catch (err: unknown) {
+    if (err instanceof JudgeTimeoutError || (err as any)?.code === "JUDGE_TIMEOUT") {
+      return NextResponse.json(
+        {
+          code: "JUDGE_TIMEOUT",
+          error: (err as Error).message || "Code execution timed out. Your code took too long to complete.",
+        },
+        { status: 504 }
+      );
+    }
+
     if (err instanceof JudgeUnavailableError || (err as any)?.code === "JUDGE_UNAVAILABLE") {
       return NextResponse.json(
         {

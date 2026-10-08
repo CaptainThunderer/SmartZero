@@ -13,6 +13,7 @@ import {
   saveCodingSubmission,
   judgeWorkerClient,
   JudgeUnavailableError,
+  JudgeTimeoutError,
   judgeObservability,
 } from "@/lib/judge/service";
 import { JUDGE_RESOURCE_LIMITS } from "@/lib/judge/config";
@@ -228,6 +229,16 @@ export async function POST(
       submission: clientSubmission,
     });
   } catch (err: unknown) {
+    if (err instanceof JudgeTimeoutError || (err as any)?.code === "JUDGE_TIMEOUT") {
+      return NextResponse.json(
+        {
+          code: "JUDGE_TIMEOUT",
+          error: (err as Error).message || "Judging timed out across test cases. Please try again.",
+        },
+        { status: 504 }
+      );
+    }
+
     if (err instanceof JudgeUnavailableError || (err as any)?.code === "JUDGE_UNAVAILABLE") {
       return NextResponse.json(
         {
@@ -238,10 +249,21 @@ export async function POST(
       );
     }
 
+    const msg = (err as Error)?.message || "";
+    if (msg.includes("Database error saving") || msg.includes("Production database unavailable")) {
+      return NextResponse.json(
+        {
+          code: "DATABASE_ERROR",
+          error: "Submission was scored, but failed to save to the database. Please try again.",
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       {
         code: "SYSTEM_ERROR",
-        error: "Judge service is temporarily unavailable. Your submission was not scored. Please try again.",
+        error: "An unexpected error occurred during submission. Please try again.",
       },
       { status: 500 }
     );

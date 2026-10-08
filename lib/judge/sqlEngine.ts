@@ -312,6 +312,41 @@ export interface SqlExecutionResult {
 }
 
 /**
+ * Splits an SQL script into individual statements by semicolon,
+ * properly respecting single-quoted and double-quoted string literals.
+ */
+export function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    const prev = i > 0 ? sql[i - 1] : "";
+
+    if (char === "'" && prev !== "\\" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      current += char;
+    } else if (char === '"' && prev !== "\\" && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      current += char;
+    } else if (char === ";" && !inSingleQuote && !inDoubleQuote) {
+      const trimmed = current.trim();
+      if (trimmed) statements.push(trimmed);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  const remaining = current.trim();
+  if (remaining) statements.push(remaining);
+
+  return statements;
+}
+
+/**
  * Executes a single test case query in a freshly created isolated SQLite database.
  * The database is ALWAYS cleaned up and destroyed in finally.
  */
@@ -376,19 +411,41 @@ export async function executeSingleSqlTestCase(params: {
     db.exec("PRAGMA busy_timeout = 2000;");
     db.exec("PRAGMA max_page_count = 5000;"); // Limit DB size to ~20MB max
 
-    // 1. Execute schema DDL
+    // 1. Authoritative Schema DDL (creates tables)
     if (params.schemaSql && params.schemaSql.trim()) {
       db.exec(params.schemaSql);
     }
 
-    // 2. Execute question base sample/seed data DML
-    if (params.sampleDataSql && params.sampleDataSql.trim()) {
+    // 2. Baseline Sample Data DML (applied only if test case does not have dedicated setup)
+    if (!params.setupSql && params.sampleDataSql && params.sampleDataSql.trim()) {
       db.exec(params.sampleDataSql);
     }
 
-    // 3. Execute test case setup / seed DML
+    // 3. Test-Case Specific Setup (execute DML; if setup contains DDL for already created tables, skip redundant DDL)
     if (params.setupSql && params.setupSql.trim()) {
-      db.exec(params.setupSql);
+      const existingTables = new Set<string>();
+      try {
+        const rows = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>;
+        for (const r of rows) existingTables.add(r.name.toLowerCase());
+      } catch {
+        // Non-blocking
+      }
+
+      const stmts = splitSqlStatements(params.setupSql);
+      for (const stmt of stmts) {
+        const trimmed = stmt.trim();
+        if (!trimmed) continue;
+        const match = trimmed.match(/^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?([a-zA-Z0-9_]+)["`]?/i);
+        if (match) {
+          const tableName = match[1].toLowerCase();
+          if (existingTables.has(tableName)) {
+            // Table was already authoritatively created by schema DDL; skip redundant CREATE TABLE
+            continue;
+          }
+          existingTables.add(tableName);
+        }
+        db.exec(trimmed);
+      }
     }
 
     // 3. Execute student query

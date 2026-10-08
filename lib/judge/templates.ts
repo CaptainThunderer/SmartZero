@@ -58,8 +58,26 @@ public class Main {
     }
 }
 `,
-  sql: `-- Write your SQL solution below
-SELECT *
-FROM students;
-`,
+  sql: `-- Write your SQL solution below\n\n`,
 };
+
+/**
+ * Resolves question-specific starter template for SQL challenges.
+ * If the question defines a specific starter, use it.
+ * Otherwise, generate a clean, question-specific comment header.
+ */
+export function getSqlStarterTemplate(question?: {
+  title?: string;
+  starter_code?: string;
+  starter_query?: string;
+}): string {
+  const custom = question?.starter_code || question?.starter_query;
+  if (custom && custom.trim()) {
+    return custom.trim() + "\n";
+  }
+  const title = question?.title ? question.title.trim() : "";
+  if (title) {
+    return `-- Write your SQL solution for: ${title}\n-- Review the schema in the problem description\n\n`;
+  }
+  return `-- Write your SQL solution below\n\n`;
+}

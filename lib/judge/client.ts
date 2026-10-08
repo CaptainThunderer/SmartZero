@@ -15,6 +15,14 @@ export class JudgeUnavailableError extends Error {
   }
 }
 
+export class JudgeTimeoutError extends Error {
+  readonly code = "JUDGE_TIMEOUT";
+  constructor(message = "Judging timed out waiting for the judge worker.") {
+    super(message);
+    this.name = "JudgeTimeoutError";
+  }
+}
+
 export type JudgeWorkerTransport = (
   req: JudgeWorkerJobRequest
 ) => Promise<JudgeWorkerJobResponse>;
@@ -92,8 +100,12 @@ export class JudgeWorkerClient {
 
     if (workerUrl) {
       const controller = new AbortController();
-      const timeoutMs = (request.time_limit_ms || 2000) * (request.test_cases.length || 1) + 5000;
-      const timeoutId = setTimeout(() => controller.abort(), Math.min(timeoutMs, 15000));
+      const perTestLimit = Math.min(request.time_limit_ms || 2000, 10000);
+      const testCount = Math.max(request.test_cases?.length || 1, 1);
+      // Calculated dynamic timeout: sequential test execution allowance + network/tunnel buffer (8000ms)
+      // Bounded between minimum 10000ms and maximum 60000ms
+      const timeoutMs = Math.min(Math.max(perTestLimit * testCount + 8000, 10000), 60000);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       const workerSecret =
         process.env.JUDGE_WORKER_SECRET ||
         process.env.SMARTZERO_JUDGE_SECRET;
@@ -153,6 +165,18 @@ export class JudgeWorkerClient {
       } catch (fetchErr: unknown) {
         clearTimeout(timeoutId);
         console.error("[JudgeWorkerClient] Worker communication failure:", fetchErr);
+        if (
+          fetchErr instanceof JudgeTimeoutError ||
+          (fetchErr as Error)?.name === "AbortError" ||
+          controller.signal.aborted
+        ) {
+          throw new JudgeTimeoutError(
+            request.execution_mode === "run"
+              ? "Code execution timed out. Your code took too long to complete."
+              : "Judging timed out. Your submission took too long to complete across all test cases."
+          );
+        }
+        if (fetchErr instanceof JudgeUnavailableError) throw fetchErr;
         throw new JudgeUnavailableError(
           request.execution_mode === "run"
             ? "Code execution service is temporarily unavailable."

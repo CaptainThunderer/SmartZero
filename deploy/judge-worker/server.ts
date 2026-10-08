@@ -128,6 +128,7 @@ const server = http.createServer(async (req, res) => {
           memory_limit_mb: Math.min(body.memory_limit_mb || 256, JUDGE_RESOURCE_LIMITS.MAX_MEMORY_LIMIT_MB),
           total_marks: body.total_marks,
           schema_sql: body.schema_sql,
+          sample_data_sql: body.sample_data_sql,
           order_sensitive: body.order_sensitive,
         };
 

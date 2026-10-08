@@ -18,19 +18,33 @@ import { judgeObservability } from "../observability";
 import { getCodingQuestionRaw, getSqlQuestionRaw, getContestQuestions } from "@/lib/contest/service";
 
 /**
- * Deterministically normalizes stdout and expected output:
- * Converts CRLF to LF, strips trailing whitespace from each line,
- * and trims trailing empty lines.
+ * Deterministically normalizes stdout and expected output for contest evaluation:
+ * 1. Strips UTF-8 BOM (\uFEFF)
+ * 2. Strips terminal ANSI escape codes
+ * 3. Converts CRLF and CR to LF
+ * 4. Trims trailing whitespace from each line (spaces, tabs, carriage returns)
+ * 5. Removes all trailing blank lines
+ * 6. Preserves exact internal content and line structure
  */
-export function normalizeOutput(str: string): string {
+export function normalizeOutput(str: string | null | undefined): string {
   if (!str) return "";
-  return str
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .join("\n")
-    .trimEnd();
+  // Strip BOM if present
+  let cleaned = str.charCodeAt(0) === 0xfeff ? str.slice(1) : str;
+  // Strip ANSI color/terminal escape sequences if any
+  cleaned = cleaned.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, "");
+  // Convert CRLF and CR to LF
+  cleaned = cleaned.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  // Split into lines and trim trailing whitespace per line
+  const lines = cleaned.split("\n").map((line) => line.trimEnd());
+  // Remove trailing blank lines
+  while (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+  return lines.join("\n");
+}
+
+export function compareOutputs(actual: string | null | undefined, expected: string | null | undefined): boolean {
+  return normalizeOutput(actual) === normalizeOutput(expected);
 }
 
 export class JudgeWorker {
@@ -304,6 +318,7 @@ export class JudgeWorker {
         sourceCode: request.source_code,
         testCases: request.test_cases,
         schemaSql: request.schema_sql,
+        sampleDataSql: request.sample_data_sql,
         orderSensitive: request.order_sensitive,
         timeLimitMs: request.time_limit_ms,
         totalMarks: request.total_marks ?? (request.execution_mode === "run" ? 0 : 20),

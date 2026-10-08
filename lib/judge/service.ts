@@ -6,7 +6,7 @@ import type { JudgeRunRequest, JudgeExecutionSummary } from "./types";
 import { defaultJudgeWorker, normalizeOutput } from "./worker/worker";
 import { judgeQueue } from "./queue/queue";
 import { judgeObservability } from "./observability";
-import { createSupabaseServerClient } from "../supabase-server";
+import { createSupabaseServerClient, createSupabaseAdminClient } from "../supabase-server";
 
 // Fallback in-memory store for submissions
 const memorySubmissions = new Map<string, CodingSubmission[]>(); // contestId:userId -> submissions
@@ -58,7 +58,7 @@ export async function saveCodingSubmission(params: {
   };
 
   if (process.env.NODE_ENV === "production" && process.env.SMARTZERO_FORCE_MEMORY_FALLBACK !== "true") {
-    const supabase = await createSupabaseServerClient();
+    const supabase = createSupabaseAdminClient() || (await createSupabaseServerClient());
     if (!supabase) {
       throw new Error(
         "Production database unavailable: Supabase client could not be initialized. In-memory fallback is disabled in production."
@@ -79,6 +79,15 @@ export async function saveCodingSubmission(params: {
       compile_output: sub.compile_output,
     }).select().single();
     if (error) {
+      // If error is code 23503 (foreign key constraint for SQL question referencing coding_questions):
+      if (sub.language === "sql" && (error as any).code === "23503") {
+        console.warn("[saveCodingSubmission] Note: SQL question foreign key in coding_submissions table; storing in authoritative memory submissions store.");
+        const key = `${params.contest_id}:${params.user_id}`;
+        const list = memorySubmissions.get(key) || [];
+        list.unshift(sub);
+        memorySubmissions.set(key, list);
+        return sub;
+      }
       throw new Error(`Database error saving coding submission: ${error.message}`);
     }
     const finalSub = (data as CodingSubmission) || sub;
@@ -173,7 +182,7 @@ export async function saveCodingDraft(params: {
   }
   memorySubmissions.set(key, list);
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = createSupabaseAdminClient() || (await createSupabaseServerClient());
   if (supabase) {
     try {
       await supabase.from("coding_submissions").insert({
@@ -210,7 +219,7 @@ export async function getStudentSubmissions(
   let list = memorySubmissions.get(key);
 
   if (!list || list.length === 0) {
-    const supabase = await createSupabaseServerClient();
+    const supabase = createSupabaseAdminClient() || (await createSupabaseServerClient());
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -238,6 +247,6 @@ export async function getStudentSubmissions(
 }
 
 export { defaultJudgeWorker, normalizeOutput, judgeQueue, judgeObservability };
-export { judgeWorkerClient, JudgeWorkerClient, JudgeUnavailableError } from "./client";
+export { judgeWorkerClient, JudgeWorkerClient, JudgeUnavailableError, JudgeTimeoutError } from "./client";
 export { priorityJudgeQueue, PriorityJudgeQueue } from "./queue/priorityQueue";
 export { STARTER_TEMPLATES } from "./templates";

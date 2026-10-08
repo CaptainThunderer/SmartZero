@@ -745,8 +745,10 @@ export default function LiveContestExamPage({
             (currentQ.question_type === "sql" && currentQ.sql_details) ? (
               <div className="flex-1 flex flex-col h-full overflow-hidden">
                 <CodingIDE
-                  key={`${user?.id || "anon"}_${currentQ.question_id}`}
+                  key={`${user?.id || "anon"}_${contestId || slug}_${attemptNumber}_${currentQ.question_id}`}
                   slug={slug}
+                  contestId={contestId || slug}
+                  attemptNumber={attemptNumber}
                   questionId={currentQ.question_id}
                   codingDetails={currentQ.coding_details}
                   sqlDetails={currentQ.sql_details}
