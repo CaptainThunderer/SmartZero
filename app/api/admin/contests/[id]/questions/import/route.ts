@@ -4,7 +4,9 @@ import {
   parseRawFile,
   validateImportQuestions,
   persistImportedQuestions,
+  detectDuplicatesWithExisting,
 } from "@/lib/contest/importer";
+import { getContestById, getContestQuestions } from "@/lib/contest/service";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 
@@ -55,11 +57,21 @@ export async function POST(
         );
       }
 
-      const result = await persistImportedQuestions(contest_id, body.questions);
+      const mode = body.mode === "replace" ? "replace" : "append";
+      const deduplicate = Boolean(body.deduplicate);
+
+      const result = await persistImportedQuestions(contest_id, body.questions, {
+        mode,
+        deduplicate,
+      });
+
       return NextResponse.json({
         success: true,
         importedCount: result.importedCount,
         linkedQuestions: result.linkedQuestions,
+        mode: result.mode,
+        replacedCount: result.replacedCount,
+        skippedDuplicatesCount: result.skippedDuplicatesCount,
       });
     } catch (err: unknown) {
       return NextResponse.json(
@@ -95,7 +107,19 @@ export async function POST(
       const rawRows = parseRawFile(format, buffer);
       const validationResult = validateImportQuestions(rawRows, format);
 
-      return NextResponse.json({ preview: validationResult });
+      const contest = await getContestById(contest_id);
+      const existingQuestions = await getContestQuestions(contest_id, "admin");
+      const duplicatesWithExisting = detectDuplicatesWithExisting(
+        existingQuestions,
+        validationResult.validQuestions
+      );
+
+      return NextResponse.json({
+        preview: validationResult,
+        contestName: contest?.title || "Contest",
+        existingCount: existingQuestions.length,
+        duplicatesWithExisting,
+      });
     } catch (err: unknown) {
       return NextResponse.json(
         { error: err instanceof Error ? err.message : "Failed to parse file." },

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createContest, listContests } from "../../../../lib/contest/service";
+import { createContest, listContests, deleteContest } from "../../../../lib/contest/service";
 import { createSupabaseServerClient } from "../../../../lib/supabase-server";
 
 async function verifyAdminAuth() {
@@ -95,6 +95,51 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to create contest." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: Request) {
+  const { isAuthorized } = await verifyAdminAuth();
+  if (!isAuthorized) {
+    return NextResponse.json({ error: "Unauthorized. Admin privileges required." }, { status: 403 });
+  }
+
+  try {
+    const body = await req.json();
+    const contestIds = body.contest_ids;
+    if (!Array.isArray(contestIds) || contestIds.length === 0) {
+      return NextResponse.json(
+        { error: "contest_ids array is required." },
+        { status: 400 }
+      );
+    }
+
+    const force = Boolean(body.force);
+    const deleted: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+
+    for (const id of contestIds) {
+      if (typeof id !== "string" || !id.trim()) continue;
+      const result = await deleteContest(id, { force });
+      if (result.success) {
+        deleted.push(id);
+      } else {
+        failed.push({ id, error: result.error || "Failed to delete contest." });
+      }
+    }
+
+    return NextResponse.json({
+      success: failed.length === 0,
+      deleted,
+      failed,
+      totalRequested: contestIds.length,
+      totalDeleted: deleted.length,
+    });
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to bulk delete contests." },
       { status: 500 }
     );
   }

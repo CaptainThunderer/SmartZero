@@ -31,12 +31,19 @@ export default function ContestQuestionImportPage({
   const [preview, setPreview] = useState<ValidationResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successCount, setSuccessCount] = useState<number | null>(null);
+  const [importMode, setImportMode] = useState<"append" | "replace">("append");
+  const [existingCount, setExistingCount] = useState<number>(0);
+  const [contestName, setContestName] = useState<string>("");
+  const [duplicatesWithExisting, setDuplicatesWithExisting] = useState<Array<{ incomingIndex: number; titleOrPrompt: string; type: string }>>([]);
+  const [deduplicate, setDeduplicate] = useState<boolean>(true);
+  const [showReplaceModal, setShowReplaceModal] = useState<boolean>(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
       setPreview(null);
       setErrorMsg(null);
+      setDuplicatesWithExisting([]);
     }
   };
 
@@ -61,6 +68,9 @@ export default function ContestQuestionImportPage({
         setErrorMsg(data.error || "Failed to parse file.");
       } else if (data.preview) {
         setPreview(data.preview);
+        setExistingCount(data.existingCount || 0);
+        setContestName(data.contestName || "");
+        setDuplicatesWithExisting(data.duplicatesWithExisting || []);
       }
     } catch (err: unknown) {
       setParsing(false);
@@ -68,16 +78,25 @@ export default function ContestQuestionImportPage({
     }
   };
 
-  const handleCommitImport = async () => {
+  const handleCommitImport = async (confirmed = false) => {
     if (!preview || preview.validQuestions.length === 0) return;
+    if (importMode === "replace" && !confirmed) {
+      setShowReplaceModal(true);
+      return;
+    }
     setCommitting(true);
     setErrorMsg(null);
+    setShowReplaceModal(false);
 
     try {
       const res = await fetch(`/api/admin/contests/${id}/questions/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questions: preview.validQuestions }),
+        body: JSON.stringify({
+          questions: preview.validQuestions,
+          mode: importMode,
+          deduplicate,
+        }),
       });
 
       const data = await res.json();
@@ -235,15 +254,103 @@ export default function ContestQuestionImportPage({
 
               <div className="flex items-center gap-3">
                 <button
-                  onClick={handleCommitImport}
+                  onClick={() => handleCommitImport(false)}
                   disabled={committing || preview.validQuestions.length === 0}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
+                  className={`px-4 py-2 rounded-xl text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors ${
+                    importMode === "replace"
+                      ? "bg-rose-600 hover:bg-rose-500 disabled:opacity-50"
+                      : "bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+                  }`}
                 >
                   {committing ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                  <span>Import {preview.validQuestions.length} Valid Questions</span>
+                  <span>
+                    {importMode === "replace"
+                      ? `Replace All (${preview.validQuestions.length} Questions)`
+                      : `Import ${preview.validQuestions.length - (deduplicate ? duplicatesWithExisting.length : 0)} Questions`}
+                  </span>
                 </button>
               </div>
             </div>
+
+            {/* Import Mode Selector */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-[var(--ink)]">Import Strategy</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Append Mode */}
+                <button
+                  type="button"
+                  onClick={() => setImportMode("append")}
+                  className={`p-4 rounded-xl border text-left transition-all flex flex-col justify-between space-y-2 ${
+                    importMode === "append"
+                      ? "bg-[#5B5FEF]/10 dark:bg-[#252646] border-[#5B5FEF] ring-1 ring-[#5B5FEF]"
+                      : "bg-[var(--subtle)] border-[var(--card-border)] hover:border-[#5B5FEF]/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xs font-bold text-[var(--ink)] flex items-center gap-2">
+                      <span className={`w-3 h-3 rounded-full border-2 flex items-center justify-center ${importMode === "append" ? "border-[#5B5FEF] bg-[#5B5FEF]" : "border-[var(--muted)]"}`} />
+                      Append Questions
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold">
+                      Safe
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+                    Keep the existing {existingCount} question assignment(s) and add valid questions from this file.
+                  </p>
+                </button>
+
+                {/* Replace Mode */}
+                <button
+                  type="button"
+                  onClick={() => setImportMode("replace")}
+                  className={`p-4 rounded-xl border text-left transition-all flex flex-col justify-between space-y-2 ${
+                    importMode === "replace"
+                      ? "bg-rose-500/10 dark:bg-rose-950/40 border-rose-500 ring-1 ring-rose-500"
+                      : "bg-[var(--subtle)] border-[var(--card-border)] hover:border-rose-400/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-xs font-bold text-[var(--ink)] flex items-center gap-2">
+                      <span className={`w-3 h-3 rounded-full border-2 flex items-center justify-center ${importMode === "replace" ? "border-rose-500 bg-rose-500" : "border-[var(--muted)]"}`} />
+                      Replace Existing Questions
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold">
+                      Replaces {existingCount}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+                    Remove current {existingCount} question assignment(s) and replace them with this file&apos;s questions. Question bank records remain intact.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {/* Duplicates with Existing Warning */}
+            {duplicatesWithExisting.length > 0 && importMode === "append" && (
+              <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
+                <div className="flex items-start gap-2 text-amber-700 dark:text-amber-300">
+                  <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-semibold">
+                      {duplicatesWithExisting.length} incoming question(s) already exist in this contest
+                    </div>
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5 line-clamp-1">
+                      Example: &ldquo;{duplicatesWithExisting[0].titleOrPrompt}&rdquo;
+                    </div>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-[var(--ink)] shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={deduplicate}
+                    onChange={(e) => setDeduplicate(e.target.checked)}
+                    className="rounded border-[var(--card-border)] text-[#5B5FEF]"
+                  />
+                  <span>Skip existing duplicates</span>
+                </label>
+              </div>
+            )}
 
             {/* Error Callout */}
             {preview.errors.length > 0 && (
@@ -292,8 +399,16 @@ export default function ContestQuestionImportPage({
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="uppercase text-[10px] font-bold px-1.5 py-0.2 rounded bg-[#5B5FEF]/10 dark:bg-[#252646] text-[#5B5FEF] dark:text-[#A5B4FC]">
-                          {q.type}
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            q.type === "sql"
+                              ? "bg-amber-500/10 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                              : q.type === "coding"
+                              ? "bg-indigo-500/10 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
+                              : "bg-purple-500/10 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-500/20"
+                          }`}
+                        >
+                          {q.type === "sql" ? "SQL Coding" : q.type === "coding" ? "Python Coding" : "MCQ"}
                         </span>
                         <span className="font-semibold text-[var(--ink)]">
                           {q.type === "mcq" ? q.question_text : q.title}
@@ -342,6 +457,67 @@ export default function ContestQuestionImportPage({
           </div>
         </div>
       </div>
+
+      {/* Replacement Confirmation Modal */}
+      {showReplaceModal && preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[var(--ink)]">Confirm Question Replacement</h3>
+                <p className="text-xs text-[var(--muted)] mt-1">
+                  You are about to remove all current question assignments from this contest.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--card-border)] space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b border-[var(--line)]">
+                <span className="text-[var(--muted)]">Contest:</span>
+                <span className="font-semibold text-[var(--ink)]">{contestName || id}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[var(--line)]">
+                <span className="text-[var(--muted)]">Existing Questions to Remove:</span>
+                <span className="font-mono font-semibold text-rose-600 dark:text-rose-400">{existingCount}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-[var(--line)]">
+                <span className="text-[var(--muted)]">Incoming Questions to Link:</span>
+                <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">{preview.validQuestions.length}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-[var(--muted)]">Expected Final Question Count:</span>
+                <span className="font-mono font-bold text-[var(--ink)]">{preview.validQuestions.length}</span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+              Note: This action only replaces contest assignments. Existing shared questions in the question bank remain safe and accessible.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--card-border)]">
+              <button
+                type="button"
+                onClick={() => setShowReplaceModal(false)}
+                className="px-4 py-2 rounded-xl border border-[var(--card-border)] hover:bg-[var(--subtle)] text-[var(--ink)] text-xs font-semibold transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCommitImport(true)}
+                disabled={committing}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+              >
+                {committing ? <Loader2 size={14} className="animate-spin" /> : null}
+                <span>Confirm &amp; Replace Questions</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -44,7 +44,7 @@ export function computeContestStatus(contest: {
   start_at: string;
   end_at: string;
 }): ContestStatus {
-  if (contest.status === "DRAFT" || contest.status === "FINAL_RESULTS") {
+  if (contest.status === "DRAFT" || contest.status === "FINAL_RESULTS" || contest.status === "ENDED") {
     return contest.status;
   }
 
@@ -889,16 +889,38 @@ export async function linkQuestionToContest(params: {
   marks?: number;
   negative_marks?: number;
 }): Promise<ContestQuestion> {
-  const cqId = params.id || randomUUID();
-  const mcqDetails = params.question_type === "mcq" ? (memoryStore.mcqQuestions.get(params.question_id) || (await getMcqQuestionRaw(params.question_id))) : undefined;
-  const codingDetails = params.question_type === "coding" ? (memoryStore.codingQuestions.get(params.question_id) || (await getCodingQuestionRaw(params.question_id))) : undefined;
-  const sqlDetails = params.question_type === "sql" ? (memoryStore.sqlQuestions.get(params.question_id) || (await getSqlQuestionRaw(params.question_id))) : undefined;
+  let effectiveType = params.question_type;
+  let mcqDetails = effectiveType === "mcq" ? (memoryStore.mcqQuestions.get(params.question_id) || (await getMcqQuestionRaw(params.question_id))) : undefined;
+  let codingDetails = effectiveType === "coding" ? (memoryStore.codingQuestions.get(params.question_id) || (await getCodingQuestionRaw(params.question_id))) : undefined;
+  let sqlDetails = effectiveType === "sql" ? (memoryStore.sqlQuestions.get(params.question_id) || (await getSqlQuestionRaw(params.question_id))) : undefined;
 
+  // Self-heal question type if details are missing under the declared type
+  if (!mcqDetails && !codingDetails && !sqlDetails) {
+    const s = memoryStore.sqlQuestions.get(params.question_id) || (await getSqlQuestionRaw(params.question_id));
+    if (s) {
+      sqlDetails = s;
+      effectiveType = "sql";
+    } else {
+      const c = memoryStore.codingQuestions.get(params.question_id) || (await getCodingQuestionRaw(params.question_id));
+      if (c) {
+        codingDetails = c;
+        effectiveType = "coding";
+      } else {
+        const m = memoryStore.mcqQuestions.get(params.question_id) || (await getMcqQuestionRaw(params.question_id));
+        if (m) {
+          mcqDetails = m;
+          effectiveType = "mcq";
+        }
+      }
+    }
+  }
+
+  const cqId = params.id || randomUUID();
   const cq: ContestQuestion = {
     id: cqId,
     contest_id: params.contest_id,
     question_id: params.question_id,
-    question_type: params.question_type,
+    question_type: effectiveType,
     sort_order: params.sort_order ?? 0,
     marks: params.marks ?? 1,
     negative_marks: params.negative_marks ?? 0,
@@ -968,23 +990,53 @@ export async function getContestQuestions(
             let mcq_details: McqQuestion | undefined;
             let coding_details: CodingQuestion | undefined;
             let sql_details: SqlQuestion | undefined;
-
-            if (row.question_type === "mcq") {
+            let questionType = row.question_type;
+            if (questionType === "mcq") {
               const mcq = await getMcqQuestionRaw(row.question_id);
-              if (mcq) mcq_details = mcq;
-            } else if (row.question_type === "coding") {
+              if (mcq) {
+                mcq_details = mcq;
+              } else {
+                const sqlQ = await getSqlQuestionRaw(row.question_id);
+                if (sqlQ) {
+                  sql_details = sqlQ;
+                  questionType = "sql";
+                } else {
+                  const codeQ = await getCodingQuestionRaw(row.question_id);
+                  if (codeQ) {
+                    coding_details = codeQ;
+                    questionType = "coding";
+                  }
+                }
+              }
+            } else if (questionType === "coding") {
               const codeQ = await getCodingQuestionRaw(row.question_id);
-              if (codeQ) coding_details = codeQ;
-            } else if (row.question_type === "sql") {
+              if (codeQ) {
+                coding_details = codeQ;
+              } else {
+                const sqlQ = await getSqlQuestionRaw(row.question_id);
+                if (sqlQ) {
+                  sql_details = sqlQ;
+                  questionType = "sql";
+                }
+              }
+            } else if (questionType === "sql") {
               const sqlQ = await getSqlQuestionRaw(row.question_id);
-              if (sqlQ) sql_details = sqlQ;
+              if (sqlQ) {
+                sql_details = sqlQ;
+              } else {
+                const codeQ = await getCodingQuestionRaw(row.question_id);
+                if (codeQ) {
+                  coding_details = codeQ;
+                  questionType = "coding";
+                }
+              }
             }
 
             hydrated.push({
               id: row.id,
               contest_id: row.contest_id,
               question_id: row.question_id,
-              question_type: row.question_type,
+              question_type: questionType,
               sort_order: row.sort_order ?? 0,
               marks: Number(row.marks ?? 1),
               negative_marks: Number(row.negative_marks ?? 0),
@@ -1048,6 +1100,30 @@ export async function reorderContestQuestions(
   }
 
   return reordered;
+}
+
+/**
+ * Safely removes existing question link assignments from a contest.
+ * Preserves all questions in the underlying question bank tables (mcq_questions, coding_questions, sql_questions).
+ */
+export async function clearContestQuestions(contestId: string): Promise<boolean> {
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from("contest_questions")
+        .delete()
+        .eq("contest_id", contestId);
+      if (error && isProduction()) {
+        throw new Error(`Database error clearing contest questions: ${error.message}`);
+      }
+    } catch (err) {
+      if (isProduction()) throw err;
+    }
+  }
+
+  memoryStore.contestQuestions.set(contestId, []);
+  return true;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1651,6 +1727,63 @@ export async function submitContestExam(params: {
     },
     error: null,
   };
+}
+
+/**
+ * Server-authoritative early termination for a contest.
+ * Immediately ends the contest, caps end_at to current timestamp,
+ * and auto-submits any active in-exam participants with timeout reason.
+ * Idempotent: safe to call on already-ended contests.
+ */
+export async function endContestEarly(
+  contestId: string
+): Promise<{ success: boolean; contest?: Contest; autoSubmittedCount?: number; alreadyEnded?: boolean; error?: string }> {
+  const contest = await getContestById(contestId);
+  if (!contest) {
+    return { success: false, error: "Contest not found." };
+  }
+
+  const currentStatus = computeContestStatus(contest);
+  if (currentStatus === "ENDED" || currentStatus === "FINAL_RESULTS" || contest.status === "ENDED") {
+    return { success: true, contest, alreadyEnded: true, autoSubmittedCount: 0 };
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const updated = await updateContest(contestId, {
+    status: "ENDED",
+    end_at: nowIso,
+    updated_at: nowIso,
+  });
+
+  if (!updated) {
+    return { success: false, error: "Failed to update contest status." };
+  }
+
+  // Auto-submit all participants who are currently in progress
+  let autoSubmittedCount = 0;
+  const participants = await listParticipants(contestId);
+  for (const p of participants) {
+    if (
+      p.status === "in_exam" ||
+      p.status === "in_progress" ||
+      p.status === "exam_started" ||
+      p.status === "ready"
+    ) {
+      try {
+        await submitContestExam({
+          contest_id: contestId,
+          user_id: p.user_id,
+          reason: "timeout",
+        });
+        autoSubmittedCount++;
+      } catch {
+        // Continue auto-submitting remaining participants
+      }
+    }
+  }
+
+  return { success: true, contest: updated, autoSubmittedCount };
 }
 
 export async function startContestExam(params: {

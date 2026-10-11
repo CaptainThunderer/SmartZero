@@ -316,13 +316,15 @@ export default function AdminContestAnalyticsPage({
                 <tr key={qa.question_id} className="hover:bg-[var(--subtle)] transition-colors">
                   <td className="py-3">
                     <span
-                      className={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold ${
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         qa.question_type === "mcq"
                           ? "bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/30"
-                          : "bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/30"
+                          : qa.question_type === "sql"
+                          ? "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/30"
+                          : "bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/30"
                       }`}
                     >
-                      {qa.question_type}
+                      {qa.question_type === "sql" ? "SQL Coding" : qa.question_type === "coding" ? "Python Coding" : "MCQ"}
                     </span>
                   </td>
                   <td className="py-3 font-sans font-medium text-[var(--ink)] max-w-xs truncate">

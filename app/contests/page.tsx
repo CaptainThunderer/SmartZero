@@ -382,7 +382,11 @@ export default function ContestHubPage() {
                               <span>Questions:</span>
                             </span>
                             <span className="font-semibold text-[#232946] dark:text-white">
-                              {c.question_counts.total} Total ({c.question_counts.mcq} MCQ · {c.question_counts.coding} Coding)
+                              {c.question_counts.total} Total ({[
+                                c.question_counts.mcq ? `${c.question_counts.mcq} MCQ` : null,
+                                c.question_counts.coding ? `${c.question_counts.coding} Python Coding` : null,
+                                c.question_counts.sql ? `${c.question_counts.sql} SQL Coding` : null,
+                              ].filter(Boolean).join(" · ") || "0 Questions"})
                             </span>
                           </div>
 
@@ -572,7 +576,11 @@ export default function ContestHubPage() {
                           <div className="flex items-center justify-between text-[#6B6F8A] dark:text-[#9498B3]">
                             <span>Questions:</span>
                             <span className="text-[#232946] dark:text-[#CBD5E1]">
-                              {c.question_counts.total} Total ({c.question_counts.mcq} MCQ · {c.question_counts.coding} Coding)
+                              {c.question_counts.total} Total ({[
+                                c.question_counts.mcq ? `${c.question_counts.mcq} MCQ` : null,
+                                c.question_counts.coding ? `${c.question_counts.coding} Python Coding` : null,
+                                c.question_counts.sql ? `${c.question_counts.sql} SQL Coding` : null,
+                              ].filter(Boolean).join(" · ") || "0 Questions"})
                             </span>
                           </div>
 

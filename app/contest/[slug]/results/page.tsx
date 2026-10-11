@@ -373,13 +373,15 @@ export default function StudentContestResultsPage({
                       Q{idx + 1}
                     </span>
                     <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         qp.question_type === "mcq"
                           ? "bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40"
-                          : "bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40"
+                          : qp.question_type === "sql"
+                          ? "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40"
+                          : "bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40"
                       }`}
                     >
-                      {qp.question_type}
+                      {qp.question_type === "sql" ? "SQL Coding" : qp.question_type === "coding" ? "Python Coding" : "MCQ"}
                     </span>
                     <span className="font-semibold text-[var(--ink)] truncate max-w-md">
                       {qp.title}
@@ -426,8 +428,8 @@ export default function StudentContestResultsPage({
                   </div>
                 )}
 
-                {/* Coding challenge summary */}
-                {qp.question_type === "coding" && qp.coding_info && (
+                {/* Coding/SQL challenge summary */}
+                {(qp.question_type === "coding" || qp.question_type === "sql") && qp.coding_info && (
                   <div className="bg-[var(--subtle)] border border-[var(--card-border)] rounded-lg p-3 flex items-center justify-between text-[11px] font-mono">
                     <div className="flex items-center gap-3">
                       <span className="text-[var(--muted)]">Verdict:</span>

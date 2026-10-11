@@ -5,6 +5,8 @@ import {
   addSqlQuestion,
   linkQuestionToContest,
   normalizeQuestionDifficulty,
+  clearContestQuestions,
+  getContestQuestions,
 } from "./service";
 import type { ContestQuestion, QuestionDifficulty } from "../../types/contest";
 
@@ -392,6 +394,15 @@ export function validateImportQuestions(
         return;
       }
 
+      if (seenPrompts.has(title.toLowerCase())) {
+        warnings.push({
+          row: rowNum,
+          field: "title",
+          message: `Duplicate SQL question detected: "${title}".`,
+        });
+      }
+      seenPrompts.add(title.toLowerCase());
+
       if (!description) {
         errors.push({
           row: rowNum,
@@ -485,17 +496,102 @@ export function validateImportQuestions(
   };
 }
 
+export interface ExistingQuestionDuplicate {
+  incomingIndex: number;
+  type: "mcq" | "coding" | "sql";
+  titleOrPrompt: string;
+  matchedQuestionId: string;
+}
+
+/**
+ * Checks incoming questions against already linked contest questions to find duplicates.
+ */
+export function detectDuplicatesWithExisting(
+  existingQuestions: ContestQuestion[],
+  incomingQuestions: ParsedImportQuestion[]
+): ExistingQuestionDuplicate[] {
+  const duplicates: ExistingQuestionDuplicate[] = [];
+
+  const existingMap = new Map<string, string>(); // prompt/title (lowercase) -> question_id
+  for (const eq of existingQuestions) {
+    const text = (
+      eq.question_type === "mcq"
+        ? eq.question_text || eq.prompt || eq.mcq_details?.question_text
+        : eq.question_type === "sql"
+        ? eq.sql_details?.title
+        : eq.coding_details?.title
+    ) || "";
+    if (text.trim()) {
+      existingMap.set(text.trim().toLowerCase(), eq.question_id);
+    }
+  }
+
+  incomingQuestions.forEach((iq, idx) => {
+    const text = iq.type === "mcq" ? iq.question_text : iq.title;
+    const norm = text.trim().toLowerCase();
+    if (existingMap.has(norm)) {
+      duplicates.push({
+        incomingIndex: idx + 1,
+        type: iq.type,
+        titleOrPrompt: text,
+        matchedQuestionId: existingMap.get(norm)!,
+      });
+    }
+  });
+
+  return duplicates;
+}
+
+export interface PersistImportOptions {
+  mode?: "append" | "replace";
+  deduplicate?: boolean;
+}
+
+export interface PersistImportResult {
+  importedCount: number;
+  linkedQuestions: ContestQuestion[];
+  mode: "append" | "replace";
+  replacedCount?: number;
+  skippedDuplicatesCount?: number;
+}
+
 /**
  * Persists validated questions into the database/service and links them to the contest.
+ * Supports 'append' (default) and 'replace' modes.
+ * In 'replace' mode, removes current contest assignments before linking.
+ * Shared question bank records are never removed.
  */
 export async function persistImportedQuestions(
   contestId: string,
-  questions: ParsedImportQuestion[]
-): Promise<{ importedCount: number; linkedQuestions: ContestQuestion[] }> {
+  questions: ParsedImportQuestion[],
+  options?: PersistImportOptions
+): Promise<PersistImportResult> {
+  const mode = options?.mode === "replace" ? "replace" : "append";
+  let replacedCount = 0;
+  let skippedDuplicatesCount = 0;
+
+  let existingQuestions = await getContestQuestions(contestId, "admin");
+
+  if (mode === "replace") {
+    replacedCount = existingQuestions.length;
+    await clearContestQuestions(contestId);
+    existingQuestions = [];
+  }
+
+  let questionsToImport = questions;
+  if (mode === "append" && options?.deduplicate) {
+    const duplicates = detectDuplicatesWithExisting(existingQuestions, questions);
+    const dupIndices = new Set(duplicates.map((d) => d.incomingIndex - 1));
+    questionsToImport = questions.filter((_, idx) => !dupIndices.has(idx));
+    skippedDuplicatesCount = duplicates.length;
+  }
+
+  const startSortOrder = mode === "append" ? existingQuestions.length : 0;
   const linkedQuestions: ContestQuestion[] = [];
 
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
+  for (let i = 0; i < questionsToImport.length; i++) {
+    const q = questionsToImport[i];
+    const sortOrder = startSortOrder + i;
 
     if (q.type === "mcq") {
       const createdMcq = await addMcqQuestion({
@@ -511,7 +607,7 @@ export async function persistImportedQuestions(
         question_type: "mcq",
         marks: q.marks,
         negative_marks: q.negative_marks || 0,
-        sort_order: i,
+        sort_order: sortOrder,
       });
 
       linkedQuestions.push(linked);
@@ -533,7 +629,7 @@ export async function persistImportedQuestions(
         question_id: createdCode.id,
         question_type: "coding",
         marks: q.marks,
-        sort_order: i,
+        sort_order: sortOrder,
       });
 
       linkedQuestions.push(linked);
@@ -556,7 +652,7 @@ export async function persistImportedQuestions(
         question_type: "sql",
         marks: q.marks,
         negative_marks: q.negative_marks || 0,
-        sort_order: i,
+        sort_order: sortOrder,
       });
 
       linkedQuestions.push(linked);
@@ -566,5 +662,8 @@ export async function persistImportedQuestions(
   return {
     importedCount: linkedQuestions.length,
     linkedQuestions,
+    mode,
+    replacedCount,
+    skippedDuplicatesCount,
   };
 }

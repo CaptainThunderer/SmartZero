@@ -27,6 +27,7 @@ import {
   Sparkles,
   ShieldAlert,
   CheckCircle,
+  PowerOff,
 } from "lucide-react";
 import type { Contest, ContestQuestion } from "../../../../../types/contest";
 import { isoToLocalDatetime, addMinutesToLocalDatetime, localDatetimeToIso } from "@/lib/utils/dateTime";
@@ -56,6 +57,11 @@ export default function ContestDetailPage({
   const [slugConfirmation, setSlugConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // End Live Contest Early Modal
+  const [showEndEarlyModal, setShowEndEarlyModal] = useState(false);
+  const [endingEarly, setEndingEarly] = useState(false);
+  const [endEarlyError, setEndEarlyError] = useState<string | null>(null);
 
   // Live Rankings Slide-Over Drawer
   const [showDrawer, setShowDrawer] = useState(false);
@@ -221,6 +227,37 @@ export default function ContestDetailPage({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
+  const refreshContestData = useCallback(() => {
+    fetch(`/api/admin/contests/${id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.contest) setContest(data.contest);
+      })
+      .catch(() => {});
+  }, [id]);
+
+  const handleEndContestEarly = async () => {
+    setEndingEarly(true);
+    setEndEarlyError(null);
+    try {
+      const res = await fetch(`/api/admin/contests/${id}/end`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setEndEarlyError(data.error || "Failed to end contest.");
+      } else {
+        if (data.contest) setContest(data.contest);
+        setShowEndEarlyModal(false);
+        refreshContestData();
+      }
+    } catch (err: unknown) {
+      setEndEarlyError(err instanceof Error ? err.message : "Network error.");
+    } finally {
+      setEndingEarly(false);
+    }
+  };
+
   const openEditModal = () => {
     if (!contest) return;
     setEditTitle(contest.title);
@@ -378,6 +415,7 @@ export default function ContestDetailPage({
 
   const mcqCount = questions.filter((q) => q.question_type === "mcq").length;
   const codingCount = questions.filter((q) => q.question_type === "coding").length;
+  const sqlCount = questions.filter((q) => q.question_type === "sql").length;
   const totalMarks = questions.reduce((sum, q) => sum + Number(q.marks || 0), 0);
 
   return (
@@ -395,6 +433,16 @@ export default function ContestDetailPage({
         <div className="flex items-center gap-2">
           {contest.status === "LIVE" && (
             <>
+              <button
+                onClick={() => {
+                  setEndEarlyError(null);
+                  setShowEndEarlyModal(true);
+                }}
+                className="px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+              >
+                <PowerOff size={13} className="text-rose-500" />
+                <span>End Contest Now</span>
+              </button>
               <button
                 onClick={() => setShowDrawer(true)}
                 className="px-3 py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
@@ -608,7 +656,7 @@ export default function ContestDetailPage({
               <h2 className="text-sm font-bold text-[var(--ink)]">Contest Questions ({questions.length})</h2>
             </div>
             <p className="text-xs text-[var(--muted)]">
-              {mcqCount} MCQs • {codingCount} Coding Problems • Total Marks: {totalMarks}
+              {mcqCount} MCQs • {codingCount} Python Coding • {sqlCount} SQL Coding • Total Marks: {totalMarks}
             </p>
           </div>
 
@@ -747,6 +795,73 @@ export default function ContestDetailPage({
               >
                 {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                 <span>Confirm & Delete</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── END LIVE CONTEST EARLY MODAL ── */}
+      {showEndEarlyModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[var(--card)] border border-[var(--card-border)] rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                  <PowerOff size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[var(--ink)]">End Live Contest Now?</h3>
+                  <p className="text-xs text-[var(--muted)] mt-0.5">
+                    Server-authoritative early termination
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowEndEarlyModal(false)}
+                className="text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {endEarlyError && (
+              <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-xs text-red-700 dark:text-red-400 flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0" />
+                <span>{endEarlyError}</span>
+              </div>
+            )}
+
+            <div className="p-4 rounded-xl bg-[var(--subtle)] border border-[var(--line)] space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b border-[var(--line)]">
+                <span className="text-[var(--muted)]">Contest Title:</span>
+                <span className="font-semibold text-[var(--ink)]">{contest.title}</span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-[var(--muted)]">Consequence:</span>
+                <span className="text-rose-600 dark:text-rose-400 font-semibold">Immediate auto-submit & lock</span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+              Active participant exams will be auto-submitted with their current answers. Server-side timestamp will be capped and submissions will be closed.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowEndEarlyModal(false)}
+                disabled={endingEarly}
+                className="px-4 py-2 rounded-xl border border-[var(--card-border)] text-xs font-semibold text-[var(--muted)] hover:text-[var(--ink)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEndContestEarly}
+                disabled={endingEarly}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              >
+                {endingEarly ? <Loader2 size={13} className="animate-spin" /> : <PowerOff size={13} />}
+                <span>Confirm &amp; End Contest</span>
               </button>
             </div>
           </div>

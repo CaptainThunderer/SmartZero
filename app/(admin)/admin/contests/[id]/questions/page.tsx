@@ -330,13 +330,15 @@ export default function ContestQuestionsPage({
                     </div>
                     <div className="text-[11px] text-[var(--muted)] flex items-center gap-2 mt-0.5">
                       <span
-                        className={`uppercase text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded ${
                           cq.question_type === "sql"
                             ? "bg-amber-500/10 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                            : "bg-[#5B5FEF]/10 dark:bg-[#252646] text-[#5B5FEF] dark:text-[#A5B4FC]"
+                            : cq.question_type === "coding"
+                            ? "bg-indigo-500/10 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
+                            : "bg-purple-500/10 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-500/20"
                         }`}
                       >
-                        {cq.question_type}
+                        {cq.question_type === "sql" ? "SQL Coding" : cq.question_type === "coding" ? "Python Coding" : "MCQ"}
                       </span>
                       <span>Marks: {cq.marks}</span>
                       {cq.negative_marks > 0 && (

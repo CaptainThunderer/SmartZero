@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getContestById, updateContest, deleteContest, computeContestStatus, canUserManageContest } from "../../../../../lib/contest/service";
+import { getContestById, updateContest, deleteContest, computeContestStatus, canUserManageContest, endContestEarly } from "../../../../../lib/contest/service";
 import { getAuthenticatedUser } from "../../../../../lib/auth/studentSession";
 
 export async function GET(
@@ -63,6 +63,15 @@ export async function PATCH(
     const body = await req.json();
     const currentStatus = computeContestStatus(contest);
     const now = Date.now();
+
+    // ── End Live Contest Early Action ──
+    if (body.action === "end_now" || (currentStatus === "LIVE" && body.status === "ENDED")) {
+      const endResult = await endContestEarly(id);
+      if (!endResult.success) {
+        return NextResponse.json({ error: endResult.error || "Failed to end contest." }, { status: 400 });
+      }
+      return NextResponse.json({ contest: endResult.contest });
+    }
 
     // Whitelist editable fields — never trust arbitrary client keys
     const safeUpdates: Record<string, unknown> = {};
