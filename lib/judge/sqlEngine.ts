@@ -465,8 +465,21 @@ export async function executeSingleSqlTestCase(params: {
     const isSelect = /^\s*(SELECT|WITH)\b/i.test(trimmedQuery);
     let rawRows: Record<string, unknown>[] = [];
 
+    let stmtColumns: string[] = [];
     if (isSelect) {
       const stmt = db.prepare(trimmedQuery);
+      if (typeof (stmt as any).columns === "function") {
+        try {
+          const colMeta = (stmt as any).columns();
+          if (Array.isArray(colMeta)) {
+            stmtColumns = colMeta
+              .map((c: any) => String(c?.name || c?.column || "").toLowerCase())
+              .filter(Boolean);
+          }
+        } catch {
+          // Non-blocking
+        }
+      }
       rawRows = stmt.all() as Record<string, unknown>[];
     } else {
       // DML (INSERT, UPDATE, DELETE)
@@ -492,7 +505,7 @@ export async function executeSingleSqlTestCase(params: {
     const cappedRows = rawRows.slice(0, 1000);
     const columns = cappedRows.length > 0
       ? Object.keys(cappedRows[0]).map((c) => c.toLowerCase())
-      : [];
+      : stmtColumns;
 
     const normalizedRows: (string | number | null)[][] = cappedRows.map((r) =>
       columns.map((col) => {

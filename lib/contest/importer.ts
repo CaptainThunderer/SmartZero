@@ -140,7 +140,16 @@ export function validateImportQuestions(
 
   rawRows.forEach((row, idx) => {
     const rowNum = idx + 1;
-    const rawType = String(row.type || row.question_type || "").toLowerCase().trim();
+    let rawType = String(row.type || row.question_type || "").toLowerCase().trim();
+
+    // Auto-detect SQL question if schema_sql is present, even if type is labeled "coding" or empty
+    const hasSqlSchema = Boolean(
+      (typeof row.schema_sql === "string" && row.schema_sql.trim()) ||
+      (typeof row.schema === "string" && row.schema.trim())
+    );
+    if ((rawType === "coding" || !rawType) && hasSqlSchema) {
+      rawType = "sql";
+    }
 
     // 1. Validate Question Type
     if (!rawType || (rawType !== "mcq" && rawType !== "coding" && rawType !== "sql")) {
