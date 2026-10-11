@@ -201,6 +201,18 @@ export function compareSqlResults(
   expected: SqlNormalizedResult,
   orderSensitive = true
 ): { matches: boolean; reason?: string } {
+  // 0. Empty result set handling: When expected output specifies an empty set
+  // (0 columns and 0 rows, e.g. "" or "(empty set)" or "\n"), verify actual returned 0 rows.
+  if (expected.columns.length === 0 && expected.rows.length === 0) {
+    if (actual.rows.length === 0) {
+      return { matches: true };
+    }
+    return {
+      matches: false,
+      reason: `Row count mismatch: expected 0 rows (empty set), received ${actual.rows.length} rows.`,
+    };
+  }
+
   // 1. Column count check
   if (actual.columns.length !== expected.columns.length) {
     return {

@@ -95,6 +95,28 @@ export function cleanupLegacyUnscopedDrafts(slug?: string, questionId?: string):
   }
 }
 
+/**
+ * Height bounds and configuration for the resizable output console.
+ */
+export const DEFAULT_CONSOLE_HEIGHT = 216; // 36px tabs + 180px content (matches original ~h-44)
+export const MIN_CONSOLE_HEIGHT = 120;     // 36px tabs + 84px content (keeps controls & verdict visible)
+export const MIN_EDITOR_HEIGHT = 160;      // 44px toolbar + 116px editor code area (keeps code usable)
+export const RESIZE_HANDLE_HEIGHT = 8;     // 8px interactive handle
+
+/**
+ * Clamps target console height based on parent container dimensions.
+ */
+export function clampConsoleHeight(
+  targetHeight: number,
+  containerHeight: number = 650
+): number {
+  const maxAllowed = Math.max(
+    MIN_CONSOLE_HEIGHT,
+    containerHeight - MIN_EDITOR_HEIGHT - RESIZE_HANDLE_HEIGHT
+  );
+  return Math.min(maxAllowed, Math.max(MIN_CONSOLE_HEIGHT, Math.round(targetHeight)));
+}
+
 interface CodingIDEProps {
   slug: string;
   contestId?: string;
@@ -147,6 +169,94 @@ export default function CodingIDE({
   });
   const [customInput, setCustomInput] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"results" | "custom" | "history">("results");
+
+  // ── Resizable Console State ──
+  const [consoleHeight, setConsoleHeight] = useState<number>(DEFAULT_CONSOLE_HEIGHT);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const rightPaneRef = useRef<HTMLDivElement>(null);
+  const dragStartYRef = useRef<number>(0);
+  const dragStartHeightRef = useRef<number>(DEFAULT_CONSOLE_HEIGHT);
+
+  // Maximum console height based on actual container bounds
+  const getMaxConsoleHeight = useCallback((): number => {
+    const containerHeight = rightPaneRef.current?.clientHeight ?? 650;
+    return Math.max(
+      MIN_CONSOLE_HEIGHT,
+      containerHeight - MIN_EDITOR_HEIGHT - RESIZE_HANDLE_HEIGHT
+    );
+  }, []);
+
+  // Pointer drag start
+  const handleResizePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    dragStartYRef.current = e.clientY;
+    dragStartHeightRef.current = consoleHeight;
+    setIsDragging(true);
+  };
+
+  // Dragging event listeners attached to window for smooth tracking & clean release
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      const deltaY = e.clientY - dragStartYRef.current;
+      // Dragging upward (deltaY < 0) expands console height
+      const targetHeight = dragStartHeightRef.current - deltaY;
+      const containerHeight = rightPaneRef.current?.clientHeight ?? 650;
+      setConsoleHeight(clampConsoleHeight(targetHeight, containerHeight));
+    };
+
+    const handlePointerUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    const originalUserSelect = document.body.style.userSelect;
+    const originalCursor = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "row-resize";
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      document.body.style.userSelect = originalUserSelect;
+      document.body.style.cursor = originalCursor;
+    };
+  }, [isDragging]);
+
+  // Adjust console height when container / window resizes
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const containerHeight = rightPaneRef.current?.clientHeight ?? 650;
+      setConsoleHeight((prev) => clampConsoleHeight(prev, containerHeight));
+    };
+    window.addEventListener("resize", handleWindowResize);
+    return () => window.removeEventListener("resize", handleWindowResize);
+  }, []);
+
+  // Keyboard navigation for accessibility
+  const handleResizeKeyDown = (e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 40 : 20;
+    const containerHeight = rightPaneRef.current?.clientHeight ?? 650;
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setConsoleHeight((prev) => clampConsoleHeight(prev + step, containerHeight));
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setConsoleHeight((prev) => clampConsoleHeight(prev - step, containerHeight));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setConsoleHeight(MIN_CONSOLE_HEIGHT);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setConsoleHeight(getMaxConsoleHeight());
+    }
+  };
 
   // Execution states
   const [isRunning, setIsRunning] = useState(false);
@@ -592,7 +702,10 @@ export default function CodingIDE({
       </div>
 
       {/* ── RIGHT PANE: MONACO EDITOR & JUDGE CONSOLE ── */}
-      <div className="w-full lg:w-7/12 flex flex-col h-full bg-[#12121A]">
+      <div
+        ref={rightPaneRef}
+        className="w-full lg:w-7/12 flex flex-col h-full bg-[#12121A] min-h-0 relative"
+      >
         {/* Editor Toolbar */}
         <div className="h-11 border-b border-[#27273D] bg-[#181824] px-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -652,7 +765,7 @@ export default function CodingIDE({
         </div>
 
         {/* Monaco Editor Container */}
-        <div className="flex-1 min-h-[320px] relative bg-[#12121A]">
+        <div className="flex-1 min-h-[116px] relative bg-[#12121A] overflow-hidden">
           <Editor
             height="100%"
             language={language === "cpp" ? "cpp" : language}
@@ -687,10 +800,50 @@ export default function CodingIDE({
           />
         </div>
 
+        {/* Horizontal Resize Handle */}
+        <div
+          role="separator"
+          tabIndex={0}
+          aria-orientation="horizontal"
+          aria-label="Resize console"
+          aria-valuenow={Math.round(consoleHeight)}
+          aria-valuemin={MIN_CONSOLE_HEIGHT}
+          aria-valuemax={getMaxConsoleHeight()}
+          onPointerDown={handleResizePointerDown}
+          onDoubleClick={() => setConsoleHeight(DEFAULT_CONSOLE_HEIGHT)}
+          onKeyDown={handleResizeKeyDown}
+          title="Drag to resize console • Double-click to reset"
+          className={`group h-2 relative flex items-center justify-center cursor-row-resize select-none shrink-0 border-t border-b transition-colors z-10 ${
+            isDragging
+              ? "bg-[#5B5FEF]/25 border-[#5B5FEF]"
+              : "bg-[#181824] hover:bg-[#1E1E2E] border-[#27273D] hover:border-[#5B5FEF]/60"
+          }`}
+        >
+          {/* Subtle central grip indicator */}
+          <div
+            className={`w-10 h-1 rounded-full transition-colors ${
+              isDragging
+                ? "bg-[#5B5FEF]"
+                : "bg-[#3B3B59] group-hover:bg-[#A5B4FC]"
+            }`}
+          />
+        </div>
+
+        {/* Global drag overlay to prevent Monaco Editor or text selection from interfering during drag */}
+        {isDragging && (
+          <div
+            className="fixed inset-0 z-50 cursor-row-resize select-none"
+            style={{ pointerEvents: "auto" }}
+          />
+        )}
+
         {/* Bottom Console Tabs & Action Bar */}
-        <div className="border-t border-[#27273D] bg-[#181824] flex flex-col shrink-0">
+        <div
+          style={{ height: `${consoleHeight}px` }}
+          className="bg-[#181824] flex flex-col shrink-0 min-h-0"
+        >
           {/* Console Tabs */}
-          <div className="h-9 border-b border-[#27273D] px-4 flex items-center justify-between">
+          <div className="h-9 border-b border-[#27273D] px-4 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setActiveTab("results")}
@@ -766,7 +919,7 @@ export default function CodingIDE({
           </div>
 
           {/* Console Drawer Content */}
-          <div className="h-44 p-4 overflow-y-auto text-xs font-mono">
+          <div className="flex-1 min-h-0 p-4 overflow-y-auto text-xs font-mono">
             {activeTab === "custom" && (
               <div className="space-y-2 h-full flex flex-col">
                 <div className="text-[10px] text-[#A0A6C2] uppercase font-bold">
