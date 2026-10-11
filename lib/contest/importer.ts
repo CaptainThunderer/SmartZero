@@ -415,6 +415,21 @@ export function validateImportQuestions(
           is_sample: tc.is_sample !== undefined ? Boolean(tc.is_sample) : false,
           weight: Number(tc.weight) > 0 ? Number(tc.weight) : 1,
         }));
+      } else if (typeof row.test_cases === "string" && row.test_cases.trim().startsWith("[")) {
+        try {
+          const parsedTc = JSON.parse(row.test_cases);
+          if (Array.isArray(parsedTc)) {
+            testCases = parsedTc.map((tc) => ({
+              setup_sql: String(tc.setup_sql || tc.setup || tc.input || "").trim(),
+              expected_output: String(tc.expected_output || tc.output || "").trim(),
+              is_hidden: tc.is_hidden !== undefined ? Boolean(tc.is_hidden) : true,
+              is_sample: tc.is_sample !== undefined ? Boolean(tc.is_sample) : false,
+              weight: Number(tc.weight) > 0 ? Number(tc.weight) : 1,
+            }));
+          }
+        } catch {
+          // Fall through
+        }
       }
 
       if (testCases.length === 0 && sampleExpectedOutput) {

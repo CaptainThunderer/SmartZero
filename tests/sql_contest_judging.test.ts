@@ -231,7 +231,7 @@ async function runTests() {
     {
       id: "tc-hidden-1",
       input: "",
-      setup_sql: "INSERT INTO students VALUES (5, 'Zack', 'IT', 95);",
+      setup_sql: sampleDataSql + "INSERT INTO students VALUES (5, 'Zack', 'IT', 95);",
       expected_output: "name | marks\nZack | 95\nSai | 92\nAnu | 88",
       is_sample: false,
       is_hidden: true,
@@ -240,7 +240,7 @@ async function runTests() {
     {
       id: "tc-hidden-2",
       input: "",
-      setup_sql: "INSERT INTO students VALUES (6, 'Elena', 'DS', 99);",
+      setup_sql: sampleDataSql + "INSERT INTO students VALUES (6, 'Elena', 'DS', 99);",
       expected_output: "name | marks\nElena | 99\nSai | 92\nAnu | 88",
       is_sample: false,
       is_hidden: true,
@@ -284,6 +284,9 @@ async function runTests() {
     totalMarks: 20,
     executionMode: "submit",
   });
+  if (submitResult.verdict !== "Accepted") {
+    console.log("SQL SUBMIT FAILED:", JSON.stringify(submitResult, null, 2));
+  }
   testAssert(submitResult.verdict === "Accepted", "Correct SQL query achieves Accepted verdict");
   testAssert(submitResult.score === 20, "Submit mode awards full 20 marks when all tests pass");
 
