@@ -24,7 +24,7 @@ async function getSupabaseClient() {
 }
 
 // Fallback in-memory store for local testing and environments without Supabase credentials
-const memoryStore = {
+export const memoryStore = {
   contests: new Map<string, Contest>(),
   contestQuestions: new Map<string, ContestQuestion[]>(), // contestId -> questions
   mcqQuestions: new Map<string, McqQuestion>(),
@@ -1526,26 +1526,26 @@ export async function getStudentAnswers(
   user_id: string
 ): Promise<McqAnswer[]> {
   const key = `${contest_id}:${user_id}`;
-  const local = memoryStore.answers.get(key);
-  if (local && local.length > 0) return local;
+  const local = memoryStore.answers.get(key) || [];
 
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("mcq_answers")
         .select("*")
         .eq("contest_id", contest_id)
         .eq("user_id", user_id);
-      if (data && data.length > 0) {
-        memoryStore.answers.set(key, data as McqAnswer[]);
-        return data as McqAnswer[];
+      if (!error && data) {
+        const dbAnswers = data as McqAnswer[];
+        memoryStore.answers.set(key, dbAnswers);
+        return dbAnswers;
       }
     } catch {
       // Ignore
     }
   }
-  return local || [];
+  return local;
 }
 
 /**
@@ -1659,14 +1659,32 @@ export async function submitContestExam(params: {
       participant.status === "auto_submitted" ||
       participant.status === "finalized")
   ) {
-    // Already submitted — return existing score
+    // Already submitted — return deterministic authoritative score and self-heal any stale cached/frozen score
     const existingMcq = await calculateStudentMcqScore(params.contest_id, params.user_id);
     const existingCoding = await calculateStudentCodingScore(params.contest_id, params.user_id);
+    const authoritativeTotal = existingMcq.totalScore + existingCoding.totalScore;
+
+    if (participant.score !== authoritativeTotal) {
+      participant.score = authoritativeTotal;
+      const supabase = await getSupabaseClient();
+      if (supabase) {
+        try {
+          await supabase
+            .from("contest_participants")
+            .update({ score: authoritativeTotal })
+            .eq("contest_id", params.contest_id)
+            .eq("user_id", params.user_id);
+        } catch {
+          // Fallback
+        }
+      }
+    }
+
     return {
       success: true,
       participant,
       score: {
-        totalScore: participant.score ?? (existingMcq.totalScore + existingCoding.totalScore),
+        totalScore: authoritativeTotal,
         answeredCount: existingMcq.answeredCount + existingCoding.submittedCount,
         correctCount: existingMcq.correctCount,
         incorrectCount: existingMcq.incorrectCount,
@@ -1700,7 +1718,7 @@ export async function submitContestExam(params: {
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
-      await supabase
+      const { error: updateErr } = await supabase
         .from("contest_participants")
         .update({
           status: nextStatus,
@@ -1711,8 +1729,24 @@ export async function submitContestExam(params: {
         })
         .eq("contest_id", params.contest_id)
         .eq("user_id", params.user_id);
-    } catch {
-      // Fallback
+
+      if (updateErr && isProduction()) {
+        return {
+          success: false,
+          participant: null,
+          score: null,
+          error: `Database error updating participant status: ${updateErr.message}`,
+        };
+      }
+    } catch (err: unknown) {
+      if (isProduction()) {
+        return {
+          success: false,
+          participant: null,
+          score: null,
+          error: `Database connection failure during exam finalization: ${(err as Error).message}`,
+        };
+      }
     }
   }
 
@@ -2148,3 +2182,36 @@ export async function canUserManageContest(
   return false;
 }
 
+/**
+ * Authoritatively recalculates and synchronizes a participant's score in the database.
+ */
+export async function syncParticipantAuthoritativeScore(
+  contest_id: string,
+  user_id: string
+): Promise<{ totalScore: number; solvedCount: number }> {
+  const mcqRes = await calculateStudentMcqScore(contest_id, user_id);
+  const codingRes = await calculateStudentCodingScore(contest_id, user_id);
+  const totalScore = mcqRes.totalScore + codingRes.totalScore;
+  const solvedCount = mcqRes.correctCount + codingRes.submittedCount;
+
+  const supabase = await getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase
+        .from("contest_participants")
+        .update({ score: totalScore })
+        .eq("contest_id", contest_id)
+        .eq("user_id", user_id);
+    } catch {
+      // Fallback
+    }
+  }
+
+  const list = memoryStore.participants.get(contest_id) || [];
+  const p = list.find((x) => x.user_id === user_id);
+  if (p) {
+    p.score = totalScore;
+  }
+
+  return { totalScore, solvedCount };
+}

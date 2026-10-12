@@ -191,8 +191,9 @@ export async function getStudentContestResult(
         },
       });
     } else {
-      // Coding Question
-      const subs = codingSubsMap.get(q.question_id) || [];
+      // Coding Question (isolate DRAFTs)
+      const allSubs = codingSubsMap.get(q.question_id) || [];
+      const subs = allSubs.filter((s) => s.verdict !== "DRAFT");
       const isAttempted = subs.length > 0;
       let bestSub = subs[0];
 
@@ -346,7 +347,8 @@ export async function getAdminContestAnalytics(
           }
         }
       } else {
-        const subs = await getStudentSubmissions(contestId, p.user_id, q.question_id);
+        const rawSubs = await getStudentSubmissions(contestId, p.user_id, q.question_id);
+        const subs = rawSubs.filter((s) => s.verdict !== "DRAFT");
         if (subs.length > 0) {
           attemptsCount++;
           const bestSub = subs.reduce((prev, curr) => (curr.score > prev.score ? curr : prev));

@@ -71,6 +71,8 @@ async function runTests() {
   const contestA = await createContest({
     title: "Import Test Contest A",
     description: "Testing append and replace import flows",
+    start_at: new Date(Date.now() - 3600_000).toISOString(),
+    end_at: new Date(Date.now() + 3600_000).toISOString(),
     duration_minutes: 60,
     passcode: "IMP-TEST-1",
     status: "DRAFT",
@@ -81,7 +83,7 @@ async function runTests() {
     {
       type: "mcq",
       question_text: "What is the primary key of a relational table?",
-      difficulty: "easy",
+      difficulty: "Easy",
       marks: 2,
       negative_marks: 0.5,
       options: [
@@ -93,7 +95,7 @@ async function runTests() {
       type: "coding",
       title: "Reverse String in Python",
       description: "Write a function to reverse a string in-place.",
-      difficulty: "medium",
+      difficulty: "Medium",
       marks: 10,
       test_cases: [
         { input: "'hello'", expected_output: "'olleh'", is_sample: true, is_hidden: false, weight: 1 },
@@ -119,7 +121,7 @@ async function runTests() {
     {
       type: "mcq",
       question_text: "what is the primary key of a relational table?", // Same prompt, different casing
-      difficulty: "easy",
+      difficulty: "Easy",
       marks: 2,
       options: [
         { option_text: "Unique identifier for rows", is_correct: true },
@@ -130,7 +132,7 @@ async function runTests() {
       type: "sql",
       title: "Active Customers Query",
       description: "Select active customers from customers table.",
-      difficulty: "easy",
+      difficulty: "Easy",
       marks: 5,
       schema_sql: "CREATE TABLE customers(id INT, active INT);",
       sample_data_sql: "INSERT INTO customers VALUES(1, 1);",
@@ -162,7 +164,7 @@ async function runTests() {
       type: "sql",
       title: "Departments Summary",
       description: "Find total employee count per department.",
-      difficulty: "hard",
+      difficulty: "Hard",
       marks: 15,
       schema_sql: "CREATE TABLE dept(id INT, name TEXT);",
       sample_data_sql: "INSERT INTO dept VALUES(1, 'Eng');",
@@ -212,7 +214,7 @@ async function runTests() {
     contest_id: liveContest.id,
     user_id: "student-alice",
     passcode: "LIVE-END-TEST",
-    user_profile: { name: "Alice", email: "alice@test.edu" },
+    user_profile: { full_name: "Alice", email: "alice@test.edu" },
   });
   const startedP1 = await startContestExam({ contest_id: liveContest.id, user_id: "student-alice" });
   testAssert(startedP1.participant?.status === "in_exam", "Alice is in_exam");
@@ -221,7 +223,7 @@ async function runTests() {
     contest_id: liveContest.id,
     user_id: "student-bob",
     passcode: "LIVE-END-TEST",
-    user_profile: { name: "Bob", email: "bob@test.edu" },
+    user_profile: { full_name: "Bob", email: "bob@test.edu" },
   });
   const startedP2 = await startContestExam({ contest_id: liveContest.id, user_id: "student-bob" });
   testAssert(startedP2.participant?.status === "in_exam", "Bob is in_exam");
@@ -247,9 +249,30 @@ async function runTests() {
   // ─────────────────────────────────────────────────────────────
   console.log("\n── 4. Bulk Contest Deletion ──");
 
-  const c1 = await createContest({ title: "Bulk Delete Contest 1", passcode: "BD1", status: "DRAFT" });
-  const c2 = await createContest({ title: "Bulk Delete Contest 2", passcode: "BD2", status: "DRAFT" });
-  const c3 = await createContest({ title: "Bulk Delete Contest 3", passcode: "BD3", status: "DRAFT" });
+  const c1 = await createContest({
+    title: "Bulk Delete Contest 1",
+    passcode: "BD1",
+    status: "DRAFT",
+    start_at: new Date().toISOString(),
+    end_at: new Date(Date.now() + 3600000).toISOString(),
+    duration_minutes: 60,
+  });
+  const c2 = await createContest({
+    title: "Bulk Delete Contest 2",
+    passcode: "BD2",
+    status: "DRAFT",
+    start_at: new Date().toISOString(),
+    end_at: new Date(Date.now() + 3600000).toISOString(),
+    duration_minutes: 60,
+  });
+  const c3 = await createContest({
+    title: "Bulk Delete Contest 3",
+    passcode: "BD3",
+    status: "DRAFT",
+    start_at: new Date().toISOString(),
+    end_at: new Date(Date.now() + 3600000).toISOString(),
+    duration_minutes: 60,
+  });
 
   const targetIds = [c1.id, c2.id, c3.id, "non-existent-contest-id"];
 

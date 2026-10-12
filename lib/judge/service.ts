@@ -9,7 +9,7 @@ import { judgeObservability } from "./observability";
 import { createSupabaseServerClient, createSupabaseAdminClient } from "../supabase-server";
 
 // Fallback in-memory store for submissions
-const memorySubmissions = new Map<string, CodingSubmission[]>(); // contestId:userId -> submissions
+export const memorySubmissions = new Map<string, CodingSubmission[]>(); // contestId:userId -> submissions
 
 /**
  * Executes code against a set of test cases with strict isolated sandbox enforcement.
@@ -29,6 +29,8 @@ export async function runJudge(
 
 /**
  * Saves and records student coding submission into repository and database.
+ * Supabase/PostgreSQL is the durable source of truth.
+ * Silent in-memory fallback on database failure is strictly prohibited.
  */
 export async function saveCodingSubmission(params: {
   contest_id: string;
@@ -57,14 +59,9 @@ export async function saveCodingSubmission(params: {
     submitted_at: now,
   };
 
-  if (process.env.NODE_ENV === "production" && process.env.SMARTZERO_FORCE_MEMORY_FALLBACK !== "true") {
-    const supabase = createSupabaseAdminClient() || (await createSupabaseServerClient());
-    if (!supabase) {
-      throw new Error(
-        "Production database unavailable: Supabase client could not be initialized. In-memory fallback is disabled in production."
-      );
-    }
-    const { data, error } = await supabase.from("coding_submissions").insert({
+  const supabase = createSupabaseAdminClient() || (await createSupabaseServerClient());
+  if (supabase) {
+    const insertResult = await supabase.from("coding_submissions").insert({
       contest_id: sub.contest_id,
       user_id: sub.user_id,
       question_id: sub.question_id,
@@ -78,19 +75,12 @@ export async function saveCodingSubmission(params: {
       memory_kb: sub.memory_kb,
       compile_output: sub.compile_output,
     }).select().single();
-    if (error) {
-      // If error is code 23503 (foreign key constraint for SQL question referencing coding_questions):
-      if (sub.language === "sql" && (error as any).code === "23503") {
-        console.warn("[saveCodingSubmission] Note: SQL question foreign key in coding_submissions table; storing in authoritative memory submissions store.");
-        const key = `${params.contest_id}:${params.user_id}`;
-        const list = memorySubmissions.get(key) || [];
-        list.unshift(sub);
-        memorySubmissions.set(key, list);
-        return sub;
-      }
-      throw new Error(`Database error saving coding submission: ${error.message}`);
+
+    if (insertResult.error) {
+      throw new Error(`Database error saving coding submission: ${insertResult.error.message}`);
     }
-    const finalSub = (data as CodingSubmission) || sub;
+
+    const finalSub = (insertResult.data as CodingSubmission) || sub;
     const key = `${params.contest_id}:${params.user_id}`;
     const list = memorySubmissions.get(key) || [];
     list.unshift(finalSub);
@@ -98,34 +88,17 @@ export async function saveCodingSubmission(params: {
     return finalSub;
   }
 
-  const key = `${params.contest_id}:${params.user_id}`;
-  const list = memorySubmissions.get(key) || [];
-  list.unshift(sub); // latest first
-  memorySubmissions.set(key, list);
-
-  // Sync to Supabase if configured
-  const supabase = await createSupabaseServerClient();
-  if (supabase) {
-    try {
-      await supabase.from("coding_submissions").insert({
-        contest_id: sub.contest_id,
-        user_id: sub.user_id,
-        question_id: sub.question_id,
-        language: sub.language,
-        code: sub.code,
-        verdict: sub.verdict,
-        score: sub.score,
-        test_cases_passed: sub.test_cases_passed,
-        total_test_cases: sub.total_test_cases,
-        execution_time_ms: sub.execution_time_ms,
-        memory_kb: sub.memory_kb,
-        compile_output: sub.compile_output,
-      });
-    } catch {
-      // Ignore Supabase error in dev
-    }
+  if (process.env.NODE_ENV === "production" && process.env.SMARTZERO_FORCE_MEMORY_FALLBACK !== "true") {
+    throw new Error(
+      "Production database unavailable: Supabase client could not be initialized. In-memory fallback is disabled in production."
+    );
   }
 
+  // Development / isolated test runner fallback when database is unconfigured
+  const key = `${params.contest_id}:${params.user_id}`;
+  const list = memorySubmissions.get(key) || [];
+  list.unshift(sub);
+  memorySubmissions.set(key, list);
   return sub;
 }
 
@@ -209,6 +182,7 @@ export async function saveCodingDraft(params: {
 
 /**
  * Retrieves contestant submission history for a contest question.
+ * Supabase is the authoritative source of truth when configured.
  */
 export async function getStudentSubmissions(
   contest_id: string,
@@ -216,34 +190,35 @@ export async function getStudentSubmissions(
   question_id?: string
 ): Promise<CodingSubmission[]> {
   const key = `${contest_id}:${user_id}`;
-  let list = memorySubmissions.get(key);
 
-  if (!list || list.length === 0) {
-    const supabase = createSupabaseAdminClient() || (await createSupabaseServerClient());
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from("coding_submissions")
-          .select("*")
-          .eq("contest_id", contest_id)
-          .eq("user_id", user_id)
-          .order("submitted_at", { ascending: false });
+  const supabase = createSupabaseAdminClient() || (await createSupabaseServerClient());
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("coding_submissions")
+        .select("*")
+        .eq("contest_id", contest_id)
+        .eq("user_id", user_id)
+        .order("submitted_at", { ascending: false });
 
-        if (!error && data && data.length > 0) {
-          list = data as CodingSubmission[];
-          memorySubmissions.set(key, list);
+      if (!error && data) {
+        const dbSubs = data as CodingSubmission[];
+        memorySubmissions.set(key, dbSubs);
+        if (question_id) {
+          return dbSubs.filter((s) => s.question_id === question_id);
         }
-      } catch {
-        // Fall back
+        return dbSubs;
       }
+    } catch {
+      // Fall back
     }
   }
 
-  const result = list || [];
+  const localList = memorySubmissions.get(key) || [];
   if (question_id) {
-    return result.filter((s) => s.question_id === question_id);
+    return localList.filter((s) => s.question_id === question_id);
   }
-  return result;
+  return localList;
 }
 
 export { defaultJudgeWorker, normalizeOutput, judgeQueue, judgeObservability };

@@ -63,6 +63,17 @@ export default function RealtimeLeaderboard({
       .on(
         "postgres_changes",
         {
+          event: "*",
+          schema: "public",
+          table: "mcq_answers",
+        },
+        () => {
+          fetchLeaderboard();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
           event: "INSERT",
           schema: "public",
           table: "coding_submissions",
@@ -73,14 +84,34 @@ export default function RealtimeLeaderboard({
       )
       .subscribe();
 
+    const handleRefocus = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchLeaderboard();
+      }
+    };
+    const handleOnline = () => {
+      fetchLeaderboard();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", handleRefocus);
+      window.addEventListener("online", handleOnline);
+      document.addEventListener("visibilitychange", handleRefocus);
+    }
+
     return () => {
       supabase.removeChannel(channel);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", handleRefocus);
+        window.removeEventListener("online", handleOnline);
+        document.removeEventListener("visibilitychange", handleRefocus);
+      }
     };
   }, [slug, fetchLeaderboard]);
 
-  // Background polling every 20 seconds as resilient fallback
+  // Background polling every 10 seconds as resilient fallback
   useEffect(() => {
-    const interval = setInterval(fetchLeaderboard, 20000);
+    const interval = setInterval(fetchLeaderboard, 10000);
     return () => clearInterval(interval);
   }, [fetchLeaderboard]);
 

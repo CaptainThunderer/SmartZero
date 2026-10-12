@@ -3,6 +3,7 @@ import {
   getContestById,
   listParticipants,
   calculateStudentMcqScore,
+  getStudentAnswers,
   getContestQuestions,
 } from "./service";
 import { getStudentSubmissions } from "@/lib/judge/service";
@@ -50,12 +51,14 @@ export async function getContestLeaderboard(
   for (const p of participants) {
     // 1. MCQ Score
     const mcqRes = await calculateStudentMcqScore(contestId, p.user_id);
+    const answers = await getStudentAnswers(contestId, p.user_id);
 
     // 2. Coding Score
     const codingSubs = await getStudentSubmissions(contestId, p.user_id);
     const bestCodingScores = new Map<string, { score: number; verdict: string; time: string }>();
 
     for (const sub of codingSubs) {
+      if (sub.verdict === "DRAFT") continue;
       const existing = bestCodingScores.get(sub.question_id);
       if (!existing || sub.score > existing.score) {
         bestCodingScores.set(sub.question_id, {
@@ -69,6 +72,17 @@ export async function getContestLeaderboard(
     let codingTotal = 0;
     let codingSolved = 0;
     let latestSubmissionTime = new Date(p.joined_at).getTime();
+
+    // Consider MCQ answer timestamps
+    for (const ans of answers) {
+      const ansTimeStr = ans.updated_at || ans.submitted_at;
+      if (ansTimeStr) {
+        const t = new Date(ansTimeStr).getTime();
+        if (t > latestSubmissionTime) {
+          latestSubmissionTime = t;
+        }
+      }
+    }
 
     for (const item of bestCodingScores.values()) {
       codingTotal += item.score;
@@ -145,7 +159,10 @@ export async function getContestLeaderboard(
     if (b.entry.solved_count !== a.entry.solved_count) {
       return b.entry.solved_count - a.entry.solved_count;
     }
-    return a.latestTimestamp - b.latestTimestamp;
+    if (a.latestTimestamp !== b.latestTimestamp) {
+      return a.latestTimestamp - b.latestTimestamp;
+    }
+    return a.entry.user_id.localeCompare(b.entry.user_id);
   });
 
   // Assign ranks

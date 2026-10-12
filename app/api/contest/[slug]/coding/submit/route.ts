@@ -106,7 +106,7 @@ export async function POST(
     );
   }
 
-  // Authoritative question verification: confirm question exists
+  // Authoritative question verification: confirm question exists and matches question type
   const isSql = body.language === "sql";
   let rawCodingQ = null;
   let rawSqlQ = null;
@@ -114,25 +114,33 @@ export async function POST(
   if (isSql) {
     rawSqlQ = await getSqlQuestionRaw(body.question_id);
     if (!rawSqlQ) {
-      rawCodingQ = await getCodingQuestionRaw(body.question_id);
+      return NextResponse.json(
+        { error: "SQL submission requires a valid SQL question." },
+        { status: 400 }
+      );
     }
   } else {
     rawCodingQ = await getCodingQuestionRaw(body.question_id);
     if (!rawCodingQ) {
-      rawSqlQ = await getSqlQuestionRaw(body.question_id);
+      return NextResponse.json(
+        { error: `${body.language} submission requires a valid coding question.` },
+        { status: 400 }
+      );
     }
-  }
-
-  if (!rawCodingQ && !rawSqlQ) {
-    return NextResponse.json({ error: "Question not found." }, { status: 404 });
   }
 
   // Authoritative marks lookup from contest configuration
   const contestQuestions = await getContestQuestions(contest.id, "admin");
   const contestQLink = contestQuestions.find(
-    (cq) => cq.question_id === body.question_id && (cq.question_type === (rawSqlQ ? "sql" : "coding"))
+    (cq) => cq.question_id === body.question_id && cq.question_type === (isSql ? "sql" : "coding")
   );
-  const totalMarks = contestQLink ? contestQLink.marks : (rawSqlQ ? rawSqlQ.marks || 10 : 20);
+  if (!contestQLink) {
+    return NextResponse.json(
+      { error: "Question is not linked to this contest with the specified question type." },
+      { status: 400 }
+    );
+  }
+  const totalMarks = contestQLink.marks || (rawSqlQ ? rawSqlQ.marks || 10 : 20);
 
   const submissionId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;

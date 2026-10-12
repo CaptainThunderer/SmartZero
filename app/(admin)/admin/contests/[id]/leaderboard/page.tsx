@@ -153,7 +153,7 @@ export default function AdminLiveLeaderboardPage({
             {
               event: "*",
               schema: "public",
-              table: "submissions",
+              table: "coding_submissions",
               filter: `contest_id=eq.${id}`,
             },
             () => {
@@ -174,6 +174,22 @@ export default function AdminLiveLeaderboardPage({
       setConnectionState("POLLING");
     }
 
+    // Window event listeners for immediate tab refocus and network reconnect recovery
+    const handleRefocus = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        fetchLeaderboard();
+      }
+    };
+    const handleOnline = () => {
+      fetchLeaderboard();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", handleRefocus);
+      window.addEventListener("online", handleOnline);
+      document.addEventListener("visibilitychange", handleRefocus);
+    }
+
     // Always keep safety polling every 3 seconds to guarantee freshness
     pollingInterval = setInterval(() => {
       fetchLeaderboard();
@@ -185,6 +201,11 @@ export default function AdminLiveLeaderboardPage({
       }
       if (pollingInterval) {
         clearInterval(pollingInterval);
+      }
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", handleRefocus);
+        window.removeEventListener("online", handleOnline);
+        document.removeEventListener("visibilitychange", handleRefocus);
       }
     };
   }, [id, fetchLeaderboard]);
