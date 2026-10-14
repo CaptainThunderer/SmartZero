@@ -21,6 +21,8 @@ import { getAuthenticatedUser, validateStudentIdentity } from "@/lib/auth/studen
 import type { CodingLanguage } from "@/types/contest";
 import type { JudgeExecutionSummary, JudgeTestCase } from "@/lib/judge/types";
 
+export const maxDuration = 60;
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ slug: string }> }

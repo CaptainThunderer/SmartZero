@@ -268,6 +268,7 @@ export async function createContest(params: {
         }
       } else if (data) {
         memoryStore.contests.set(data.id, data);
+        invalidateContestCache(data.id, data.slug);
         return data;
       }
     } catch (err) {
@@ -279,15 +280,45 @@ export async function createContest(params: {
   }
 
   memoryStore.contests.set(contest.id, contest);
+  invalidateContestCache(contest.id, contest.slug);
   return contest;
 }
 
+interface CachedContestRecord {
+  contest: Contest;
+  cachedAt: number;
+}
+const contestCacheById = new Map<string, CachedContestRecord>();
+const contestCacheBySlug = new Map<string, CachedContestRecord>();
+const CONTEST_CACHE_TTL_MS = 5000;
+
+export function invalidateContestCache(id?: string, slug?: string) {
+  if (id) contestCacheById.delete(id);
+  if (slug) contestCacheBySlug.delete(slug.toLowerCase());
+  if (!id && !slug) {
+    contestCacheById.clear();
+    contestCacheBySlug.clear();
+  }
+}
+
 export async function getContestById(id: string): Promise<Contest | null> {
+  const cached = contestCacheById.get(id);
+  if (cached && Date.now() - cached.cachedAt < CONTEST_CACHE_TTL_MS) {
+    return {
+      ...cached.contest,
+      status: computeContestStatus(cached.contest),
+    };
+  }
+
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data, error } = await supabase.from("contests").select("*").eq("id", id).maybeSingle();
       if (!error && data) {
+        contestCacheById.set(id, { contest: data, cachedAt: Date.now() });
+        if (data.slug) {
+          contestCacheBySlug.set(data.slug.toLowerCase(), { contest: data, cachedAt: Date.now() });
+        }
         return {
           ...data,
           status: computeContestStatus(data),
@@ -300,6 +331,10 @@ export async function getContestById(id: string): Promise<Contest | null> {
 
   const memory = memoryStore.contests.get(id);
   if (memory) {
+    contestCacheById.set(id, { contest: memory, cachedAt: Date.now() });
+    if (memory.slug) {
+      contestCacheBySlug.set(memory.slug.toLowerCase(), { contest: memory, cachedAt: Date.now() });
+    }
     return {
       ...memory,
       status: computeContestStatus(memory),
@@ -309,11 +344,22 @@ export async function getContestById(id: string): Promise<Contest | null> {
 }
 
 export async function getContestBySlug(slug: string): Promise<Contest | null> {
+  const normalizedSlug = slug.toLowerCase();
+  const cached = contestCacheBySlug.get(normalizedSlug);
+  if (cached && Date.now() - cached.cachedAt < CONTEST_CACHE_TTL_MS) {
+    return {
+      ...cached.contest,
+      status: computeContestStatus(cached.contest),
+    };
+  }
+
   const supabase = await getSupabaseClient();
   if (supabase) {
     try {
       const { data, error } = await supabase.from("contests").select("*").eq("slug", slug).maybeSingle();
       if (!error && data) {
+        contestCacheBySlug.set(normalizedSlug, { contest: data, cachedAt: Date.now() });
+        contestCacheById.set(data.id, { contest: data, cachedAt: Date.now() });
         return {
           ...data,
           status: computeContestStatus(data),
@@ -325,7 +371,9 @@ export async function getContestBySlug(slug: string): Promise<Contest | null> {
   }
 
   for (const c of memoryStore.contests.values()) {
-    if (c.slug.toLowerCase() === slug.toLowerCase()) {
+    if (c.slug.toLowerCase() === normalizedSlug) {
+      contestCacheBySlug.set(normalizedSlug, { contest: c, cachedAt: Date.now() });
+      contestCacheById.set(c.id, { contest: c, cachedAt: Date.now() });
       return {
         ...c,
         status: computeContestStatus(c),
@@ -480,6 +528,10 @@ export async function updateContest(id: string, updates: Partial<Contest>): Prom
   }
 
   memoryStore.contests.set(id, patched);
+  invalidateContestCache(id, contest.slug);
+  if (patched.slug && patched.slug !== contest.slug) {
+    invalidateContestCache(id, patched.slug);
+  }
   return {
     ...patched,
     status: computeContestStatus(patched),
@@ -536,6 +588,7 @@ export async function deleteContest(
   memoryStore.contestQuestions.delete(id);
   memoryStore.participants.delete(id);
   memoryStore.adminAssignments?.delete(id);
+  invalidateContestCache(id, contest.slug);
 
   return { success: true };
 }
@@ -1338,7 +1391,7 @@ export async function getParticipant(
         .select("*")
         .eq("contest_id", contest_id)
         .eq("user_id", user_id)
-        .single();
+        .maybeSingle();
       if (data) {
         const p = data as ContestParticipant;
         const idx = list.findIndex((x) => x.user_id === user_id);
@@ -1419,7 +1472,7 @@ export async function recordMcqAnswer(params: {
     return { answer: null, error: "Contest has ended. Submissions are closed." };
   }
 
-  const participant = await getParticipant(params.contest_id, params.user_id, true);
+  const participant = await getParticipant(params.contest_id, params.user_id, false);
   if (
     participant?.status === "submitted" ||
     participant?.status === "auto_submitted" ||

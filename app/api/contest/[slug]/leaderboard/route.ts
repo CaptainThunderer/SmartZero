@@ -3,6 +3,8 @@ import { getContestBySlug } from "@/lib/contest/service";
 import { getContestLeaderboard } from "@/lib/contest/leaderboard";
 import { getAuthenticatedUser } from "@/lib/auth/studentSession";
 
+export const maxDuration = 60;
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ slug: string }> }

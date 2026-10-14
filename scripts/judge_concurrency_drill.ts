@@ -1,6 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type {
+  JudgeWorkerJobRequest,
+  JudgeWorkerJobResponse,
+  SafeTestCaseResult,
+} from "../lib/judge/types";
+import { formatSqlTable } from "../lib/judge/sqlEngine";
 
 // ─────────────────────────────────────────────────────────────
 // TYPES & SCHEMAS
@@ -17,12 +23,14 @@ export type FailureCategory =
   | "RATE_LIMITED"
   | "TIMEOUT"
   | "NETWORK_ERROR"
+  | "UNEXPECTED_REDIRECT"
   | "INVALID_JSON"
   | "INVALID_RESPONSE_SCHEMA"
   | "UNEXPECTED_JOB_STATUS"
   | "VERDICT_MISMATCH"
   | "TEST_CASE_FAILURE"
-  | "ABORTED_BY_CIRCUIT_BREAKER";
+  | "ABORTED_BY_CIRCUIT_BREAKER"
+  | "CANCELLED_NOT_DISPATCHED";
 
 export interface DrillArgs {
   targetUrl: string;
@@ -110,6 +118,7 @@ export interface DrillReport {
     requestsCompleted: number;
     requestsSuccessful: number;
     requestsFailed: number;
+    requestsAbortedInFlight: number;
     requestsSkipped: number;
     timeoutCount: number;
     totalWallClockMs: number;
@@ -117,6 +126,7 @@ export interface DrillReport {
     throughputRps: number;
     queueWaitMetric: "unavailable";
     queueWaitNote: string;
+    cancellationNotice: string;
   };
   latencies: LatencyStats;
   perLanguage: {
@@ -132,26 +142,29 @@ export interface DrillReport {
 // 1. SAFE TARGET VALIDATION
 // ─────────────────────────────────────────────────────────────
 
+const APPROVED_LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+const DEFAULT_JUDGE_PORT = process.env.PORT || "8080";
+
 const FORBIDDEN_HOST_PATTERNS = [
   /smartzero/i,
   /vercel\.app$/i,
   /supabase\.co$/i,
   /workers\.dev$/i,
   /trycloudflare\.com$/i,
+  /cloudflarepreview\.com$/i,
   /localtunnel\.me$/i,
   /ngrok\.io$/i,
   /ngrok-free\.app$/i,
+  /herokuapp\.com$/i,
+  /fly\.dev$/i,
+  /render\.com$/i,
+  /railway\.app$/i,
+  /amazonaws\.com$/i,
 ];
 
 export function isLoopbackHostname(hostname: string): boolean {
   const norm = hostname.toLowerCase().trim();
-  return (
-    norm === "127.0.0.1" ||
-    norm === "localhost" ||
-    norm === "::1" ||
-    norm === "[::1]" ||
-    norm === "0.0.0.0"
-  );
+  return APPROVED_LOOPBACK_HOSTS.has(norm);
 }
 
 export function validateTargetUrl(
@@ -159,11 +172,16 @@ export function validateTargetUrl(
   options: {
     confirmStaging?: boolean;
     allowRemoteHosts?: string[];
+    intendedPort?: string;
   } = {}
 ): { valid: boolean; error?: string; parsed?: URL; isLoopback: boolean } {
+  if (!rawUrl || typeof rawUrl !== "string" || !rawUrl.trim()) {
+    return { valid: false, error: "Target URL cannot be empty.", isLoopback: false };
+  }
+
   let parsed: URL;
   try {
-    parsed = new URL(rawUrl);
+    parsed = new URL(rawUrl.trim());
   } catch {
     return { valid: false, error: "Malformed URL format.", isLoopback: false };
   }
@@ -175,7 +193,12 @@ export function validateTargetUrl(
 
   // Reject URL fragments
   if (parsed.hash) {
-    return { valid: false, error: "URL fragments (#) are forbidden.", isLoopback: false };
+    return { valid: false, error: "URL fragments (#) are strictly forbidden.", isLoopback: false };
+  }
+
+  // Reject query parameters
+  if (parsed.search) {
+    return { valid: false, error: "Query parameters (?) are strictly forbidden in target URL.", isLoopback: false };
   }
 
   // Reject non-execution paths
@@ -183,17 +206,25 @@ export function validateTargetUrl(
   if (normPath !== "/api/judge/execute" && normPath !== "/execute") {
     return {
       valid: false,
-      error: `Invalid execution endpoint path '${parsed.pathname}'. Must be '/api/judge/execute' or '/execute'.`,
+      error: `Invalid execution endpoint path '${parsed.pathname}'. Path must be '/api/judge/execute' or '/execute'.`,
       isLoopback: false,
     };
   }
 
   const hostname = parsed.hostname.toLowerCase();
   const isLoopback = isLoopbackHostname(hostname);
+  const requiredPort = options.intendedPort || DEFAULT_JUDGE_PORT;
 
   if (isLoopback) {
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return { valid: false, error: "Loopback targets must use HTTP or HTTPS.", isLoopback: true };
+    if (parsed.protocol !== "http:") {
+      return { valid: false, error: "Local loopback judge target must strictly use HTTP (not HTTPS or other protocols).", isLoopback: true };
+    }
+    const targetPort = parsed.port;
+    if (!targetPort) {
+      return { valid: false, error: `Local loopback target must explicitly specify the intended judge port (expected :${requiredPort}).`, isLoopback: true };
+    }
+    if (targetPort !== requiredPort) {
+      return { valid: false, error: `Local loopback port '${targetPort}' does not match the intended judge port '${requiredPort}'.`, isLoopback: true };
     }
     return { valid: true, parsed, isLoopback: true };
   }
@@ -218,14 +249,14 @@ export function validateTargetUrl(
   if (!options.confirmStaging) {
     return {
       valid: false,
-      error: "Remote non-loopback staging targets require explicit '--confirm-staging' flag.",
+      error: "Remote non-loopback staging targets require explicit '--confirm-staging' confirmation flag.",
       isLoopback: false,
     };
   }
 
   // Remote staging requires explicit allowlist inclusion
-  const allowlist = (options.allowRemoteHosts || []).map((h) => h.toLowerCase().trim());
-  if (!allowlist.includes(hostname)) {
+  const allowlist = (options.allowRemoteHosts || []).map((h) => h.toLowerCase().trim()).filter(Boolean);
+  if (allowlist.length === 0 || !allowlist.includes(hostname)) {
     return {
       valid: false,
       error: `Remote host '${hostname}' is not present in the allowed remote hosts list (--allow-remote-host).`,
@@ -290,12 +321,30 @@ export function loadJudgeSecretSafe(): { secret?: string; error?: string; source
 }
 
 // ─────────────────────────────────────────────────────────────
-// 3. ARGUMENT PARSER
+// 3. STRICT ARGUMENT PARSER
 // ─────────────────────────────────────────────────────────────
+
+export function parseStrictInt(raw: string | undefined, flagName: string): { value?: number; error?: string } {
+  if (raw === undefined || raw === "") {
+    return { error: `Missing value for flag '${flagName}'.` };
+  }
+  if (raw.startsWith("-") && raw.length > 1 && !/^-?\d+$/.test(raw)) {
+    return { error: `Missing value for flag '${flagName}'. Encountered flag '${raw}' instead.` };
+  }
+  const trimmed = raw.trim();
+  if (!/^-?\d+$/.test(trimmed)) {
+    return { error: `Invalid integer value for '${flagName}': '${raw}'. Non-integer characters are not allowed.` };
+  }
+  const val = Number(trimmed);
+  if (!Number.isSafeInteger(val)) {
+    return { error: `Value for '${flagName}' exceeds safe integer limits: '${raw}'.` };
+  }
+  return { value: val };
+}
 
 export function parseDrillArgs(argv: string[]): { args?: DrillArgs; error?: string } {
   const defaults: DrillArgs = {
-    targetUrl: "http://127.0.0.1:8080/api/judge/execute",
+    targetUrl: `http://127.0.0.1:${DEFAULT_JUDGE_PORT}/api/judge/execute`,
     concurrency: 5,
     totalRequests: 20,
     language: "mixed",
@@ -335,25 +384,32 @@ export function parseDrillArgs(argv: string[]): { args?: DrillArgs; error?: stri
     }
 
     if (arg === "--concurrency" || arg === "-c") {
-      const val = parseInt(argv[++i], 10);
-      if (isNaN(val) || val <= 0 || val > 100) {
-        return { error: `Invalid concurrency '${argv[i]}'. Must be an integer between 1 and 100.` };
+      if (i + 1 >= argv.length) return { error: `Missing value for flag '${arg}'.` };
+      const res = parseStrictInt(argv[++i], arg);
+      if (res.error) return { error: res.error };
+      if (res.value! <= 0 || res.value! > 100) {
+        return { error: `Invalid concurrency '${res.value}'. Must be an integer between 1 and 100.` };
       }
-      args.concurrency = val;
+      args.concurrency = res.value!;
       continue;
     }
 
     if (arg === "--requests" || arg === "-n" || arg === "--total") {
-      const val = parseInt(argv[++i], 10);
-      if (isNaN(val) || val <= 0 || val > 1000) {
-        return { error: `Invalid total requests '${argv[i]}'. Must be an integer between 1 and 1000.` };
+      if (i + 1 >= argv.length) return { error: `Missing value for flag '${arg}'.` };
+      const res = parseStrictInt(argv[++i], arg);
+      if (res.error) return { error: res.error };
+      if (res.value! <= 0 || res.value! > 1000) {
+        return { error: `Invalid total requests '${res.value}'. Must be an integer between 1 and 1000.` };
       }
-      args.totalRequests = val;
+      args.totalRequests = res.value!;
       continue;
     }
 
     if (arg === "--language" || arg === "-l") {
-      const val = (argv[++i] || "").toLowerCase().trim();
+      if (i + 1 >= argv.length || (argv[i + 1].startsWith("-") && argv[i + 1].length > 1)) {
+        return { error: `Missing value for flag '${arg}'.` };
+      }
+      const val = argv[++i].toLowerCase().trim();
       if (val !== "python" && val !== "sql" && val !== "mixed") {
         return { error: `Invalid language '${val}'. Supported: 'python', 'sql', 'mixed'.` };
       }
@@ -362,7 +418,10 @@ export function parseDrillArgs(argv: string[]): { args?: DrillArgs; error?: stri
     }
 
     if (arg === "--scenario" || arg === "-s") {
-      const val = (argv[++i] || "").toLowerCase().trim();
+      if (i + 1 >= argv.length || (argv[i + 1].startsWith("-") && argv[i + 1].length > 1)) {
+        return { error: `Missing value for flag '${arg}'.` };
+      }
+      const val = argv[++i].toLowerCase().trim();
       if (val !== "baseline" && val !== "burst") {
         return { error: `Invalid scenario '${val}'. Supported: 'baseline', 'burst'.` };
       }
@@ -371,40 +430,49 @@ export function parseDrillArgs(argv: string[]): { args?: DrillArgs; error?: stri
     }
 
     if (arg === "--timeout-ms") {
-      const val = parseInt(argv[++i], 10);
-      if (isNaN(val) || val < 1000 || val > 30000) {
-        return { error: `Invalid timeout-ms '${argv[i]}'. Must be between 1000 and 30000 ms.` };
+      if (i + 1 >= argv.length) return { error: `Missing value for flag '${arg}'.` };
+      const res = parseStrictInt(argv[++i], arg);
+      if (res.error) return { error: res.error };
+      if (res.value! < 1000 || res.value! > 60000) {
+        return { error: `Invalid timeout-ms '${res.value}'. Must be between 1000 and 60000 ms.` };
       }
-      args.timeoutMs = val;
+      args.timeoutMs = res.value!;
       continue;
     }
 
     if (arg === "--seed") {
-      const val = parseInt(argv[++i], 10);
-      if (isNaN(val)) {
-        return { error: `Invalid seed '${argv[i]}'. Must be an integer.` };
-      }
-      args.seed = val;
+      if (i + 1 >= argv.length) return { error: `Missing value for flag '${arg}'.` };
+      const res = parseStrictInt(argv[++i], arg);
+      if (res.error) return { error: res.error };
+      args.seed = res.value!;
       continue;
     }
 
     if (arg === "--url") {
-      const val = argv[++i];
-      if (!val) return { error: "Missing value for --url." };
+      if (i + 1 >= argv.length || (argv[i + 1].startsWith("-") && argv[i + 1].length > 1)) {
+        return { error: "Missing value for flag '--url'." };
+      }
+      const val = argv[++i].trim();
+      if (!val) return { error: "Target URL cannot be empty." };
       args.targetUrl = val;
       continue;
     }
 
     if (arg === "--allow-remote-host") {
-      const val = argv[++i];
-      if (!val) return { error: "Missing value for --allow-remote-host." };
+      if (i + 1 >= argv.length || (argv[i + 1].startsWith("-") && argv[i + 1].length > 1)) {
+        return { error: "Missing value for flag '--allow-remote-host'." };
+      }
+      const val = argv[++i].trim();
       args.allowRemoteHosts = val.split(",").map((s) => s.trim()).filter(Boolean);
       continue;
     }
 
     if (arg === "--output" || arg === "-o") {
-      const val = argv[++i];
-      if (!val) return { error: "Missing value for --output." };
+      if (i + 1 >= argv.length || (argv[i + 1].startsWith("-") && argv[i + 1].length > 1)) {
+        return { error: "Missing value for flag '--output'." };
+      }
+      const val = argv[++i].trim();
+      if (!val) return { error: "Output path cannot be empty." };
       args.outputPath = val;
       continue;
     }
@@ -412,22 +480,41 @@ export function parseDrillArgs(argv: string[]): { args?: DrillArgs; error?: stri
     return { error: `Unknown argument '${arg}'. Use --help for usage.` };
   }
 
+  // Validate conflicting options
+  if (args.dryRun && args.scenario === "baseline") {
+    return {
+      error: "Conflicting options: '--dry-run' (0 execution requests) cannot be combined with '--scenario baseline' (which executes an authenticated canary).",
+    };
+  }
+
+  if (args.scenario === "baseline" && args.totalRequests > 1) {
+    return {
+      error: "Conflicting options: '--scenario baseline' runs exactly 1 canary request. Total requests cannot exceed 1.",
+    };
+  }
+
+  // Pre-validate report output overwrite
+  if (args.outputPath) {
+    const resolved = path.resolve(process.cwd(), args.outputPath);
+    if (fs.existsSync(resolved) && !args.forceOverwrite) {
+      return {
+        error: `Output file '${args.outputPath}' already exists. Use '--force' to overwrite.`,
+      };
+    }
+  }
+
   return { args };
 }
 
 // ─────────────────────────────────────────────────────────────
-// 4. DETERMINISTIC PAYLOAD BUILDERS
+// 4. DETERMINISTIC PAYLOAD BUILDERS (MATCHING REAL JUDGE API)
 // ─────────────────────────────────────────────────────────────
 
-export function createPrng(seed: number): () => number {
-  let s = (seed >>> 0) || 1;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-}
-
-export function generatePythonPayload(jobId: string, value: number, timeLimitMs: number = 2000) {
+export function generatePythonPayload(
+  jobId: string,
+  value: number,
+  timeLimitMs: number = 2000
+): JudgeWorkerJobRequest {
   return {
     job_id: jobId,
     submission_id: `sub-${jobId}`,
@@ -448,10 +535,23 @@ export function generatePythonPayload(jobId: string, value: number, timeLimitMs:
     ],
     time_limit_ms: timeLimitMs,
     memory_limit_mb: 256,
+    total_marks: 20,
   };
 }
 
-export function generateSqlPayload(jobId: string, threshold: number = 20, timeLimitMs: number = 2000) {
+export function generateSqlPayload(
+  jobId: string,
+  threshold: number = 20,
+  timeLimitMs: number = 2000
+): JudgeWorkerJobRequest {
+  const expectedTable = formatSqlTable(
+    ["id", "val"],
+    [
+      [2, 20],
+      [3, 30],
+    ]
+  );
+
   return {
     job_id: jobId,
     submission_id: `sub-${jobId}`,
@@ -462,10 +562,12 @@ export function generateSqlPayload(jobId: string, threshold: number = 20, timeLi
     sample_data_sql: "INSERT INTO drill_items VALUES (1, 10), (2, 20), (3, 30);",
     source_code: `SELECT id, val FROM drill_items WHERE val >= ${threshold} ORDER BY id;`,
     execution_mode: "run",
+    order_sensitive: true,
     test_cases: [
       {
         id: "tc-sql-1",
-        expected_output: "id | val\n2 | 20\n3 | 30",
+        input: "",
+        expected_output: expectedTable,
         weight: 1,
         is_sample: true,
         is_hidden: false,
@@ -473,6 +575,7 @@ export function generateSqlPayload(jobId: string, threshold: number = 20, timeLi
     ],
     time_limit_ms: timeLimitMs,
     memory_limit_mb: 256,
+    total_marks: 20,
   };
 }
 
@@ -483,8 +586,15 @@ export function generateSqlPayload(jobId: string, threshold: number = 20, timeLi
 export function classifyExecutionResult(
   status: number,
   bodyText: string,
-  expectedOutput: string
+  options: {
+    expectedJobId?: string;
+    expectedOutput?: string;
+    language?: "python" | "sql";
+  } = {}
 ): { category: FailureCategory; verdict?: string; passed?: boolean; errorMessage?: string } {
+  if (status === 301 || status === 302 || status === 303 || status === 307 || status === 308) {
+    return { category: "UNEXPECTED_REDIRECT", errorMessage: `HTTP ${status} redirect received. Redirects are strictly rejected.` };
+  }
   if (status === 401 || status === 403) {
     return { category: "AUTH_ERROR", errorMessage: `HTTP ${status} Unauthorized.` };
   }
@@ -506,11 +616,37 @@ export function classifyExecutionResult(
     return { category: "INVALID_RESPONSE_SCHEMA", errorMessage: "Response body is not a JSON object." };
   }
 
-  if (data.status !== "COMPLETED" && data.status !== "FAILED") {
+  if (options.expectedJobId && data.job_id !== options.expectedJobId) {
+    return {
+      category: "INVALID_RESPONSE_SCHEMA",
+      errorMessage: `Job ID mismatch: expected '${options.expectedJobId}', received '${data.job_id}'.`,
+    };
+  }
+
+  if (!data.status || typeof data.status !== "string") {
+    return { category: "INVALID_RESPONSE_SCHEMA", errorMessage: "Missing mandatory 'status' field." };
+  }
+
+  if (!data.verdict || typeof data.verdict !== "string") {
+    return { category: "INVALID_RESPONSE_SCHEMA", errorMessage: "Missing mandatory 'verdict' field." };
+  }
+
+  if (data.status !== "COMPLETED") {
     return {
       category: "UNEXPECTED_JOB_STATUS",
       verdict: data.verdict,
-      errorMessage: `Unexpected job status: '${data.status}'.`,
+      errorMessage: `Job did not reach completed terminal status: status is '${data.status}'.`,
+    };
+  }
+
+  // Missing test results must not count as success
+  if (!Array.isArray(data.test_results) || data.test_results.length === 0) {
+    return {
+      category: "INVALID_RESPONSE_SCHEMA",
+      verdict: data.verdict,
+      passed: false,
+      errorMessage:
+        "Missing mandatory 'test_results' array or test results array is empty. Missing test results must not count as success.",
     };
   }
 
@@ -523,17 +659,60 @@ export function classifyExecutionResult(
     };
   }
 
-  const sampleResult = (data.test_results || []).find((tr: any) => tr.is_sample);
-  if (sampleResult && sampleResult.actual_output !== undefined) {
+  // Verify all test case items in test_results
+  for (const tr of data.test_results) {
+    if (!tr.passed || tr.verdict !== "Accepted") {
+      return {
+        category: "TEST_CASE_FAILURE",
+        verdict: tr.verdict || "Wrong Answer",
+        passed: false,
+        errorMessage: `Test case index ${tr.index || 1} failed: verdict '${tr.verdict}', passed=${tr.passed}.`,
+      };
+    }
+  }
+
+  // Verify sample output against expected format
+  if (options.expectedOutput !== undefined) {
+    const sampleResult = data.test_results.find((tr: any) => tr.is_sample) || data.test_results[0];
+    if (!sampleResult || sampleResult.actual_output === undefined) {
+      return {
+        category: "TEST_CASE_FAILURE",
+        verdict: data.verdict,
+        passed: false,
+        errorMessage: "Sample test case result missing actual_output.",
+      };
+    }
+
     const normActual = String(sampleResult.actual_output).trim().replace(/\r\n/g, "\n");
-    const normExpected = expectedOutput.trim().replace(/\r\n/g, "\n");
+    const normExpected = String(options.expectedOutput).trim().replace(/\r\n/g, "\n");
+
     if (normActual !== normExpected) {
       return {
         category: "TEST_CASE_FAILURE",
         verdict: "Wrong Answer",
         passed: false,
-        errorMessage: `Output mismatch. Expected: '${normExpected}', Actual: '${normActual}'`,
+        errorMessage: `Output mismatch. Expected:\n'${normExpected}'\nActual:\n'${normActual}'`,
       };
+    }
+
+    // Additional structured validation for SQL
+    if (options.language === "sql" && sampleResult.columns && sampleResult.rows) {
+      if (!Array.isArray(sampleResult.columns) || sampleResult.columns.length !== 2) {
+        return {
+          category: "TEST_CASE_FAILURE",
+          verdict: "Wrong Answer",
+          passed: false,
+          errorMessage: `SQL column schema mismatch: expected 2 columns ('id', 'val'), received ${JSON.stringify(sampleResult.columns)}.`,
+        };
+      }
+      if (!Array.isArray(sampleResult.rows) || sampleResult.rows.length !== 2) {
+        return {
+          category: "TEST_CASE_FAILURE",
+          verdict: "Wrong Answer",
+          passed: false,
+          errorMessage: `SQL row count mismatch: expected 2 rows, received ${sampleResult.rows.length}.`,
+        };
+      }
     }
   }
 
@@ -548,9 +727,6 @@ export function classifyExecutionResult(
 // 6. PERCENTILE CALCULATOR
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Calculates standard percentiles using nearest-rank method over sorted latencies.
- */
 export function calculatePercentiles(values: number[]): LatencyStats {
   if (values.length === 0) {
     return { min: 0, mean: 0, p50: 0, p95: 0, p99: 0, max: 0 };
@@ -586,6 +762,30 @@ export class CircuitBreaker {
   private totalFailures = 0;
   private isTripped = false;
   private tripReason?: string;
+  private abortController = new AbortController();
+
+  get signal(): AbortSignal {
+    return this.abortController.signal;
+  }
+
+  tripped(): boolean {
+    return this.isTripped;
+  }
+
+  reason(): string | undefined {
+    return this.tripReason;
+  }
+
+  trip(reason: string): void {
+    if (this.isTripped) return;
+    this.isTripped = true;
+    this.tripReason = reason;
+    try {
+      this.abortController.abort(new Error(reason));
+    } catch {
+      // ignore
+    }
+  }
 
   recordOutcome(category: FailureCategory): void {
     if (this.isTripped) return;
@@ -599,64 +799,86 @@ export class CircuitBreaker {
 
     if (category === "TIMEOUT") {
       this.consecutiveTimeouts++;
-      this.totalFailures++;
       if (this.consecutiveTimeouts >= 3) {
-        this.trip("3 consecutive request timeouts observed.");
+        this.trip("3 consecutive execution timeouts encountered.");
         return;
       }
-    } else if (category === "SUCCESS") {
-      this.consecutiveTimeouts = 0;
     } else {
       this.consecutiveTimeouts = 0;
+    }
+
+    if (
+      category !== "SUCCESS" &&
+      category !== "ABORTED_BY_CIRCUIT_BREAKER" &&
+      category !== "CANCELLED_NOT_DISPATCHED"
+    ) {
       this.totalFailures++;
     }
 
     if (this.totalCompleted >= 5) {
       const failureRate = this.totalFailures / this.totalCompleted;
       if (failureRate > 0.2) {
-        this.trip(`Cumulative failure rate exceeded 20% (${(failureRate * 100).toFixed(1)}%).`);
+        this.trip(
+          `Failure rate exceeded 20% threshold (${Math.round(failureRate * 100)}% failures after ${this.totalCompleted} requests).`
+        );
+        return;
       }
     }
-  }
-
-  trip(reason: string): void {
-    this.isTripped = true;
-    this.tripReason = reason;
-  }
-
-  tripped(): boolean {
-    return this.isTripped;
-  }
-
-  reason(): string | undefined {
-    return this.tripReason;
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-// 8. DRILL RUNNER ENGINE
+// 8. PRNG FOR DETERMINISTIC MIXED DISTRIBUTION
+// ─────────────────────────────────────────────────────────────
+
+export function createPrng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// 9. DRILL RUNNER ENGINE
 // ─────────────────────────────────────────────────────────────
 
 export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillReport> {
+  console.log("==================================================");
+  console.log("▶ SMARTZERO 2.0 JUDGE CONCURRENCY DRILL");
+  console.log("==================================================");
+
+  // Target Validation
   const targetCheck = validateTargetUrl(args.targetUrl, {
     confirmStaging: args.confirmStaging,
     allowRemoteHosts: args.allowRemoteHosts,
   });
 
   if (!targetCheck.valid || !targetCheck.parsed) {
-    throw new Error(`Target Validation Failure: ${targetCheck.error}`);
+    throw new Error(`Target Validation Failed: ${targetCheck.error}`);
   }
 
   const parsedUrl = targetCheck.parsed;
+  const executeUrl = parsedUrl.toString();
   const baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
   const healthUrl = `${baseUrl}/health`;
   const readyUrl = `${baseUrl}/ready`;
-  const executeUrl = targetCheck.parsed.toString();
 
-  // Load Secret
+  console.log(`[Config] Target Host:     ${parsedUrl.host} (${targetCheck.isLoopback ? "Loopback" : "Remote Staging"})`);
+  console.log(`[Config] Concurrency:     ${args.concurrency}`);
+  console.log(`[Config] Total Requests:  ${args.totalRequests}`);
+  console.log(`[Config] Language:        ${args.language}`);
+  console.log(`[Config] Scenario:        ${args.scenario}`);
+  console.log(`[Config] Timeout:         ${args.timeoutMs} ms`);
+  console.log(`[Config] PRNG Seed:       ${args.seed}`);
+  console.log(`[Config] Dry Run:         ${args.dryRun}`);
+
+  // Safe Secret Extraction
   const secretResult = loadJudgeSecretSafe();
   if (secretResult.error || !secretResult.secret) {
-    throw new Error(`Secret Validation Failure: ${secretResult.error}`);
+    throw new Error(`Secret Validation Failed: ${secretResult.error || "Secret missing"}`);
   }
   const secret = secretResult.secret;
 
@@ -714,7 +936,7 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
   }
   console.log(`  ✅ Readiness probe OK (worker concurrency: ${reportedConcurrency ?? "N/A"})`);
 
-  // DRY-RUN EXIT
+  // DRY-RUN EXIT: Guaranteed zero POST execution requests
   if (args.dryRun) {
     console.log("\n[DRY RUN] Mode enabled. Read-only checks passed. Zero execution POST requests sent.");
     const dryRunReport: DrillReport = {
@@ -740,13 +962,17 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
         requestsCompleted: 0,
         requestsSuccessful: 0,
         requestsFailed: 0,
+        requestsAbortedInFlight: 0,
         requestsSkipped: args.totalRequests,
         timeoutCount: 0,
         totalWallClockMs: 0,
         dispatchWindowMs: 0,
         throughputRps: 0,
         queueWaitMetric: "unavailable",
-        queueWaitNote: "Direct HTTP worker endpoint executes via priority queue but does not expose queue wait timestamps in response.",
+        queueWaitNote:
+          "Direct HTTP worker endpoint executes via priority queue but does not expose queue wait timestamps in response.",
+        cancellationNotice:
+          "Aborting in-flight HTTP requests terminates client network sockets; it does not cancel code already executing in the judge worker.",
       },
       latencies: { min: 0, mean: 0, p50: 0, p95: 0, p99: 0, max: 0 },
       perLanguage: {},
@@ -783,6 +1009,7 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
         "Content-Type": "application/json",
         Authorization: `Bearer ${secret}`,
         "x-smartzero-worker-secret": secret,
+        Connection: "close",
       },
       body: JSON.stringify(canaryPayload),
       signal: AbortSignal.timeout(args.timeoutMs),
@@ -791,7 +1018,11 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
 
     canaryLatencyMs = Math.round(performance.now() - canaryStart);
     const bodyText = await canaryRes.text();
-    const classified = classifyExecutionResult(canaryRes.status, bodyText, "81");
+    const classified = classifyExecutionResult(canaryRes.status, bodyText, {
+      expectedJobId: "canary-01",
+      expectedOutput: "81",
+      language: "python",
+    });
 
     if (classified.category !== "SUCCESS") {
       throw new Error(`Canary job failed (${classified.category}): ${classified.errorMessage}`);
@@ -824,6 +1055,7 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
         requestsCompleted: 1,
         requestsSuccessful: 1,
         requestsFailed: 0,
+        requestsAbortedInFlight: 0,
         requestsSkipped: 0,
         timeoutCount: 0,
         totalWallClockMs: canaryLatencyMs,
@@ -831,6 +1063,8 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
         throughputRps: Math.round(1000 / Math.max(canaryLatencyMs, 1)),
         queueWaitMetric: "unavailable",
         queueWaitNote: "Direct HTTP worker endpoint does not expose queue wait timestamps in response.",
+        cancellationNotice:
+          "Aborting in-flight HTTP requests terminates client network sockets; it does not cancel code already executing in the judge worker.",
       },
       latencies: calculatePercentiles([canaryLatencyMs]),
       perLanguage: {
@@ -860,34 +1094,31 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
   const records: RequestRecord[] = [];
   const overallStart = performance.now();
 
-  const numWaves = Math.ceil(args.totalRequests / args.concurrency);
-  let preparedCount = 0;
+  const effectiveConcurrency = Math.min(args.concurrency, args.totalRequests);
+  const numWaves = Math.ceil(args.totalRequests / effectiveConcurrency);
   let dispatchedCount = 0;
-  let skippedCount = 0;
   let minDispatchTime = Infinity;
   let maxDispatchTime = 0;
 
   for (let waveIdx = 0; waveIdx < numWaves; waveIdx++) {
+    // If breaker tripped, halt scheduling subsequent waves immediately
     if (breaker.tripped()) {
-      const remaining = args.totalRequests - dispatchedCount;
-      skippedCount += remaining;
-      console.warn(`[CIRCUIT BREAKER] Tripped: ${breaker.reason()}. Skipping remaining ${remaining} requests.`);
+      console.warn(`[CIRCUIT BREAKER] Tripped: ${breaker.reason()}. Halting further wave scheduling.`);
       break;
     }
 
-    const waveSize = Math.min(args.concurrency, args.totalRequests - dispatchedCount);
+    const waveSize = Math.min(effectiveConcurrency, args.totalRequests - dispatchedCount);
     const waveItems: {
       slot: number;
       jobId: string;
       language: "python" | "sql";
-      payload: any;
+      payload: JudgeWorkerJobRequest;
       expectedOutput: string;
     }[] = [];
 
     // Prepare Wave Payloads
     for (let slot = 0; slot < waveSize; slot++) {
       const reqIdx = dispatchedCount + slot + 1;
-      preparedCount++;
       const jobId = `drill-${Date.now()}-${waveIdx}-${slot}`;
 
       let lang: "python" | "sql";
@@ -901,7 +1132,7 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
           slot,
           jobId,
           language: "python",
-          payload: generatePythonPayload(jobId, val, 2000),
+          payload: generatePythonPayload(jobId, val, args.timeoutMs),
           expectedOutput: `${val * val}`,
         });
       } else {
@@ -909,8 +1140,14 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
           slot,
           jobId,
           language: "sql",
-          payload: generateSqlPayload(jobId, 20, 2000),
-          expectedOutput: "id | val\n2 | 20\n3 | 30",
+          payload: generateSqlPayload(jobId, 20, args.timeoutMs),
+          expectedOutput: formatSqlTable(
+            ["id", "val"],
+            [
+              [2, 20],
+              [3, 30],
+            ]
+          ),
         });
       }
     }
@@ -923,11 +1160,31 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
     console.log(`[Wave ${waveIdx + 1}/${numWaves}] Dispatching ${waveSize} synchronized requests...`);
 
     const wavePromises = waveItems.map(async (item) => {
+      if (breaker.tripped()) {
+        return;
+      }
       dispatchedCount++;
       const itemDispatchTime = performance.now();
 
-      const controller = new AbortController();
-      const timeoutHandle = setTimeout(() => controller.abort(), args.timeoutMs);
+      const itemController = new AbortController();
+      let timedOut = false;
+      const timeoutHandle = setTimeout(() => {
+        timedOut = true;
+        itemController.abort(new Error("Timeout"));
+      }, args.timeoutMs);
+
+      // Link to circuit breaker abort signal
+      const onBreakerAbort = () => {
+        if (!itemController.signal.aborted) {
+          itemController.abort(new Error("BreakerAbort"));
+        }
+      };
+
+      if (breaker.signal.aborted) {
+        onBreakerAbort();
+      } else {
+        breaker.signal.addEventListener("abort", onBreakerAbort, { once: true });
+      }
 
       try {
         const res = await fetch(executeUrl, {
@@ -936,18 +1193,26 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
             "Content-Type": "application/json",
             Authorization: `Bearer ${secret}`,
             "x-smartzero-worker-secret": secret,
+            Connection: "close",
           },
           body: JSON.stringify(item.payload),
-          signal: controller.signal,
+          signal: itemController.signal,
           redirect: "error",
         });
 
         clearTimeout(timeoutHandle);
+        breaker.signal.removeEventListener("abort", onBreakerAbort);
+
         const itemCompletedTime = performance.now();
         const durationMs = Math.round(itemCompletedTime - itemDispatchTime);
 
         const bodyText = await res.text();
-        const classified = classifyExecutionResult(res.status, bodyText, item.expectedOutput);
+        const classified = classifyExecutionResult(res.status, bodyText, {
+          expectedJobId: item.jobId,
+          expectedOutput: item.expectedOutput,
+          language: item.language,
+        });
+
         breaker.recordOutcome(classified.category);
 
         const record: RequestRecord = {
@@ -968,11 +1233,28 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
         return record;
       } catch (err: any) {
         clearTimeout(timeoutHandle);
+        breaker.signal.removeEventListener("abort", onBreakerAbort);
+
         const itemCompletedTime = performance.now();
         const durationMs = Math.round(itemCompletedTime - itemDispatchTime);
 
-        const isTimeout = err?.name === "AbortError" || controller.signal.aborted;
-        const category: FailureCategory = isTimeout ? "TIMEOUT" : "NETWORK_ERROR";
+        let category: FailureCategory;
+        let errMsg: string;
+
+        if (breaker.tripped() && !timedOut) {
+          category = "ABORTED_BY_CIRCUIT_BREAKER";
+          errMsg = `In-flight request aborted by circuit breaker (${breaker.reason()}). Note: worker process may still be executing on judge server.`;
+        } else if (timedOut || err?.name === "TimeoutError") {
+          category = "TIMEOUT";
+          errMsg = `Request timed out after ${args.timeoutMs}ms.`;
+        } else if (err?.message?.includes("redirect")) {
+          category = "UNEXPECTED_REDIRECT";
+          errMsg = "Request was unexpectedly redirected. Redirects are rejected.";
+        } else {
+          category = "NETWORK_ERROR";
+          errMsg = err?.message || "Network socket error.";
+        }
+
         breaker.recordOutcome(category);
 
         const record: RequestRecord = {
@@ -985,7 +1267,7 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
           durationMs,
           category,
           passed: false,
-          errorMessage: isTimeout ? `Request timed out after ${args.timeoutMs}ms.` : err?.message,
+          errorMessage: errMsg,
         };
         records.push(record);
         return record;
@@ -995,23 +1277,46 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
     await Promise.all(wavePromises);
   }
 
+  // Account for any requests that were never dispatched because breaker tripped
+  const skippedCount = args.totalRequests - dispatchedCount;
+  for (let i = 0; i < skippedCount; i++) {
+    const skippedSlot = dispatchedCount + i;
+    records.push({
+      jobId: `skipped-${skippedSlot}`,
+      language: args.language === "mixed" ? (prng() < 0.5 ? "python" : "sql") : args.language,
+      waveIndex: Math.floor(skippedSlot / effectiveConcurrency),
+      slotIndex: skippedSlot % effectiveConcurrency,
+      dispatchedAtMonotonic: 0,
+      completedAtMonotonic: 0,
+      durationMs: 0,
+      category: "CANCELLED_NOT_DISPATCHED",
+      passed: false,
+      errorMessage: `Request skipped: Circuit breaker tripped earlier (${breaker.reason() || "Tripped"}).`,
+    });
+  }
+
   const overallDurationMs = Math.round(performance.now() - overallStart);
   const dispatchWindowMs = Math.round(maxDispatchTime - minDispatchTime);
 
   // ─────────────────────────────────────────────────────────────
   // 5. METRICS AGGREGATION
   // ─────────────────────────────────────────────────────────────
-  const completedCount = records.length;
-  const successCount = records.filter((r) => r.category === "SUCCESS").length;
+  const executedRecords = records.filter(
+    (r) => r.category !== "CANCELLED_NOT_DISPATCHED" && r.category !== "ABORTED_BY_CIRCUIT_BREAKER"
+  );
+  const abortedInFlightCount = records.filter((r) => r.category === "ABORTED_BY_CIRCUIT_BREAKER").length;
+  const skippedCountFinal = records.filter((r) => r.category === "CANCELLED_NOT_DISPATCHED").length;
+  const completedCount = executedRecords.length;
+  const successCount = executedRecords.filter((r) => r.category === "SUCCESS").length;
   const failureCount = completedCount - successCount;
   const timeoutCount = records.filter((r) => r.category === "TIMEOUT").length;
 
-  const latencies = records.map((r) => r.durationMs);
+  const latencies = executedRecords.map((r) => r.durationMs);
   const overallLatencyStats = calculatePercentiles(latencies);
 
   // Per-language breakdowns
-  const pyRecords = records.filter((r) => r.language === "python");
-  const sqlRecords = records.filter((r) => r.language === "sql");
+  const pyRecords = executedRecords.filter((r) => r.language === "python");
+  const sqlRecords = executedRecords.filter((r) => r.language === "sql");
 
   const pyMetrics: LanguageMetrics | undefined =
     pyRecords.length > 0
@@ -1050,7 +1355,7 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
   let exitCode = 0;
   if (breaker.tripped()) {
     exitCode = 3;
-  } else if (failureCount > 0) {
+  } else if (failureCount > 0 || abortedInFlightCount > 0) {
     exitCode = 1;
   }
 
@@ -1064,26 +1369,38 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
       isLoopback: targetCheck.isLoopback,
     },
     config: { ...args },
-    workerInfo: { workerName, reportedConcurrency, runtimes: reportedRuntimes },
-    preflight: { healthOk, readinessOk, canaryLatencyMs, canaryVerdict },
+    workerInfo: {
+      workerName,
+      reportedConcurrency,
+      runtimes: reportedRuntimes,
+    },
+    preflight: {
+      healthOk,
+      readinessOk,
+      canaryLatencyMs,
+      canaryVerdict,
+    },
     circuitBreaker: {
       triggered: breaker.tripped(),
       reason: breaker.reason(),
     },
     executionSummary: {
-      requestsPrepared: preparedCount,
+      requestsPrepared: args.totalRequests,
       requestsDispatched: dispatchedCount,
       requestsCompleted: completedCount,
       requestsSuccessful: successCount,
       requestsFailed: failureCount,
-      requestsSkipped: skippedCount,
+      requestsAbortedInFlight: abortedInFlightCount,
+      requestsSkipped: skippedCountFinal,
       timeoutCount,
       totalWallClockMs: overallDurationMs,
       dispatchWindowMs,
       throughputRps,
       queueWaitMetric: "unavailable",
       queueWaitNote:
-        "Direct HTTP execution endpoint executes via priority queue but does not expose server queue wait timestamps in response.",
+        "Direct HTTP worker endpoint executes via priority queue but does not expose queue wait timestamps in response.",
+      cancellationNotice:
+        "Aborting in-flight HTTP requests terminates client network sockets; it does not cancel code already executing in the judge worker.",
     },
     latencies: overallLatencyStats,
     perLanguage: {
@@ -1099,19 +1416,18 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
   // 6. CONSOLE SUMMARY DISPLAY
   // ─────────────────────────────────────────────────────────────
   console.log(`\n==================================================`);
-  console.log(`📊 CONCURRENCY DRILL SUMMARY REPORT`);
+  console.log(`▶ DRILL EXECUTION REPORT SUMMARY`);
   console.log(`==================================================`);
-  console.log(`Target:               ${report.target.url} (${report.target.isLoopback ? "Loopback" : "Remote Staging"})`);
-  console.log(`Concurrency:          ${report.config.concurrency} workers`);
-  console.log(`Total Requests:       ${report.config.totalRequests}`);
-  console.log(`Dispatched / Done:    ${report.executionSummary.requestsDispatched} / ${report.executionSummary.requestsCompleted}`);
+  console.log(`Target:               ${report.target.protocol}//${report.target.hostname}:${report.target.port}`);
+  console.log(`Total Configured:     ${report.executionSummary.requestsPrepared}`);
+  console.log(`Dispatched:           ${report.executionSummary.requestsDispatched}`);
+  console.log(`Completed:            ${report.executionSummary.requestsCompleted}`);
   console.log(`Successful:           ${report.executionSummary.requestsSuccessful}`);
-  console.log(`Failed / Timeouts:    ${report.executionSummary.requestsFailed} / ${report.executionSummary.timeoutCount}`);
-  if (report.circuitBreaker.triggered) {
-    console.log(`Circuit Breaker:      TRIPPED (${report.circuitBreaker.reason})`);
-  } else {
-    console.log(`Circuit Breaker:      CLEAN`);
-  }
+  console.log(`Failed:               ${report.executionSummary.requestsFailed}`);
+  console.log(`Aborted in-Flight:    ${report.executionSummary.requestsAbortedInFlight}`);
+  console.log(`Skipped (Unstarted):  ${report.executionSummary.requestsSkipped}`);
+  console.log(`Timeouts:             ${report.executionSummary.timeoutCount}`);
+  console.log(`Circuit Breaker:      ${report.circuitBreaker.triggered ? `TRIPPED (${report.circuitBreaker.reason})` : "OK (Not Tripped)"}`);
   console.log(`Total Wall Clock:     ${report.executionSummary.totalWallClockMs} ms`);
   console.log(`Dispatch Window:      ${report.executionSummary.dispatchWindowMs} ms (Node barrier)`);
   console.log(`Throughput:           ${report.executionSummary.throughputRps} req/sec`);
@@ -1121,10 +1437,14 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
   console.log(`Latency max / mean:   ${report.latencies.max} ms / ${report.latencies.mean} ms`);
 
   if (pyMetrics) {
-    console.log(`\n[Python Metrics] Count: ${pyMetrics.total} | OK: ${pyMetrics.successCount} | p50: ${pyMetrics.latencies.p50}ms | p95: ${pyMetrics.latencies.p95}ms`);
+    console.log(
+      `\n[Python Metrics] Count: ${pyMetrics.total} | OK: ${pyMetrics.successCount} | p50: ${pyMetrics.latencies.p50}ms | p95: ${pyMetrics.latencies.p95}ms`
+    );
   }
   if (sqlMetrics) {
-    console.log(`[SQL Metrics]    Count: ${sqlMetrics.total} | OK: ${sqlMetrics.successCount} | p50: ${sqlMetrics.latencies.p50}ms | p95: ${sqlMetrics.latencies.p95}ms`);
+    console.log(
+      `[SQL Metrics]    Count: ${sqlMetrics.total} | OK: ${sqlMetrics.successCount} | p50: ${sqlMetrics.latencies.p50}ms | p95: ${sqlMetrics.latencies.p95}ms`
+    );
   }
 
   console.log(`\nExit Code: ${report.exitCode} (${report.exitCode === 0 ? "PASSED" : "FAILED/ABORTED"})`);
@@ -1146,7 +1466,7 @@ export async function runJudgeConcurrencyDrill(args: DrillArgs): Promise<DrillRe
 }
 
 // ─────────────────────────────────────────────────────────────
-// 9. CLI ENTRY POINT
+// 10. CLI ENTRY POINT
 // ─────────────────────────────────────────────────────────────
 
 export async function main() {
@@ -1155,7 +1475,8 @@ export async function main() {
   if (error) {
     console.error(`Error: ${error}`);
     console.log("Run with --help for usage information.");
-    process.exit(2);
+    process.exitCode = 2;
+    return;
   }
 
   if (!args || args.help) {
@@ -1170,7 +1491,7 @@ Options:
   --requests, -n <N>          Total requests to execute (1..1000, default: 20)
   --language, -l <lang>       'python' | 'sql' | 'mixed' (default: 'mixed')
   --scenario, -s <scenario>   'baseline' (1 canary) | 'burst' (wave-based) (default: 'burst')
-  --timeout-ms <N>            Per-request HTTP timeout in ms (1000..30000, default: 5000)
+  --timeout-ms <N>            Per-request HTTP timeout in ms (1000..60000, default: 5000)
   --seed <N>                  Integer seed for deterministic mixed language distribution (default: 42)
   --url <url>                 Target judge execution endpoint (default: http://127.0.0.1:8080/api/judge/execute)
   --dry-run                   Validate preflight & configuration without executing code

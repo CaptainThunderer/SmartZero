@@ -274,6 +274,7 @@ export default function CodingIDE({
   // Draft Autosave State
   const [draftStatus, setDraftStatus] = useState<"IDLE" | "SAVING" | "SAVED" | "RETRYING" | "SAVE_FAILED">("IDLE");
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveAbortControllerRef = useRef<AbortController | null>(null);
   const draftSeqRef = useRef<number>(0);
   const isRunningRef = useRef<boolean>(false);
   const isSubmittingRef = useRef<boolean>(false);
@@ -286,6 +287,10 @@ export default function CodingIDE({
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = null;
+      }
+      if (saveAbortControllerRef.current) {
+        saveAbortControllerRef.current.abort();
+        saveAbortControllerRef.current = null;
       }
       setDraftStatus("IDLE");
       setRunResult(null);
@@ -335,12 +340,16 @@ export default function CodingIDE({
     };
   }, [slug, questionId, userId]);
 
-  // Debounced Draft Autosave to Server with monotonic sequence and identity protection
+  // Debounced Draft Autosave to Server with monotonic sequence, in-flight abortion, and identity protection
   useEffect(() => {
     if (!userId || !code || code === getInitialStarter(language)) return;
 
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
+    }
+    if (saveAbortControllerRef.current) {
+      saveAbortControllerRef.current.abort();
+      saveAbortControllerRef.current = null;
     }
 
     const targetUserId = userId;
@@ -352,14 +361,19 @@ export default function CodingIDE({
       setDraftStatus("SAVING");
       let attempts = 0;
       let success = false;
+
+      const abortController = new AbortController();
+      saveAbortControllerRef.current = abortController;
+
       while (attempts < 3 && !success) {
         attempts++;
         try {
-          if (currentUserIdRef.current !== targetUserId) return;
+          if (currentUserIdRef.current !== targetUserId || currentSeq !== draftSeqRef.current || abortController.signal.aborted) return;
 
           const res = await fetch(`/api/contest/${slug}/coding/save`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: abortController.signal,
             body: JSON.stringify({
               question_id: questionId,
               language,
@@ -376,23 +390,30 @@ export default function CodingIDE({
             }
             break;
           }
-        } catch {
-          // Retry
+        } catch (err: any) {
+          if (err?.name === "AbortError") return; // Request was aborted by newer edit
         }
         if (!success && attempts < 3) {
+          if (currentSeq !== draftSeqRef.current || currentUserIdRef.current !== targetUserId || abortController.signal.aborted) {
+            return; // Bail out on newer keystrokes
+          }
           if (currentSeq === draftSeqRef.current && currentUserIdRef.current === targetUserId) {
             setDraftStatus("RETRYING");
           }
           await new Promise((r) => setTimeout(r, 600 * attempts));
         }
       }
-      if (!success && currentSeq === draftSeqRef.current && currentUserIdRef.current === targetUserId) {
+      if (!success && currentSeq === draftSeqRef.current && currentUserIdRef.current === targetUserId && !abortController.signal.aborted) {
         setDraftStatus("SAVE_FAILED");
       }
-    }, 1200);
+    }, 2000);
 
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      if (saveAbortControllerRef.current) {
+        saveAbortControllerRef.current.abort();
+        saveAbortControllerRef.current = null;
+      }
     };
   }, [code, language, questionId, slug, userId, getInitialStarter]);
 

@@ -59,7 +59,7 @@ export async function POST(
 
   const userId = identityCheck.authoritativeUserId;
 
-  const participant = await getParticipant(contest.id, userId, true);
+  const participant = await getParticipant(contest.id, userId, false);
   if (
     participant?.status === "submitted" ||
     participant?.status === "auto_submitted" ||

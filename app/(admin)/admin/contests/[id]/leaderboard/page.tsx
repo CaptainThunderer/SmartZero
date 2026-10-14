@@ -63,9 +63,13 @@ export default function AdminLiveLeaderboardPage({
   // Server-authoritative remaining time countdown
   const [remainingSec, setRemainingSec] = useState<number>(0);
   const remainingSecRef = useRef<number>(0);
+  const isFetchingRef = useRef<boolean>(false);
+  const realtimeDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchLeaderboard = useCallback(
     async (isManualRefresh: boolean = false) => {
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
       if (isManualRefresh) setRefreshing(true);
       try {
         const res = await fetch(`/api/admin/contests/${id}/leaderboard`, {
@@ -90,12 +94,21 @@ export default function AdminLiveLeaderboardPage({
       } catch (err: unknown) {
         setErrorMsg(err instanceof Error ? err.message : "Error connecting to leaderboard service.");
       } finally {
+        isFetchingRef.current = false;
         setLoading(false);
         if (isManualRefresh) setRefreshing(false);
       }
     },
     [id]
   );
+
+  const scheduleRealtimeRefresh = useCallback(() => {
+    if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+    realtimeDebounceRef.current = setTimeout(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      fetchLeaderboard();
+    }, 1500);
+  }, [fetchLeaderboard]);
 
   // 1. Initial Load
   useEffect(() => {
@@ -133,7 +146,7 @@ export default function AdminLiveLeaderboardPage({
               filter: `contest_id=eq.${id}`,
             },
             () => {
-              fetchLeaderboard();
+              scheduleRealtimeRefresh();
             }
           )
           .on(
@@ -145,7 +158,7 @@ export default function AdminLiveLeaderboardPage({
               filter: `contest_id=eq.${id}`,
             },
             () => {
-              fetchLeaderboard();
+              scheduleRealtimeRefresh();
             }
           )
           .on(
@@ -157,7 +170,7 @@ export default function AdminLiveLeaderboardPage({
               filter: `contest_id=eq.${id}`,
             },
             () => {
-              fetchLeaderboard();
+              scheduleRealtimeRefresh();
             }
           )
           .subscribe((status: string) => {
@@ -190,12 +203,16 @@ export default function AdminLiveLeaderboardPage({
       document.addEventListener("visibilitychange", handleRefocus);
     }
 
-    // Always keep safety polling every 3 seconds to guarantee freshness
+    // Safety polling every 10 seconds while tab is active
     pollingInterval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       fetchLeaderboard();
-    }, 3000);
+    }, 10000);
 
     return () => {
+      if (realtimeDebounceRef.current) {
+        clearTimeout(realtimeDebounceRef.current);
+      }
       if (channel && supabase) {
         supabase.removeChannel(channel);
       }
@@ -208,7 +225,7 @@ export default function AdminLiveLeaderboardPage({
         document.removeEventListener("visibilitychange", handleRefocus);
       }
     };
-  }, [id, fetchLeaderboard]);
+  }, [id, fetchLeaderboard, scheduleRealtimeRefresh]);
 
   // Format remaining time into HH:MM:SS
   const formatRemainingTime = (seconds: number) => {

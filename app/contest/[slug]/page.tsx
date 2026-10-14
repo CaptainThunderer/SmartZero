@@ -85,7 +85,13 @@ export default function StudentContestPage({
       ? `/api/contest/${slug}/state?user_id=${currentUserId}`
       : `/api/contest/${slug}/state`;
 
+    let isFetching = false;
+
     const syncTimer = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (isFetching) return;
+      isFetching = true;
+
       fetch(url)
         .then((r) => r.json())
         .then((d) => {
@@ -95,12 +101,26 @@ export default function StudentContestPage({
             setSecondsRemaining(d.seconds_remaining);
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          isFetching = false;
+        });
     };
 
     syncTimer();
-    const interval = setInterval(syncTimer, 4000);
-    return () => clearInterval(interval);
+    const interval = setInterval(syncTimer, 8000);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        syncTimer();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [slug, user?.id, profile?.id]);
 
   // Local 1-second countdown tick

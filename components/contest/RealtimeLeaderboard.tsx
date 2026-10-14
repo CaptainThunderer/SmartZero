@@ -21,8 +21,12 @@ export default function RealtimeLeaderboard({
   const [myRank, setMyRank] = useState<number | null>(null);
   const [myScore, setMyScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const isFetchingRef = React.useRef(false);
+  const realtimeTimerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const fetchLeaderboard = useCallback(() => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setLoading(true);
     fetch(`/api/contest/${slug}/leaderboard?user_id=${userId || "demo-student-user"}`)
       .then((r) => r.json())
@@ -34,15 +38,26 @@ export default function RealtimeLeaderboard({
         }
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        isFetchingRef.current = false;
+        setLoading(false);
+      });
   }, [slug, userId]);
+
+  const scheduleRealtimeFetch = useCallback(() => {
+    if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
+    realtimeTimerRef.current = setTimeout(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      fetchLeaderboard();
+    }, 2000);
+  }, [fetchLeaderboard]);
 
   // Initial load & when triggered by a submission
   useEffect(() => {
     fetchLeaderboard();
   }, [fetchLeaderboard, refreshTrigger]);
 
-  // Supabase Realtime channel subscription for instant live updates across contestants
+  // Supabase Realtime channel subscription for live updates across contestants
   useEffect(() => {
     const supabase = getSupabaseBrowser();
     if (!supabase) return;
@@ -57,7 +72,7 @@ export default function RealtimeLeaderboard({
           table: "contest_participants",
         },
         () => {
-          fetchLeaderboard();
+          scheduleRealtimeFetch();
         }
       )
       .on(
@@ -68,7 +83,7 @@ export default function RealtimeLeaderboard({
           table: "mcq_answers",
         },
         () => {
-          fetchLeaderboard();
+          scheduleRealtimeFetch();
         }
       )
       .on(
@@ -79,7 +94,7 @@ export default function RealtimeLeaderboard({
           table: "coding_submissions",
         },
         () => {
-          fetchLeaderboard();
+          scheduleRealtimeFetch();
         }
       )
       .subscribe();
@@ -100,6 +115,7 @@ export default function RealtimeLeaderboard({
     }
 
     return () => {
+      if (realtimeTimerRef.current) clearTimeout(realtimeTimerRef.current);
       supabase.removeChannel(channel);
       if (typeof window !== "undefined") {
         window.removeEventListener("focus", handleRefocus);
@@ -107,11 +123,14 @@ export default function RealtimeLeaderboard({
         document.removeEventListener("visibilitychange", handleRefocus);
       }
     };
-  }, [slug, fetchLeaderboard]);
+  }, [slug, fetchLeaderboard, scheduleRealtimeFetch]);
 
-  // Background polling every 10 seconds as resilient fallback
+  // Background polling every 15 seconds as resilient fallback (only while page visible)
   useEffect(() => {
-    const interval = setInterval(fetchLeaderboard, 10000);
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      fetchLeaderboard();
+    }, 15000);
     return () => clearInterval(interval);
   }, [fetchLeaderboard]);
 

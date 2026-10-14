@@ -158,20 +158,44 @@ export async function saveCodingDraft(params: {
   const supabase = createSupabaseAdminClient() || (await createSupabaseServerClient());
   if (supabase) {
     try {
-      await supabase.from("coding_submissions").insert({
-        contest_id: sub.contest_id,
-        user_id: sub.user_id,
-        question_id: sub.question_id,
-        language: sub.language,
-        code: sub.code,
-        verdict: "DRAFT",
-        score: 0,
-        test_cases_passed: 0,
-        total_test_cases: 0,
-        execution_time_ms: 0,
-        memory_kb: 0,
-        compile_output: "",
-      });
+      // Check for an existing draft to update in-place, eliminating realtime broadcast storms
+      const { data: existingDraft } = await supabase
+        .from("coding_submissions")
+        .select("id")
+        .eq("contest_id", sub.contest_id)
+        .eq("user_id", sub.user_id)
+        .eq("question_id", sub.question_id)
+        .eq("language", sub.language)
+        .eq("verdict", "DRAFT")
+        .order("submitted_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingDraft?.id) {
+        await supabase
+          .from("coding_submissions")
+          .update({
+            code: sub.code,
+            submitted_at: now,
+          })
+          .eq("id", existingDraft.id);
+      } else {
+        await supabase.from("coding_submissions").insert({
+          contest_id: sub.contest_id,
+          user_id: sub.user_id,
+          question_id: sub.question_id,
+          language: sub.language,
+          code: sub.code,
+          verdict: "DRAFT",
+          score: 0,
+          test_cases_passed: 0,
+          total_test_cases: 0,
+          execution_time_ms: 0,
+          memory_kb: 0,
+          compile_output: "",
+          submitted_at: now,
+        });
+      }
     } catch {
       // Fallback
     }
@@ -194,18 +218,24 @@ export async function getStudentSubmissions(
   const supabase = createSupabaseAdminClient() || (await createSupabaseServerClient());
   if (supabase) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("coding_submissions")
         .select("*")
         .eq("contest_id", contest_id)
-        .eq("user_id", user_id)
-        .order("submitted_at", { ascending: false });
+        .eq("user_id", user_id);
+
+      if (question_id) {
+        query = query.eq("question_id", question_id);
+      }
+
+      const { data, error } = await query
+        .order("submitted_at", { ascending: false })
+        .limit(50);
 
       if (!error && data) {
         const dbSubs = data as CodingSubmission[];
-        memorySubmissions.set(key, dbSubs);
-        if (question_id) {
-          return dbSubs.filter((s) => s.question_id === question_id);
+        if (!question_id) {
+          memorySubmissions.set(key, dbSubs);
         }
         return dbSubs;
       }

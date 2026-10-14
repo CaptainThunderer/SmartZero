@@ -2,6 +2,16 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  // Bypass middleware database/auth calls for all /api/ routes.
+  // API routes authenticate independently via getAuthenticatedUser().
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next({
+      request,
+    });
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
@@ -43,8 +53,6 @@ export async function updateSession(request: NextRequest) {
       }
     }
   }
-
-  const pathname = request.nextUrl.pathname;
 
   // Check for authenticated student session cookie
   const studentSessionCookie = request.cookies.get("smartzero_student_session")?.value;

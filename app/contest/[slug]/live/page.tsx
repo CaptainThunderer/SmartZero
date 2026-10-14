@@ -161,7 +161,13 @@ export default function LiveContestExamPage({
   // Sync server timer with user-authoritative state
   useEffect(() => {
     const userId = user?.id || "demo-student-user";
+    let isFetching = false;
+
     const sync = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (isFetching) return;
+      isFetching = true;
+
       fetch(`/api/contest/${slug}/state?user_id=${userId}`)
         .then((r) => r.json())
         .then((data) => {
@@ -172,12 +178,26 @@ export default function LiveContestExamPage({
             }
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          isFetching = false;
+        });
     };
 
     sync();
     const interval = setInterval(sync, 10000);
-    return () => clearInterval(interval);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        sync();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [slug, user?.id]);
 
   // Handle final submission (manual or timer expiry)

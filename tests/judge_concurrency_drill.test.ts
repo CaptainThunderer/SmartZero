@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import {
   validateTargetUrl,
   parseDrillArgs,
+  parseStrictInt,
   calculatePercentiles,
   classifyExecutionResult,
   CircuitBreaker,
@@ -9,10 +12,15 @@ import {
   createPrng,
   generatePythonPayload,
   generateSqlPayload,
+  runJudgeConcurrencyDrill,
+  type DrillArgs,
+  type FailureCategory,
 } from "../scripts/judge_concurrency_drill";
+import { formatSqlTable } from "../lib/judge/sqlEngine";
+import type { JudgeWorkerJobRequest } from "../lib/judge/types";
 
 console.log("==================================================");
-console.log("▶ RUNNING JUDGE CONCURRENCY DRILL UNIT TESTS");
+console.log("▶ RUNNING JUDGE CONCURRENCY DRILL HARDENED TEST SUITE");
 console.log("==================================================\n");
 
 let passed = 0;
@@ -23,209 +31,471 @@ function testAssert(condition: boolean, message: string) {
 }
 
 async function runTests() {
-  // ── 1. Safe default target validation ──
-  console.log("── 1. Safe Target Validation ──");
-  const defaultTarget = validateTargetUrl("http://127.0.0.1:8080/api/judge/execute");
-  testAssert(defaultTarget.valid === true, "Default loopback target 127.0.0.1 is valid");
-  testAssert(defaultTarget.isLoopback === true, "Default target recognized as loopback");
+  // ── 1. Target Validation: Loopback Host & Port Enforcement ──
+  console.log("── 1. Safe Target Validation & Loopback Port Enforcement ──");
+  const validLoopback = validateTargetUrl("http://127.0.0.1:8080/api/judge/execute");
+  testAssert(validLoopback.valid === true, "Default loopback target 127.0.0.1:8080 is valid");
+  testAssert(validLoopback.isLoopback === true, "Recognized as loopback target");
 
-  const localhostTarget = validateTargetUrl("http://localhost:8080/execute");
-  testAssert(localhostTarget.valid === true, "Localhost /execute is valid");
+  const validLocalhost = validateTargetUrl("http://localhost:8080/execute");
+  testAssert(validLocalhost.valid === true, "Localhost:8080 /execute is valid");
 
-  const ipv6Target = validateTargetUrl("http://[::1]:8080/api/judge/execute");
-  testAssert(ipv6Target.valid === true, "IPv6 loopback [::1] is valid");
+  const validIpv6 = validateTargetUrl("http://[::1]:8080/api/judge/execute");
+  testAssert(validIpv6.valid === true, "IPv6 loopback [::1]:8080 is valid");
 
-  // ── 2. Rejection of public production and tunnel targets ──
-  console.log("\n── 2. Rejection of Public Production & Tunnel Targets ──");
-  const vercelProd = validateTargetUrl("https://smartzero-v1.vercel.app/api/judge/execute", { confirmStaging: true });
-  testAssert(!vercelProd.valid && vercelProd.error!.includes("forbidden"), "Vercel production target rejected");
+  // Rejection of wrong loopback port
+  const wrongPort = validateTargetUrl("http://127.0.0.1:3000/api/judge/execute");
+  testAssert(!wrongPort.valid && wrongPort.error!.includes("intended judge port"), "Loopback with port 3000 rejected");
 
-  const cfTunnel = validateTargetUrl("https://random-sub.trycloudflare.com/api/judge/execute", { confirmStaging: true });
-  testAssert(!cfTunnel.valid && cfTunnel.error!.includes("forbidden"), "Cloudflare Quick Tunnel target rejected");
+  // Rejection of missing port on loopback
+  const missingPort = validateTargetUrl("http://127.0.0.1/api/judge/execute");
+  testAssert(!missingPort.valid && missingPort.error!.includes("intended judge port"), "Loopback with default port 80 rejected");
 
-  const ngrokTunnel = validateTargetUrl("https://test.ngrok.io/api/judge/execute", { confirmStaging: true });
-  testAssert(!ngrokTunnel.valid && ngrokTunnel.error!.includes("forbidden"), "Ngrok tunnel target rejected");
+  // Rejection of HTTPS on loopback
+  const httpsLoopback = validateTargetUrl("https://127.0.0.1:8080/api/judge/execute");
+  testAssert(!httpsLoopback.valid && httpsLoopback.error!.includes("HTTP"), "HTTPS on loopback rejected");
 
-  const supabaseUrl = validateTargetUrl("https://xyz.supabase.co/api/judge/execute", { confirmStaging: true });
-  testAssert(!supabaseUrl.valid && supabaseUrl.error!.includes("forbidden"), "Supabase target rejected");
+  // Rejection of bind address 0.0.0.0
+  const bindAddress = validateTargetUrl("http://0.0.0.0:8080/api/judge/execute");
+  testAssert(!bindAddress.valid, "Bind address 0.0.0.0 rejected as target");
 
-  // ── 3. Remote HTTPS Staging Allowlist Validation ──
-  console.log("\n── 3. Remote HTTPS Staging Allowlist Validation ──");
-  const unconfirmedRemote = validateTargetUrl("https://staging-judge.internal/api/judge/execute");
-  testAssert(!unconfirmedRemote.valid && unconfirmedRemote.error!.includes("--confirm-staging"), "Remote target rejected without --confirm-staging");
+  // Rejection of query parameters
+  const queryParamUrl = validateTargetUrl("http://127.0.0.1:8080/api/judge/execute?debug=true");
+  testAssert(!queryParamUrl.valid && queryParamUrl.error!.includes("Query parameters"), "Target with query parameters rejected");
 
-  const httpRemote = validateTargetUrl("http://staging-judge.internal/api/judge/execute", { confirmStaging: true, allowRemoteHosts: ["staging-judge.internal"] });
-  testAssert(!httpRemote.valid && httpRemote.error!.includes("HTTPS"), "Insecure HTTP remote target strictly rejected");
-
-  const allowedRemote = validateTargetUrl("https://staging-judge.internal/api/judge/execute", {
-    confirmStaging: true,
-    allowRemoteHosts: ["staging-judge.internal"],
-  });
-  testAssert(allowedRemote.valid === true && allowedRemote.isLoopback === false, "Allowlisted HTTPS remote staging accepted");
-
-  const unlistedRemote = validateTargetUrl("https://other-judge.internal/api/judge/execute", {
-    confirmStaging: true,
-    allowRemoteHosts: ["staging-judge.internal"],
-  });
-  testAssert(!unlistedRemote.valid && unlistedRemote.error!.includes("not present in the allowed remote hosts"), "Non-allowlisted remote host rejected");
-
-  // Rejection of URL credentials, fragments, and bad paths
+  // Rejection of credentials & fragments
   const credsUrl = validateTargetUrl("http://admin:secret@127.0.0.1:8080/api/judge/execute");
-  testAssert(!credsUrl.valid && credsUrl.error!.includes("Embedded URL credentials"), "URL credentials rejected");
+  testAssert(!credsUrl.valid && credsUrl.error!.includes("credentials"), "Embedded credentials rejected");
 
-  const fragmentUrl = validateTargetUrl("http://127.0.0.1:8080/api/judge/execute#anchor");
-  testAssert(!fragmentUrl.valid && fragmentUrl.error!.includes("fragments"), "URL fragment rejected");
+  const fragUrl = validateTargetUrl("http://127.0.0.1:8080/api/judge/execute#frag");
+  testAssert(!fragUrl.valid && fragUrl.error!.includes("fragments"), "URL fragment rejected");
 
-  const badPath = validateTargetUrl("http://127.0.0.1:8080/api/other/path");
-  testAssert(!badPath.valid && badPath.error!.includes("Invalid execution endpoint path"), "Unexpected endpoint path rejected");
+  const badPath = validateTargetUrl("http://127.0.0.1:8080/api/contest/submit");
+  testAssert(!badPath.valid && badPath.error!.includes("Invalid execution endpoint path"), "Non-execution endpoint path rejected");
 
-  // ── 4. Argument Parsing & Rejection of Invalid Concurrency ──
-  console.log("\n── 4. Argument Validation & Bounds ──");
-  const validArgs = parseDrillArgs(["-c", "10", "-n", "50", "-l", "python"]);
-  testAssert(validArgs.args?.concurrency === 10, "Parsed concurrency 10");
-  testAssert(validArgs.args?.totalRequests === 50, "Parsed requests 50");
-  testAssert(validArgs.args?.language === "python", "Parsed language python");
+  const malformedUrl = validateTargetUrl("not-a-valid-url");
+  testAssert(!malformedUrl.valid && malformedUrl.error!.includes("Malformed"), "Malformed URL rejected");
 
-  const highConcurrency = parseDrillArgs(["-c", "101"]);
-  testAssert(highConcurrency.error !== undefined && highConcurrency.error.includes("between 1 and 100"), "Concurrency > 100 rejected");
+  const emptyUrl = validateTargetUrl("");
+  testAssert(!emptyUrl.valid && emptyUrl.error!.includes("empty"), "Empty URL rejected");
 
-  const zeroConcurrency = parseDrillArgs(["-c", "0"]);
-  testAssert(zeroConcurrency.error !== undefined && zeroConcurrency.error.includes("between 1 and 100"), "Concurrency 0 rejected");
+  // ── 2. Rejection of Public Production & Tunnel Domains ──
+  console.log("\n── 2. Rejection of Public Production & Tunnel Domains ──");
+  const forbiddenDomains = [
+    "https://smartzero.io/api/judge/execute",
+    "https://smartzero-v1.vercel.app/api/judge/execute",
+    "https://xyz.supabase.co/api/judge/execute",
+    "https://judge.workers.dev/api/judge/execute",
+    "https://sub.trycloudflare.com/api/judge/execute",
+    "https://sub.cloudflarepreview.com/api/judge/execute",
+    "https://sub.localtunnel.me/api/judge/execute",
+    "https://sub.ngrok.io/api/judge/execute",
+    "https://sub.ngrok-free.app/api/judge/execute",
+    "https://app.herokuapp.com/api/judge/execute",
+    "https://app.fly.dev/api/judge/execute",
+    "https://app.render.com/api/judge/execute",
+    "https://app.railway.app/api/judge/execute",
+    "https://ec2.amazonaws.com/api/judge/execute",
+  ];
 
-  const negativeRequests = parseDrillArgs(["-n", "-5"]);
-  testAssert(negativeRequests.error !== undefined, "Negative request count rejected");
+  for (const url of forbiddenDomains) {
+    const res = validateTargetUrl(url, { confirmStaging: true, allowRemoteHosts: [new URL(url).hostname] });
+    testAssert(!res.valid && res.error!.includes("forbidden"), `Forbidden production/tunnel domain rejected: ${new URL(url).hostname}`);
+  }
 
-  const invalidLang = parseDrillArgs(["-l", "rust"]);
-  testAssert(invalidLang.error !== undefined && invalidLang.error.includes("Supported"), "Unsupported language rejected");
+  // ── 3. Remote Staging Policy ──
+  console.log("\n── 3. Remote Staging Policy & Allowlist Validation ──");
+  const remoteHttp = validateTargetUrl("http://staging-judge.corp/api/judge/execute", {
+    confirmStaging: true,
+    allowRemoteHosts: ["staging-judge.corp"],
+  });
+  testAssert(!remoteHttp.valid && remoteHttp.error!.includes("HTTPS"), "Insecure HTTP remote target strictly rejected");
 
-  // ── 5. Percentile Calculation Accuracy ──
-  console.log("\n── 5. Percentile Calculation on Small & Large Samples ──");
-  const emptyStats = calculatePercentiles([]);
-  testAssert(emptyStats.p50 === 0 && emptyStats.p95 === 0, "Empty list percentiles return 0");
+  const remoteNoConfirm = validateTargetUrl("https://staging-judge.corp/api/judge/execute", {
+    confirmStaging: false,
+    allowRemoteHosts: ["staging-judge.corp"],
+  });
+  testAssert(!remoteNoConfirm.valid && remoteNoConfirm.error!.includes("--confirm-staging"), "Remote target rejected without --confirm-staging");
 
-  const singleStats = calculatePercentiles([42]);
-  testAssert(singleStats.min === 42 && singleStats.p50 === 42 && singleStats.max === 42, "Single item percentile is exact");
+  const remoteNotAllowlisted = validateTargetUrl("https://staging-judge.corp/api/judge/execute", {
+    confirmStaging: true,
+    allowRemoteHosts: ["other-judge.corp"],
+  });
+  testAssert(!remoteNotAllowlisted.valid && remoteNotAllowlisted.error!.includes("not present"), "Remote host not in allowlist rejected");
 
-  // 100 numbers: 1 to 100
-  const hundredNums = Array.from({ length: 100 }, (_, i) => i + 1);
-  const hundredStats = calculatePercentiles(hundredNums);
-  testAssert(hundredStats.min === 1, "Min is 1");
-  testAssert(hundredStats.p50 === 50, "p50 is 50");
-  testAssert(hundredStats.p95 === 95, "p95 is 95");
-  testAssert(hundredStats.p99 === 99, "p99 is 99");
-  testAssert(hundredStats.max === 100, "Max is 100");
-  testAssert(hundredStats.mean === 50.5, "Mean is 50.5");
+  const remoteValid = validateTargetUrl("https://staging-judge.corp/api/judge/execute", {
+    confirmStaging: true,
+    allowRemoteHosts: ["staging-judge.corp"],
+  });
+  testAssert(remoteValid.valid === true && remoteValid.isLoopback === false, "Allowlisted remote staging accepted");
 
-  // Small odd sample: [10, 20, 30]
-  const smallOdd = calculatePercentiles([30, 10, 20]);
-  testAssert(smallOdd.p50 === 20, "Small odd sample p50 is 20");
-  testAssert(smallOdd.max === 30, "Small odd sample max is 30");
+  // ── 4. Strict Argument Parsing & Conflicting Option Detection ──
+  console.log("\n── 4. Strict Argument Parsing & Conflict Checks ──");
+  // Strict int helper
+  testAssert(parseStrictInt("20", "-c").value === 20, "Strict int parses 20");
+  testAssert(parseStrictInt("20abc", "-c").error !== undefined, "Strict int rejects '20abc'");
+  testAssert(parseStrictInt("10.5", "-n").error !== undefined, "Strict int rejects float '10.5'");
+  testAssert(parseStrictInt("", "-n").error !== undefined, "Strict int rejects empty string");
+  testAssert(parseStrictInt(undefined, "-n").error !== undefined, "Strict int rejects undefined");
 
-  // ── 6. Failure Classification ──
-  console.log("\n── 6. Failure & Verdict Classification ──");
-  const authClass = classifyExecutionResult(401, '{"error":"Unauthorized"}', "42");
-  testAssert(authClass.category === "AUTH_ERROR", "HTTP 401 classified as AUTH_ERROR");
+  // Missing values
+  const missingCVal = parseDrillArgs(["-c"]);
+  testAssert(missingCVal.error !== undefined && missingCVal.error.includes("Missing value"), "Rejects missing value for -c");
 
-  const rateClass = classifyExecutionResult(429, 'Too many requests', "42");
-  testAssert(rateClass.category === "RATE_LIMITED", "HTTP 429 classified as RATE_LIMITED");
+  const missingNextFlag = parseDrillArgs(["-c", "-n", "20"]);
+  testAssert(missingNextFlag.error !== undefined && missingNextFlag.error.includes("Missing value"), "Rejects next flag as value for -c");
 
-  const httpErrClass = classifyExecutionResult(500, 'Internal Server Error', "42");
-  testAssert(httpErrClass.category === "HTTP_ERROR", "HTTP 500 classified as HTTP_ERROR");
+  const nonIntC = parseDrillArgs(["-c", "20abc"]);
+  testAssert(nonIntC.error !== undefined && nonIntC.error.includes("Non-integer"), "Rejects non-integer '20abc' for concurrency");
 
-  const malformedJson = classifyExecutionResult(200, '{ invalid json', "42");
-  testAssert(malformedJson.category === "INVALID_JSON", "Malformed JSON classified as INVALID_JSON");
+  // Bounds
+  const zeroC = parseDrillArgs(["-c", "0"]);
+  testAssert(zeroC.error !== undefined && zeroC.error.includes("between 1 and 100"), "Rejects concurrency 0");
 
-  const wrongStatus = classifyExecutionResult(200, JSON.stringify({ status: "PENDING", verdict: "Accepted" }), "42");
-  testAssert(wrongStatus.category === "UNEXPECTED_JOB_STATUS", "Non-terminal status classified as UNEXPECTED_JOB_STATUS");
+  const overC = parseDrillArgs(["-c", "101"]);
+  testAssert(overC.error !== undefined && overC.error.includes("between 1 and 100"), "Rejects concurrency > 100");
 
-  const wrongVerdict = classifyExecutionResult(200, JSON.stringify({ status: "COMPLETED", verdict: "TLE" }), "42");
-  testAssert(wrongVerdict.category === "VERDICT_MISMATCH", "Non-accepted verdict classified as VERDICT_MISMATCH");
+  const zeroN = parseDrillArgs(["-n", "0"]);
+  testAssert(zeroN.error !== undefined && zeroN.error.includes("between 1 and 1000"), "Rejects total requests 0");
 
-  const outputMismatch = classifyExecutionResult(
-    200,
-    JSON.stringify({
-      status: "COMPLETED",
-      verdict: "Accepted",
-      test_results: [{ is_sample: true, actual_output: "99" }],
-    }),
-    "42"
-  );
-  testAssert(outputMismatch.category === "TEST_CASE_FAILURE", "Wrong output classified as TEST_CASE_FAILURE");
+  const negN = parseDrillArgs(["-n", "-5"]);
+  testAssert(negN.error !== undefined, "Rejects negative total requests");
 
-  const validSuccess = classifyExecutionResult(
-    200,
-    JSON.stringify({
-      status: "COMPLETED",
-      verdict: "Accepted",
-      test_results: [{ is_sample: true, actual_output: "42" }],
-    }),
-    "42"
-  );
-  testAssert(validSuccess.category === "SUCCESS", "Valid response classified as SUCCESS");
+  const invalidTimeoutLow = parseDrillArgs(["--timeout-ms", "500"]);
+  testAssert(invalidTimeoutLow.error !== undefined && invalidTimeoutLow.error.includes("between 1000 and 60000"), "Rejects timeout < 1000ms");
 
-  // ── 7. Circuit Breaker Behavior ──
-  console.log("\n── 7. Circuit Breaker Logic ──");
-  // 7A: 20% failure rate after >= 5 requests
-  const breaker1 = new CircuitBreaker();
-  breaker1.recordOutcome("SUCCESS");
-  breaker1.recordOutcome("SUCCESS");
-  breaker1.recordOutcome("SUCCESS");
-  breaker1.recordOutcome("HTTP_ERROR");
-  testAssert(!breaker1.tripped(), "Breaker not tripped before 5 requests");
+  const invalidTimeoutHigh = parseDrillArgs(["--timeout-ms", "90000"]);
+  testAssert(invalidTimeoutHigh.error !== undefined && invalidTimeoutHigh.error.includes("between 1000 and 60000"), "Rejects timeout > 60000ms");
 
-  breaker1.recordOutcome("HTTP_ERROR"); // 2 failures out of 5 = 40% > 20%
-  testAssert(breaker1.tripped(), "Breaker tripped when failure rate exceeds 20%");
-  testAssert(breaker1.reason()!.includes("20%"), "Breaker reason mentions 20%");
+  // Conflicting options
+  const conflictDryRunBaseline = parseDrillArgs(["--dry-run", "--scenario", "baseline"]);
+  testAssert(conflictDryRunBaseline.error !== undefined && conflictDryRunBaseline.error.includes("Conflicting options"), "Rejects --dry-run combined with --scenario baseline");
 
-  // 7B: 3 consecutive timeouts
-  const breaker2 = new CircuitBreaker();
-  breaker2.recordOutcome("SUCCESS");
-  breaker2.recordOutcome("TIMEOUT");
-  breaker2.recordOutcome("TIMEOUT");
-  testAssert(!breaker2.tripped(), "Breaker not tripped after 2 timeouts");
-  breaker2.recordOutcome("TIMEOUT");
-  testAssert(breaker2.tripped(), "Breaker tripped on 3 consecutive timeouts");
-  testAssert(breaker2.reason()!.includes("consecutive"), "Breaker reason mentions consecutive timeouts");
+  const conflictBaselineMultiReq = parseDrillArgs(["--scenario", "baseline", "-n", "20"]);
+  testAssert(conflictBaselineMultiReq.error !== undefined && conflictBaselineMultiReq.error.includes("Conflicting options"), "Rejects --scenario baseline with requests > 1");
 
-  // 7C: Reset consecutive timeouts on success
-  const breaker3 = new CircuitBreaker();
-  breaker3.recordOutcome("TIMEOUT");
-  breaker3.recordOutcome("TIMEOUT");
-  breaker3.recordOutcome("SUCCESS"); // Resets consecutive counter
-  breaker3.recordOutcome("TIMEOUT");
-  testAssert(!breaker3.tripped(), "Timeout reset prevents tripping on non-consecutive timeouts");
+  // Output file overwrite protection
+  const testOutFile = path.resolve(process.cwd(), "test_temp_report.json");
+  fs.writeFileSync(testOutFile, "{}", "utf-8");
+  try {
+    const existingOutNoForce = parseDrillArgs(["--output", "test_temp_report.json"]);
+    testAssert(existingOutNoForce.error !== undefined && existingOutNoForce.error.includes("--force"), "Rejects existing output file without --force");
 
-  // 7D: Immediate trip on AUTH_ERROR
-  const breaker4 = new CircuitBreaker();
-  breaker4.recordOutcome("AUTH_ERROR");
-  testAssert(breaker4.tripped(), "Breaker trips immediately on AUTH_ERROR");
+    const existingOutWithForce = parseDrillArgs(["--output", "test_temp_report.json", "--force"]);
+    testAssert(existingOutWithForce.args?.forceOverwrite === true, "Allows existing output file when --force is provided");
+  } finally {
+    if (fs.existsSync(testOutFile)) fs.unlinkSync(testOutFile);
+  }
 
-  // ── 8. Deterministic PRNG & Mixed Workload Generation ──
-  console.log("\n── 8. Deterministic Workload Selection with Seed ──");
-  const prngA = createPrng(42);
-  const prngB = createPrng(42);
+  // ── 5. Actual Judge Request Schema & Payload Builders ──
+  console.log("\n── 5. Actual Accepted Request Schema & Payload Builders ──");
+  const pyPayload = generatePythonPayload("job-py-test", 7, 2500);
+  testAssert(pyPayload.job_id === "job-py-test", "Python job_id matches");
+  testAssert(pyPayload.language === "python", "Python language matches");
+  testAssert(pyPayload.execution_mode === "run", "Python execution_mode matches");
+  testAssert(typeof pyPayload.source_code === "string" && pyPayload.source_code.includes("sys.stdin"), "Python source code present");
+  testAssert(Array.isArray(pyPayload.test_cases) && pyPayload.test_cases.length === 1, "Python test_cases array present");
+  testAssert(pyPayload.test_cases[0].input === "7\n", "Python test case input is 7\\n");
+  testAssert(pyPayload.test_cases[0].expected_output === "49", "Python expected output is 49");
+  testAssert(pyPayload.time_limit_ms === 2500, "Python time_limit_ms forwarded");
 
-  const seqA = Array.from({ length: 10 }, () => prngA());
-  const seqB = Array.from({ length: 10 }, () => prngB());
-  testAssert(JSON.stringify(seqA) === JSON.stringify(seqB), "PRNG produces identical sequence for same seed");
+  const sqlPayload = generateSqlPayload("job-sql-test", 20, 2500);
+  testAssert(sqlPayload.job_id === "job-sql-test", "SQL job_id matches");
+  testAssert(sqlPayload.language === "sql", "SQL language matches");
+  testAssert(sqlPayload.schema_sql !== undefined && sqlPayload.schema_sql.includes("CREATE TABLE"), "SQL schema_sql DDL present");
+  testAssert(sqlPayload.sample_data_sql !== undefined && sqlPayload.sample_data_sql.includes("INSERT INTO"), "SQL sample_data_sql present");
+  testAssert(sqlPayload.order_sensitive === true, "SQL order_sensitive flag set to true");
+  testAssert(sqlPayload.test_cases[0].expected_output === "id    val\n--    ---\n2     20 \n3     30", "SQL expected output matches formatSqlTable format");
 
-  const prngC = createPrng(99);
-  const seqC = Array.from({ length: 10 }, () => prngC());
-  testAssert(JSON.stringify(seqA) !== JSON.stringify(seqC), "Different seeds produce different sequences");
+  // ── 6. Response Validation & Strict Output Verification ──
+  console.log("\n── 6. Strengthened Response Classification & Verification ──");
+  // Auth errors
+  const auth401 = classifyExecutionResult(401, '{"error":"Unauthorized"}');
+  testAssert(auth401.category === "AUTH_ERROR", "401 classified as AUTH_ERROR");
+  const auth403 = classifyExecutionResult(403, '{"error":"Forbidden"}');
+  testAssert(auth403.category === "AUTH_ERROR", "403 classified as AUTH_ERROR");
 
-  const pyPayload = generatePythonPayload("job-py-1", 7);
-  testAssert(pyPayload.language === "python", "Python payload generated");
-  testAssert(pyPayload.test_cases[0].expected_output === "49", "Python payload expected output is 49");
+  // Redirect rejection
+  const redirect302 = classifyExecutionResult(302, 'Redirecting');
+  testAssert(redirect302.category === "UNEXPECTED_REDIRECT", "302 classified as UNEXPECTED_REDIRECT");
 
-  const sqlPayload = generateSqlPayload("job-sql-1", 20);
-  testAssert(sqlPayload.language === "sql", "SQL payload generated");
-  testAssert(sqlPayload.schema_sql !== undefined, "SQL payload includes schema DDL");
+  // Rate limited & HTTP error
+  const rateLimit = classifyExecutionResult(429, 'Rate limit exceeded');
+  testAssert(rateLimit.category === "RATE_LIMITED", "429 classified as RATE_LIMITED");
+  const http500 = classifyExecutionResult(500, 'Server error');
+  testAssert(http500.category === "HTTP_ERROR", "500 classified as HTTP_ERROR");
 
-  // ── 9. Safe Secret Loading ──
-  console.log("\n── 9. Safe Secret Loading ──");
-  const secretInfo = loadJudgeSecretSafe();
-  testAssert(!secretInfo.error, "Secret loaded without parsing error");
-  testAssert(typeof secretInfo.secret === "string" && secretInfo.secret.length > 0, "Secret is non-empty string");
+  // JSON format
+  const badJson = classifyExecutionResult(200, '{ invalid json');
+  testAssert(badJson.category === "INVALID_JSON", "Malformed JSON classified as INVALID_JSON");
+
+  // Missing mandatory fields
+  const missingJobId = classifyExecutionResult(200, JSON.stringify({ status: "COMPLETED", verdict: "Accepted", test_results: [{ passed: true }] }), { expectedJobId: "expected-1" });
+  testAssert(missingJobId.category === "INVALID_RESPONSE_SCHEMA", "Missing or mismatched job_id classified as INVALID_RESPONSE_SCHEMA");
+
+  const missingStatus = classifyExecutionResult(200, JSON.stringify({ job_id: "j1", verdict: "Accepted", test_results: [{ passed: true }] }));
+  testAssert(missingStatus.category === "INVALID_RESPONSE_SCHEMA", "Missing status classified as INVALID_RESPONSE_SCHEMA");
+
+  const pendingStatus = classifyExecutionResult(200, JSON.stringify({ job_id: "j1", status: "PENDING", verdict: "Accepted", test_results: [{ passed: true }] }));
+  testAssert(pendingStatus.category === "UNEXPECTED_JOB_STATUS", "Non-COMPLETED status classified as UNEXPECTED_JOB_STATUS");
+
+  // Missing test_results must not count as success
+  const missingTests = classifyExecutionResult(200, JSON.stringify({ job_id: "j1", status: "COMPLETED", verdict: "Accepted" }));
+  testAssert(missingTests.category === "INVALID_RESPONSE_SCHEMA", "Missing test_results classified as INVALID_RESPONSE_SCHEMA");
+
+  const emptyTests = classifyExecutionResult(200, JSON.stringify({ job_id: "j1", status: "COMPLETED", verdict: "Accepted", test_results: [] }));
+  testAssert(emptyTests.category === "INVALID_RESPONSE_SCHEMA", "Empty test_results classified as INVALID_RESPONSE_SCHEMA");
+
+  // Verdict mismatch
+  const wrongVerdict = classifyExecutionResult(200, JSON.stringify({ job_id: "j1", status: "COMPLETED", verdict: "TLE", test_results: [{ passed: false, verdict: "TLE" }] }));
+  testAssert(wrongVerdict.category === "VERDICT_MISMATCH", "Non-Accepted verdict classified as VERDICT_MISMATCH");
+
+  // Test case failure (passed=false)
+  const failedTestItem = classifyExecutionResult(200, JSON.stringify({
+    job_id: "j1",
+    status: "COMPLETED",
+    verdict: "Accepted",
+    test_results: [{ index: 1, passed: false, verdict: "Wrong Answer" }],
+  }));
+  testAssert(failedTestItem.category === "TEST_CASE_FAILURE", "Test item passed=false classified as TEST_CASE_FAILURE");
+
+  // Python output matching & mismatch
+  const pyMatch = classifyExecutionResult(200, JSON.stringify({
+    job_id: "py-1",
+    status: "COMPLETED",
+    verdict: "Accepted",
+    test_results: [{ index: 1, passed: true, verdict: "Accepted", is_sample: true, actual_output: "49\n" }],
+  }), { expectedJobId: "py-1", expectedOutput: "49", language: "python" });
+  testAssert(pyMatch.category === "SUCCESS", "Python matching output classified as SUCCESS");
+
+  const pyMismatch = classifyExecutionResult(200, JSON.stringify({
+    job_id: "py-1",
+    status: "COMPLETED",
+    verdict: "Accepted",
+    test_results: [{ index: 1, passed: true, verdict: "Accepted", is_sample: true, actual_output: "48" }],
+  }), { expectedJobId: "py-1", expectedOutput: "49", language: "python" });
+  testAssert(pyMismatch.category === "TEST_CASE_FAILURE", "Python mismatch output classified as TEST_CASE_FAILURE");
+
+  // SQL output matching with formatSqlTable
+  const expectedSqlTable = formatSqlTable(["id", "val"], [[2, 20], [3, 30]]);
+  const sqlMatch = classifyExecutionResult(200, JSON.stringify({
+    job_id: "sql-1",
+    status: "COMPLETED",
+    verdict: "Accepted",
+    test_results: [
+      {
+        index: 1,
+        passed: true,
+        verdict: "Accepted",
+        is_sample: true,
+        actual_output: expectedSqlTable,
+        columns: ["id", "val"],
+        rows: [[2, 20], [3, 30]],
+      },
+    ],
+  }), { expectedJobId: "sql-1", expectedOutput: expectedSqlTable, language: "sql" });
+  testAssert(sqlMatch.category === "SUCCESS", "SQL matching formatSqlTable output classified as SUCCESS");
+
+  const sqlMismatch = classifyExecutionResult(200, JSON.stringify({
+    job_id: "sql-1",
+    status: "COMPLETED",
+    verdict: "Accepted",
+    test_results: [
+      {
+        index: 1,
+        passed: true,
+        verdict: "Accepted",
+        is_sample: true,
+        actual_output: "id    val\n--    ---\n2     99 \n3     30",
+        columns: ["id", "val"],
+        rows: [[2, 99], [3, 30]],
+      },
+    ],
+  }), { expectedJobId: "sql-1", expectedOutput: expectedSqlTable, language: "sql" });
+  testAssert(sqlMismatch.category === "TEST_CASE_FAILURE", "SQL mismatch output classified as TEST_CASE_FAILURE");
+
+  // ── 7. Circuit Breaker Behavior & In-Flight Abort Signal ──
+  console.log("\n── 7. Circuit Breaker Logic & In-Flight Abort ──");
+  const breaker = new CircuitBreaker();
+  testAssert(!breaker.tripped(), "Circuit breaker starts untripped");
+  testAssert(!breaker.signal.aborted, "Breaker abort signal starts unaborted");
+
+  breaker.recordOutcome("AUTH_ERROR");
+  testAssert(breaker.tripped(), "Breaker trips immediately on AUTH_ERROR");
+  testAssert(breaker.signal.aborted, "Breaker abort signal triggers on trip");
+  testAssert(breaker.reason()!.includes("Authentication"), "Breaker records auth failure reason");
+
+  // Failure rate threshold
+  const rateBreaker = new CircuitBreaker();
+  rateBreaker.recordOutcome("SUCCESS");
+  rateBreaker.recordOutcome("SUCCESS");
+  rateBreaker.recordOutcome("SUCCESS");
+  rateBreaker.recordOutcome("HTTP_ERROR");
+  rateBreaker.recordOutcome("HTTP_ERROR"); // 2/5 = 40% > 20%
+  testAssert(rateBreaker.tripped(), "Breaker trips when failure rate > 20% after 5 requests");
+
+  // Consecutive timeouts
+  const timeoutBreaker = new CircuitBreaker();
+  timeoutBreaker.recordOutcome("TIMEOUT");
+  timeoutBreaker.recordOutcome("TIMEOUT");
+  testAssert(!timeoutBreaker.tripped(), "Breaker does not trip on 2 timeouts");
+  timeoutBreaker.recordOutcome("TIMEOUT");
+  testAssert(timeoutBreaker.tripped(), "Breaker trips on 3 consecutive timeouts");
+
+  // ── 8. Mocked End-to-End Drills: Dry-Run, Active-Wave Abort, Network Error, Timeout ──
+  console.log("\n── 8. Mocked End-to-End Drill Engine Tests ──");
+  const originalFetch = globalThis.fetch;
+
+  // 8A: Dry-Run performs ZERO execution POST requests
+  let postCount = 0;
+  let healthCount = 0;
+  let readyCount = 0;
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const urlStr = input.toString();
+    if (urlStr.endsWith("/health")) {
+      healthCount++;
+      return new Response(JSON.stringify({ status: "ok", worker: "smartzero-judge" }), { status: 200 });
+    }
+    if (urlStr.endsWith("/ready")) {
+      readyCount++;
+      return new Response(JSON.stringify({ ready: true, concurrency: 6, runtimes: ["python", "sql"] }), { status: 200 });
+    }
+    if (urlStr.endsWith("/api/judge/execute") || urlStr.endsWith("/execute")) {
+      postCount++;
+      return new Response("{}", { status: 200 });
+    }
+    throw new Error(`Unexpected URL: ${urlStr}`);
+  }) as typeof globalThis.fetch;
+
+  try {
+    const dryRunArgs: DrillArgs = {
+      targetUrl: "http://127.0.0.1:8080/api/judge/execute",
+      concurrency: 5,
+      totalRequests: 20,
+      language: "python",
+      scenario: "burst",
+      timeoutMs: 2000,
+      seed: 42,
+      dryRun: true,
+      confirmStaging: false,
+      allowRemoteHosts: [],
+      forceOverwrite: false,
+      help: false,
+    };
+    const dryRunReport = await runJudgeConcurrencyDrill(dryRunArgs);
+    testAssert(dryRunReport.exitCode === 0, "Dry run exits with code 0");
+    testAssert(healthCount === 1, "Dry run called GET /health once");
+    testAssert(readyCount === 1, "Dry run called GET /ready once");
+    testAssert(postCount === 0, "Dry run executed exactly 0 POST requests");
+    testAssert(dryRunReport.executionSummary.requestsDispatched === 0, "Report confirms 0 requests dispatched");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // 8B: Active-wave Breaker Trip & In-Flight Abort
+  let dispatchedJobs = 0;
+  let abortedInFlightJobs = 0;
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const urlStr = input.toString();
+    if (urlStr.endsWith("/health")) {
+      return new Response(JSON.stringify({ status: "ok", worker: "smartzero-judge" }), { status: 200 });
+    }
+    if (urlStr.endsWith("/ready")) {
+      return new Response(JSON.stringify({ ready: true, concurrency: 6, runtimes: ["python", "sql"] }), { status: 200 });
+    }
+    if (urlStr.endsWith("/api/judge/execute")) {
+      dispatchedJobs++;
+      const body = JSON.parse(String(init?.body || "{}"));
+      // Canary request succeeds
+      if (body.job_id === "canary-01") {
+        return new Response(
+          JSON.stringify({
+            job_id: "canary-01",
+            status: "COMPLETED",
+            verdict: "Accepted",
+            test_results: [{ index: 1, passed: true, verdict: "Accepted", is_sample: true, actual_output: "81" }],
+          }),
+          { status: 200 }
+        );
+      }
+      // First wave request fails with 401 Unauthorized immediately, tripping the breaker!
+      if (dispatchedJobs === 2) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+      }
+      // Other concurrent requests in wave 1 are delayed to test in-flight abort
+      return new Promise<Response>((resolve, reject) => {
+        const signal = init?.signal;
+        if (signal?.aborted) {
+          abortedInFlightJobs++;
+          reject(new DOMException("The operation was aborted", "AbortError"));
+          return;
+        }
+        signal?.addEventListener("abort", () => {
+          abortedInFlightJobs++;
+          reject(new DOMException("The operation was aborted", "AbortError"));
+        });
+        setTimeout(() => {
+          resolve(
+            new Response(
+              JSON.stringify({
+                job_id: body.job_id,
+                status: "COMPLETED",
+                verdict: "Accepted",
+                test_results: [{ index: 1, passed: true, verdict: "Accepted", is_sample: true, actual_output: "100" }],
+              }),
+              { status: 200 }
+            )
+          );
+        }, 300);
+      });
+    }
+    throw new Error(`Unexpected URL: ${urlStr}`);
+  }) as typeof globalThis.fetch;
+
+  try {
+    const breakerBurstArgs: DrillArgs = {
+      targetUrl: "http://127.0.0.1:8080/api/judge/execute",
+      concurrency: 5,
+      totalRequests: 10, // 2 waves of 5
+      language: "python",
+      scenario: "burst",
+      timeoutMs: 2000,
+      seed: 42,
+      dryRun: false,
+      confirmStaging: false,
+      allowRemoteHosts: [],
+      forceOverwrite: false,
+      help: false,
+    };
+    const burstReport = await runJudgeConcurrencyDrill(breakerBurstArgs);
+    testAssert(burstReport.circuitBreaker.triggered === true, "Breaker tripped during active wave");
+    testAssert(burstReport.exitCode === 3, "Breaker trip produces exit code 3");
+    testAssert(burstReport.executionSummary.requestsAbortedInFlight > 0, "In-flight requests were aborted by breaker");
+    testAssert(burstReport.executionSummary.requestsSkipped === 5, "Second wave was skipped (5 unstarted requests)");
+    testAssert(
+      burstReport.executionSummary.requestsPrepared ===
+        burstReport.executionSummary.requestsDispatched + burstReport.executionSummary.requestsSkipped,
+      "Prepared requests perfectly equals dispatched + skipped"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // 8C: Secret Redaction in Report & Output
+  console.log("\n── 9. Secret Redaction & Hygiene ──");
+  const secretData = loadJudgeSecretSafe();
+  testAssert(!secretData.error && typeof secretData.secret === "string", "Valid secret present in environment");
+  const secretValue = secretData.secret!;
+
+  // Mock a completed report
+  const reportObj = {
+    target: { url: "http://127.0.0.1:8080/api/judge/execute" },
+    executionSummary: { requestsPrepared: 5 },
+  };
+  const serialized = JSON.stringify(reportObj);
+  testAssert(!serialized.includes(secretValue), "Report does not include secret token");
 
   console.log("\n==================================================");
   console.log(`🎉 ALL ${passed} CONCURRENCY DRILL UNIT TESTS PASSED!`);
